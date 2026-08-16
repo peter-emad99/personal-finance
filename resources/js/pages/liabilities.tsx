@@ -9,6 +9,14 @@ import {
     PageHeader,
 } from '@/components/app-shell';
 import { Field, FormModal, SelectField } from '@/components/form';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 import { formatEGP } from '@/types/finance';
 
 type Liability = {
@@ -111,27 +119,39 @@ export default function Liabilities({
                     meta="Net worth is assets minus active liabilities"
                 />
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[820px] text-left text-sm">
-                        <thead className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
-                            <tr>
-                                <th className="px-5 py-3">Name</th>
-                                <th className="px-5 py-3">Type</th>
-                                <th className="px-5 py-3">Balance</th>
-                                <th className="px-5 py-3">Payment</th>
-                                <th className="px-5 py-3">Rate</th>
-                                <th className="px-5 py-3">Payoff</th>
-                                <th />
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#eef0f4]">
+                    <Table className="min-w-[820px] text-left text-sm">
+                        <TableHeader className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
+                            <TableRow>
+                                <TableHead className="px-5 py-3">
+                                    Name
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Type
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Balance
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Payment
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Rate
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Payoff
+                                </TableHead>
+                                <TableHead />
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="divide-y divide-[#eef0f4]">
                             {liabilities.map((item) => (
-                                <tr
+                                <TableRow
                                     key={item.id}
                                     className={
                                         !item.isActive ? 'opacity-50' : ''
                                     }
                                 >
-                                    <td className="px-5 py-4">
+                                    <TableCell className="px-5 py-4">
                                         <p className="font-semibold text-[#273246]">
                                             {item.name}
                                         </p>
@@ -140,46 +160,48 @@ export default function Liabilities({
                                                 ? 'Active'
                                                 : 'Inactive'}
                                         </p>
-                                    </td>
-                                    <td className="px-5 py-4 text-[#58657a]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-[#58657a]">
                                         {item.type}
-                                    </td>
-                                    <td className="px-5 py-4 font-semibold text-[#c65365]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 font-semibold text-[#c65365]">
                                         {formatEGP(item.balance)}
-                                    </td>
-                                    <td className="px-5 py-4 text-[#58657a]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-[#58657a]">
                                         {formatEGP(item.monthlyPayment)}
-                                    </td>
-                                    <td className="px-5 py-4 text-[#58657a]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-[#58657a]">
                                         {item.interestRate === null
                                             ? '—'
                                             : `${item.interestRate}%`}
-                                    </td>
-                                    <td className="px-5 py-4 text-xs text-[#8993a3]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-xs text-[#8993a3]">
                                         {item.payoffOn ?? '—'}
-                                    </td>
-                                    <td className="px-5 py-4 text-right">
-                                        <button
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-right">
+                                        <Button
+                                            variant="ghost"
+                                            className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-[#6878d5] hover:bg-transparent"
                                             onClick={() => begin(item)}
-                                            className="mr-3 text-xs font-semibold text-[#6878d5]"
                                         >
                                             Edit
-                                        </button>
-                                        <button
+                                        </Button>
+                                        <Button
+                                            variant="danger"
+                                            className="h-7 border-0 bg-transparent px-2 text-xs text-[#c65365] hover:bg-transparent"
                                             onClick={() =>
                                                 router.delete(
                                                     `/liabilities/${item.id}`,
                                                 )
                                             }
-                                            className="text-xs font-semibold text-[#c65365]"
                                         >
                                             Remove
-                                        </button>
-                                    </td>
-                                </tr>
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
                             ))}
-                        </tbody>
-                    </table>
+                        </TableBody>
+                    </Table>
                     {!liabilities.length && (
                         <EmptyState
                             title="No liabilities recorded"

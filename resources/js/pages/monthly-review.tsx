@@ -8,6 +8,14 @@ import {
     PageHeader,
 } from '@/components/app-shell';
 import { Field, SelectField } from '@/components/form';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 import { formatCompactEGP, formatEGP } from '@/types/finance';
 
 type Review = {
@@ -258,47 +266,57 @@ export default function MonthlyReview({
                     meta="Your financial rhythm over time"
                 />
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[650px] text-left text-sm">
-                        <thead className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
-                            <tr>
-                                <th className="px-5 py-3">Month</th>
-                                <th className="px-5 py-3">Income</th>
-                                <th className="px-5 py-3">Outflow</th>
-                                <th className="px-5 py-3">Invested</th>
-                                <th className="px-5 py-3">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#eef0f4]">
+                    <Table className="min-w-[650px] text-left text-sm">
+                        <TableHeader className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
+                            <TableRow>
+                                <TableHead className="px-5 py-3">
+                                    Month
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Income
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Outflow
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Invested
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Status
+                                </TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="divide-y divide-[#eef0f4]">
                             {history.map((item) => (
-                                <tr
+                                <TableRow
                                     key={item.month}
                                     className="cursor-pointer hover:bg-[#fafbfc]"
                                     onClick={() => changeMonth(item.month)}
                                 >
-                                    <td className="px-5 py-4 font-medium text-[#4d5a6d]">
+                                    <TableCell className="px-5 py-4 font-medium text-[#4d5a6d]">
                                         {new Date(
                                             `${item.month}-01`,
                                         ).toLocaleDateString('en-EG', {
                                             month: 'long',
                                             year: 'numeric',
                                         })}
-                                    </td>
-                                    <td className="px-5 py-4 text-[#58657a]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-[#58657a]">
                                         {formatCompactEGP(item.income)}
-                                    </td>
-                                    <td className="px-5 py-4 text-[#58657a]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-[#58657a]">
                                         {formatCompactEGP(item.expenses)}
-                                    </td>
-                                    <td className="px-5 py-4 font-semibold text-[#328654]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 font-semibold text-[#328654]">
                                         {formatCompactEGP(item.invested)}
-                                    </td>
-                                    <td className="px-5 py-4 text-xs font-semibold text-[#8993a3]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-xs font-semibold text-[#8993a3]">
                                         {item.status}
-                                    </td>
-                                </tr>
+                                    </TableCell>
+                                </TableRow>
                             ))}
-                        </tbody>
-                    </table>
+                        </TableBody>
+                    </Table>
                     {!history.length && (
                         <p className="p-6 text-sm text-[#8993a3]">
                             No saved monthly reviews yet.

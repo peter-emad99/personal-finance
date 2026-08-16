@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     AppShell,
+    Badge,
     Button,
     Card,
     CardHeader,
@@ -72,13 +73,13 @@ export default function Goals({
                                                 <h2 className="text-base font-semibold text-[#273246]">
                                                     {goal.name}
                                                 </h2>
-                                                <span
+                                                <Badge
                                                     className={`rounded-full px-2 py-1 text-[10px] font-bold ${goal.onTrack ? 'bg-[#eaf8ef] text-[#328654]' : 'bg-[#fff1e8] text-[#b76a2b]'}`}
                                                 >
                                                     {goal.onTrack
                                                         ? 'ON TRACK'
                                                         : 'OFF TRACK'}
-                                                </span>
+                                                </Badge>
                                             </div>
                                             <p className="mt-1 text-xs text-[#8993a3]">
                                                 {goal.deadline

@@ -1,5 +1,6 @@
 import {
     AppShell,
+    Badge,
     Button,
     Card,
     CardHeader,
@@ -106,9 +107,9 @@ export default function Dashboard({
                                 <p className="text-xs font-semibold tracking-[0.16em] text-[#aeb9d1] uppercase">
                                     Net worth
                                 </p>
-                                <span className="rounded-full bg-[#a8b7ff]/15 px-3 py-1 text-xs text-[#c7d0ff]">
+                                <Badge className="rounded-full border-0 bg-[#a8b7ff]/15 px-3 py-1 text-xs text-[#c7d0ff]">
                                     As of {asOf}
-                                </span>
+                                </Badge>
                             </div>
                             <p className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">
                                 {formatEGP(summary.netWorth)}
@@ -161,13 +162,13 @@ export default function Dashboard({
                                 </span>
                             </p>
                         </div>
-                        <span
+                        <Badge
                             className={`rounded-full px-2.5 py-1 text-xs font-semibold ${summary.emergencyCoverageMonths >= 6 ? 'bg-[#eaf8ef] text-[#328654]' : 'bg-[#fff4df] text-[#a46e14]'}`}
                         >
                             {summary.emergencyCoverageMonths >= 6
                                 ? 'On baseline'
                                 : 'Needs attention'}
-                        </span>
+                        </Badge>
                     </div>
                     <Progress
                         value={(summary.emergencyCoverageMonths / 6) * 100}
@@ -484,13 +485,13 @@ export default function Dashboard({
                                             months left
                                         </p>
                                     </div>
-                                    <span
+                                    <Badge
                                         className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${goal.onTrack ? 'bg-[#eaf8ef] text-[#328654]' : 'bg-[#fff1e8] text-[#b76a2b]'}`}
                                     >
                                         {goal.onTrack
                                             ? 'On track'
                                             : 'Off track'}
-                                    </span>
+                                    </Badge>
                                 </div>
                                 <div className="mt-4 flex items-center gap-4">
                                     <div className="flex-1">

@@ -1,67 +1,137 @@
+import * as React from 'react';
 import type {
     InputHTMLAttributes,
     PropsWithChildren,
     SelectHTMLAttributes,
 } from 'react';
 
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
+
 export function Field({
     label,
+    className,
     ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & {
+    label: string;
+    className?: string;
+}) {
     return (
-        <label className="block space-y-2">
-            <span className="text-xs font-semibold text-[#58657a]">
-                {label}
-            </span>
-            <input
-                {...props}
-                className="w-full rounded-xl border border-[#dfe3ea] bg-white px-3.5 py-2.5 text-sm text-[#202a39] transition outline-none placeholder:text-[#a9b1be] focus:border-[#7c8cf8] focus:ring-4 focus:ring-[#7c8cf8]/10"
-            />
+        <label className={cn('grid gap-2', className)}>
+            <Label>{label}</Label>
+            <Input {...props} />
         </label>
     );
 }
+
+type Option = { value: string; label: React.ReactNode };
+
 export function SelectField({
     label,
     children,
+    value,
+    defaultValue,
+    onChange,
+    className,
+    name,
     ...props
 }: PropsWithChildren<
-    SelectHTMLAttributes<HTMLSelectElement> & { label: string }
+    SelectHTMLAttributes<HTMLSelectElement> & {
+        label: string;
+        className?: string;
+    }
 >) {
+    const options = React.Children.toArray(children).flatMap((child) => {
+        if (!React.isValidElement(child) || child.type !== 'option') {
+            return [];
+        }
+
+        const optionProps = child.props as {
+            value?: string;
+            children?: React.ReactNode;
+        };
+
+        return [
+            {
+                value: optionProps.value ?? String(optionProps.children ?? ''),
+                label: optionProps.children,
+            },
+        ];
+    });
+
+    const currentValue = value == null ? undefined : String(value);
+    const initialValue =
+        defaultValue == null ? undefined : String(defaultValue);
+
     return (
-        <label className="block space-y-2">
-            <span className="text-xs font-semibold text-[#58657a]">
-                {label}
-            </span>
-            <select
-                {...props}
-                className="w-full rounded-xl border border-[#dfe3ea] bg-white px-3.5 py-2.5 text-sm text-[#202a39] transition outline-none focus:border-[#7c8cf8] focus:ring-4 focus:ring-[#7c8cf8]/10"
+        <label className={cn('grid gap-2', className)}>
+            <Label>{label}</Label>
+            <Select
+                name={name}
+                value={currentValue}
+                defaultValue={initialValue}
+                disabled={props.disabled}
+                required={props.required}
+                onValueChange={(next) => {
+                    onChange?.({
+                        target: { value: String(next ?? '') },
+                    } as React.ChangeEvent<HTMLSelectElement>);
+                }}
             >
-                {children}
-            </select>
+                <SelectTrigger className="h-9 w-full">
+                    <SelectValue placeholder="Select an option" />
+                </SelectTrigger>
+                <SelectContent>
+                    {options.map((option: Option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
         </label>
     );
 }
+
 export function FormModal({
     title,
+    description,
     onClose,
     children,
-}: PropsWithChildren<{ title: string; onClose: () => void }>) {
+}: PropsWithChildren<{
+    title: string;
+    description?: string;
+    onClose: () => void;
+}>) {
     return (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-[#101928]/40 p-4">
-            <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-                <div className="mb-5 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-[#1c2737]">
-                        {title}
-                    </h2>
-                    <button
-                        onClick={onClose}
-                        className="text-2xl leading-none text-[#8993a3] hover:text-[#1c2737]"
-                    >
-                        ×
-                    </button>
-                </div>
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>{title}</DialogTitle>
+                    {description && (
+                        <DialogDescription>{description}</DialogDescription>
+                    )}
+                </DialogHeader>
                 {children}
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 }
+
+export { Button };

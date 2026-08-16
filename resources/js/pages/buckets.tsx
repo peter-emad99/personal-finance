@@ -2,12 +2,14 @@ import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     AppShell,
+    Badge,
     Button,
     Card,
     PageHeader,
     Progress,
 } from '@/components/app-shell';
 import { Field, FormModal } from '@/components/form';
+import { Input } from '@/components/ui/input';
 import { formatEGP } from '@/types/finance';
 
 type Bucket = {
@@ -77,9 +79,9 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                                             'Flexible allocation'}
                                     </p>
                                 </div>
-                                <span className="rounded-full bg-[#f8f9fb] px-2.5 py-1 text-[10px] font-semibold text-[#8993a3]">
+                                <Badge className="rounded-full border-0 bg-[#f8f9fb] px-2.5 py-1 text-[10px] font-semibold text-[#8993a3]">
                                     {bucket.assetCount} assets
-                                </span>
+                                </Badge>
                             </div>
                             <p className="mt-6 text-2xl font-semibold text-[#273246]">
                                 {formatEGP(bucket.currentAmount)}
@@ -159,7 +161,7 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                         />
                         <label className="flex items-center gap-3 text-xs font-semibold text-[#58657a]">
                             Color{' '}
-                            <input
+                            <Input
                                 type="color"
                                 value={form.color}
                                 onChange={(e) =>

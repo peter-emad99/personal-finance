@@ -9,6 +9,14 @@ import {
     PageHeader,
 } from '@/components/app-shell';
 import { Field, FormModal, SelectField } from '@/components/form';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 import { formatEGP } from '@/types/finance';
 
 type Commitment = {
@@ -99,28 +107,36 @@ export default function Commitments({
                     meta="Inactive items stay in history without affecting the monthly total"
                 />
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[780px] text-left text-sm">
-                        <thead className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
-                            <tr>
-                                <th className="px-5 py-3">Name</th>
-                                <th className="px-5 py-3">Category</th>
-                                <th className="px-5 py-3">Amount</th>
-                                <th className="px-5 py-3">
+                    <Table className="min-w-[780px] text-left text-sm">
+                        <TableHeader className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
+                            <TableRow>
+                                <TableHead className="px-5 py-3">
+                                    Name
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Category
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Amount
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
                                     Monthly equivalent
-                                </th>
-                                <th className="px-5 py-3">Next due</th>
-                                <th />
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#eef0f4]">
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Next due
+                                </TableHead>
+                                <TableHead />
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="divide-y divide-[#eef0f4]">
                             {commitments.map((item) => (
-                                <tr
+                                <TableRow
                                     key={item.id}
                                     className={
                                         !item.isActive ? 'opacity-50' : ''
                                     }
                                 >
-                                    <td className="px-5 py-4">
+                                    <TableCell className="px-5 py-4">
                                         <p className="font-semibold text-[#273246]">
                                             {item.name}
                                         </p>
@@ -129,42 +145,44 @@ export default function Commitments({
                                                 ? 'Active'
                                                 : 'Inactive'}
                                         </p>
-                                    </td>
-                                    <td className="px-5 py-4 text-[#58657a]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-[#58657a]">
                                         {item.category}
-                                    </td>
-                                    <td className="px-5 py-4 text-[#58657a]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-[#58657a]">
                                         {formatEGP(item.amount)} /{' '}
                                         {item.frequency}
-                                    </td>
-                                    <td className="px-5 py-4 font-semibold text-[#a46e14]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 font-semibold text-[#a46e14]">
                                         {formatEGP(item.monthlyAmount)}
-                                    </td>
-                                    <td className="px-5 py-4 text-xs text-[#8993a3]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-xs text-[#8993a3]">
                                         {item.nextDueOn ?? '—'}
-                                    </td>
-                                    <td className="px-5 py-4 text-right">
-                                        <button
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-right">
+                                        <Button
+                                            variant="ghost"
+                                            className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-[#6878d5] hover:bg-transparent"
                                             onClick={() => begin(item)}
-                                            className="mr-3 text-xs font-semibold text-[#6878d5]"
                                         >
                                             Edit
-                                        </button>
-                                        <button
+                                        </Button>
+                                        <Button
+                                            variant="danger"
+                                            className="h-7 border-0 bg-transparent px-2 text-xs text-[#c65365] hover:bg-transparent"
                                             onClick={() =>
                                                 router.delete(
                                                     `/commitments/${item.id}`,
                                                 )
                                             }
-                                            className="text-xs font-semibold text-[#c65365]"
                                         >
                                             Remove
-                                        </button>
-                                    </td>
-                                </tr>
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
                             ))}
-                        </tbody>
-                    </table>
+                        </TableBody>
+                    </Table>
                     {!commitments.length && (
                         <EmptyState
                             title="No commitments yet"

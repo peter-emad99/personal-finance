@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     AppShell,
+    Badge,
     Button,
     Card,
     CardHeader,
@@ -9,6 +10,14 @@ import {
     PageHeader,
 } from '@/components/app-shell';
 import { Field, FormModal, SelectField } from '@/components/form';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 import { formatEGP } from '@/types/finance';
 
 type Flow = {
@@ -82,63 +91,74 @@ export default function CashFlow({
                     meta={`Since ${new Date(month).toLocaleDateString('en-EG', { month: 'long', year: 'numeric' })}`}
                 />
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[650px] text-left text-sm">
-                        <thead className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
-                            <tr>
-                                <th className="px-5 py-3">Date</th>
-                                <th className="px-5 py-3">Type</th>
-                                <th className="px-5 py-3">Category</th>
-                                <th className="px-5 py-3">Amount</th>
-                                <th className="px-5 py-3">Notes</th>
-                                <th />
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#eef0f4]">
+                    <Table className="min-w-[650px] text-left text-sm">
+                        <TableHeader className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
+                            <TableRow>
+                                <TableHead className="px-5 py-3">
+                                    Date
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Type
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Category
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Amount
+                                </TableHead>
+                                <TableHead className="px-5 py-3">
+                                    Notes
+                                </TableHead>
+                                <TableHead />
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="divide-y divide-[#eef0f4]">
                             {flows.map((flow) => (
-                                <tr key={flow.id}>
-                                    <td className="px-5 py-4 text-xs text-[#8993a3]">
+                                <TableRow key={flow.id}>
+                                    <TableCell className="px-5 py-4 text-xs text-[#8993a3]">
                                         {new Date(
                                             flow.occurred_on,
                                         ).toLocaleDateString('en-EG', {
                                             day: 'numeric',
                                             month: 'short',
                                         })}
-                                    </td>
-                                    <td className="px-5 py-4">
-                                        <span
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4">
+                                        <Badge
                                             className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${flow.type === 'income' ? 'bg-[#eaf8ef] text-[#328654]' : flow.type === 'obligation' ? 'bg-[#fff1e8] text-[#b76a2b]' : 'bg-[#eef1ff] text-[#6878d5]'}`}
                                         >
                                             {flow.type}
-                                        </span>
-                                    </td>
-                                    <td className="px-5 py-4 font-medium text-[#4d5a6d]">
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 font-medium text-[#4d5a6d]">
                                         {flow.category}
-                                    </td>
-                                    <td
+                                    </TableCell>
+                                    <TableCell
                                         className={`px-5 py-4 font-semibold ${flow.type === 'income' ? 'text-[#328654]' : 'text-[#4d5a6d]'}`}
                                     >
                                         {flow.type === 'income' ? '+' : '-'}
                                         {formatEGP(flow.amount_egp)}
-                                    </td>
-                                    <td className="px-5 py-4 text-xs text-[#8993a3]">
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-xs text-[#8993a3]">
                                         {flow.notes || '—'}
-                                    </td>
-                                    <td className="px-5 py-4 text-right">
-                                        <button
+                                    </TableCell>
+                                    <TableCell className="px-5 py-4 text-right">
+                                        <Button
+                                            variant="danger"
+                                            className="h-7 border-0 bg-transparent px-2 text-xs text-[#a4acb9] hover:bg-transparent hover:text-[#c65365]"
                                             onClick={() =>
                                                 router.delete(
                                                     `/cash-flow/${flow.id}`,
                                                 )
                                             }
-                                            className="text-xs font-semibold text-[#a4acb9] hover:text-[#c65365]"
                                         >
                                             Remove
-                                        </button>
-                                    </td>
-                                </tr>
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
                             ))}
-                        </tbody>
-                    </table>
+                        </TableBody>
+                    </Table>
                     {!flows.length && (
                         <EmptyState
                             title="No monthly entries"

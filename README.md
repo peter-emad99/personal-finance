@@ -1,6 +1,6 @@
 # Personal Finance OS
 
-A local, single-user personal finance workspace built with Laravel 13, Inertia, React, TypeScript, Tailwind, and the Laravel React starter kit's shadcn-style foundation.
+A local, single-user personal finance workspace built with Laravel 13, Inertia, React, TypeScript, Tailwind, and shadcn/ui components backed by Base UI primitives.
 
 ## Included MVP
 
@@ -16,6 +16,16 @@ A local, single-user personal finance workspace built with Laravel 13, Inertia, 
 - Recurring commitments: subscriptions, renewals, utilities, insurance, and other predictable obligations with monthly and annual equivalents.
 - Liabilities: balances, rates, payments, payoff dates, and true net worth after debt.
 - Agent-ready read-only MCP server for financial context, monthly reviews, goals, assets, commitments, liabilities, purchase analysis, and decision exports.
+
+## UI system
+
+The interface uses the generated shadcn/ui component source under `resources/js/components/ui`. The current Base UI-backed primitives include the responsive Sidebar, Button, Card, Dialog, Input, Label, Select, Checkbox, Progress, Badge, Table, Sheet, Scroll Area, Dropdown Menu, Tooltip, and related form/layout primitives. Shared application wrappers compose those primitives so pages keep a consistent visual language while remaining easy to customize.
+
+To add another component, use the shadcn CLI from the project root:
+
+```bash
+npx shadcn@latest add <component>
+```
 
 ## Local setup
 

@@ -8,6 +8,7 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { FormModal } from '@/components/form';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -340,12 +341,11 @@ export default function Liabilities({
                             <FieldLabel htmlFor="liability-payoff">
                                 Expected payoff
                             </FieldLabel>
-                            <Input
+                            <DatePicker
                                 id="liability-payoff"
-                                type="date"
                                 value={form.payoff_on}
-                                onChange={(e) =>
-                                    update('payoff_on', e.target.value)
+                                onChange={(payoff_on) =>
+                                    update('payoff_on', payoff_on)
                                 }
                             />
                         </Field>

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToUser;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
 /**
@@ -9,6 +10,10 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
  */
 class AssetBucketAllocation extends Pivot
 {
+    use BelongsToUser;
+
+    protected $table = 'asset_bucket_allocations';
+
     protected function casts(): array
     {
         return ['amount_egp' => 'decimal:2'];

@@ -1,0 +1,10 @@
+[mcp_servers.personal_finance]
+command = "php"
+args = ["artisan", "mcp:serve"]
+cwd = "/Users/peter/Desktop/projects/laravel/personal-finance"
+enabled = true
+startup_timeout_sec = 20
+default_tools_approval_mode = "prompt"
+
+[mcp_servers.personal_finance.env]
+APP_ENV = "local"

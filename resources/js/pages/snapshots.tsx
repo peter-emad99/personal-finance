@@ -8,6 +8,7 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { FormModal } from '@/components/form';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -135,12 +136,11 @@ export default function Snapshots({ snapshots }: { snapshots: Snapshot[] }) {
                             <FieldLabel htmlFor="snapshot-as-of">
                                 As of
                             </FieldLabel>
-                            <Input
+                            <DatePicker
                                 id="snapshot-as-of"
-                                type="date"
                                 value={form.as_of}
-                                onChange={(e) =>
-                                    setForm({ ...form, as_of: e.target.value })
+                                onChange={(as_of) =>
+                                    setForm({ ...form, as_of })
                                 }
                             />
                         </Field>

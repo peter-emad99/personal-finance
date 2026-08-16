@@ -23,12 +23,32 @@ class CashFlowController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        CashFlow::create($request->validate([
-            'type' => ['required', 'in:income,expense,obligation'], 'category' => ['required', 'string', 'max:80'],
-            'amount_egp' => ['required', 'numeric', 'min:0'], 'occurred_on' => ['required', 'date'], 'notes' => ['nullable', 'string'],
-        ]));
+        CashFlow::create($this->validated($request));
 
         return back()->with('success', 'Cash flow entry added.');
+    }
+
+    public function update(Request $request, CashFlow $cashFlow): RedirectResponse
+    {
+        $cashFlow->update($this->validated($request));
+
+        return back()->with('success', 'Cash flow entry updated.');
+    }
+
+    public function restore(int $cashFlow): RedirectResponse
+    {
+        CashFlow::withTrashed()->findOrFail($cashFlow)->restore();
+
+        return back()->with('success', 'Cash flow entry restored.');
+    }
+
+    /** @return array<string, mixed> */
+    private function validated(Request $request): array
+    {
+        return $request->validate([
+            'type' => ['required', 'in:income,expense,obligation'], 'category' => ['required', 'string', 'max:80'],
+            'amount_egp' => ['required', 'numeric', 'min:0'], 'occurred_on' => ['required', 'date'], 'notes' => ['nullable', 'string'],
+        ]);
     }
 
     public function destroy(CashFlow $cashFlow): RedirectResponse

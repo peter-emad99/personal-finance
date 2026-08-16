@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToUser;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class MonthlyFinancialReview extends Model
 {
+    use BelongsToUser, SoftDeletes;
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -19,6 +23,7 @@ class MonthlyFinancialReview extends Model
             'one_time_expenses_egp' => 'decimal:2',
             'debt_payments_egp' => 'decimal:2',
             'invested_egp' => 'decimal:2',
+            'manual_adjustment_egp' => 'decimal:2',
         ];
     }
 }

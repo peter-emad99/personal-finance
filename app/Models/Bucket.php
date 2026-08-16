@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToUser;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Bucket extends Model
 {
+    use BelongsToUser, SoftDeletes;
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -26,6 +30,6 @@ class Bucket extends Model
     {
         return $this->belongsToMany(Asset::class, 'asset_bucket_allocations')
             ->using(AssetBucketAllocation::class)
-            ->withPivot('amount_egp')->withTimestamps();
+            ->withPivot('amount_egp', 'user_id')->withTimestamps();
     }
 }

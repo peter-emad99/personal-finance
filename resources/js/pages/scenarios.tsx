@@ -34,7 +34,10 @@ export default function Scenarios({
     );
     const result = useMemo(() => {
         const p = Number(price || 0);
-        const down = mode === 'cash' ? p : Number(downPayment || 0);
+        const down =
+            mode === 'cash'
+                ? p
+                : Math.min(p, Math.max(0, Number(downPayment || 0)));
         const principal = Math.max(0, p - down);
         const months = Number(tenure || 1);
         const monthlyRate = Number(interest || 0) / 100 / 12;
@@ -50,18 +53,24 @@ export default function Scenarios({
         const totalFinancing = payment * months;
         const afterPurchaseCash = Math.max(
             0,
-            dashboard.summary.liquidAssets - down,
+            (dashboard.summary.availableNow ?? dashboard.summary.liquidAssets) -
+                down,
         );
         const coverage =
             dashboard.summary.expenses > 0
                 ? afterPurchaseCash / dashboard.summary.expenses
                 : 0;
         const afterPurchaseFreeCashFlow =
-            dashboard.summary.freeCashFlow - (mode === 'finance' ? payment : 0);
+            monthlySavings.trim() === ''
+                ? dashboard.summary.freeCashFlow -
+                  (mode === 'finance' ? payment : 0)
+                : Number(monthlySavings);
+        const reserveMonths = dashboard.summary.emergencyReserveMonths ?? 6;
         const confidence =
-            coverage >= 6 && afterPurchaseFreeCashFlow >= 0
+            coverage >= reserveMonths && afterPurchaseFreeCashFlow >= 0
                 ? 'comfortable'
-                : coverage >= 3 && afterPurchaseFreeCashFlow >= 0
+                : coverage >= reserveMonths / 2 &&
+                    afterPurchaseFreeCashFlow >= 0
                   ? 'review'
                   : 'not ready';
 
@@ -76,7 +85,15 @@ export default function Scenarios({
             afterPurchaseFreeCashFlow,
             confidence,
         };
-    }, [price, mode, downPayment, interest, tenure, dashboard.summary]);
+    }, [
+        price,
+        mode,
+        downPayment,
+        interest,
+        tenure,
+        monthlySavings,
+        dashboard.summary,
+    ]);
     const choices =
         mode === 'cash'
             ? [
@@ -149,7 +166,7 @@ export default function Scenarios({
                         </Field>
                         <Field>
                             <FieldLabel htmlFor="scenario-savings">
-                                Monthly savings after purchase (EGP)
+                                Expected monthly savings after purchase (EGP)
                             </FieldLabel>
                             <Input
                                 id="scenario-savings"
@@ -210,11 +227,12 @@ export default function Scenarios({
                             </p>
                             <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
                                 <span className="text-muted-foreground">
-                                    Liquid assets
+                                    Available now
                                 </span>
                                 <span className="text-right font-semibold text-muted-foreground">
                                     {formatCompactEGP(
-                                        dashboard.summary.liquidAssets,
+                                        dashboard.summary.availableNow ??
+                                            dashboard.summary.liquidAssets,
                                     )}
                                 </span>
                                 <span className="text-muted-foreground">
@@ -289,7 +307,10 @@ export default function Scenarios({
                             <Impact
                                 label="Cash / liquidity remaining"
                                 value={result.afterPurchaseCash}
-                                total={dashboard.summary.liquidAssets}
+                                total={
+                                    dashboard.summary.availableNow ??
+                                    dashboard.summary.liquidAssets
+                                }
                                 color="var(--chart-1)"
                             />
                             <Impact

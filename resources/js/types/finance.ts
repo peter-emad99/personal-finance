@@ -2,6 +2,10 @@ export type Summary = {
     netWorth: number;
     investableNetWorth: number;
     liquidAssets: number;
+    availableNow?: number;
+    availableWithinThreeDays?: number;
+    totalAssets?: number;
+    emergencyReserveMonths?: number;
     reservedForGoals: number;
     income: number;
     expenses: number;
@@ -11,6 +15,7 @@ export type Summary = {
     liabilities?: number;
     investedThisMonth?: number;
     recurringCommitments?: number;
+    investmentRate?: number;
 };
 
 export type Asset = {
@@ -25,8 +30,10 @@ export type Asset = {
     liquidity: string;
     isLiquid: boolean;
     accountName: string | null;
+    notes?: string | null;
     acquiredOn?: string | null;
     gainLoss: number;
+    archived?: boolean;
     bucketAllocations?: {
         bucketId: number;
         bucketName: string;
@@ -43,9 +50,14 @@ export type Goal = {
     deadline: string | null;
     monthsRemaining: number | null;
     requiredMonthlyContribution: number;
+    plannedMonthlyContribution?: number | null;
     fundingPercent: number;
     onTrack: boolean;
     gapPerMonth: number;
+    status?: string;
+    priority?: number;
+    notes?: string | null;
+    archived?: boolean;
 };
 
 export type Bucket = {
@@ -57,6 +69,8 @@ export type Bucket = {
     goalName?: string | null;
     targetAmount: number;
     currentAmount: number;
+    archived?: boolean;
+    assetCount?: number;
 };
 
 export const formatEGP = (amount: number) =>

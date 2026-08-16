@@ -10,6 +10,7 @@ import {
     PageHeader,
     Progress,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { FormModal } from '@/components/form';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -19,34 +20,64 @@ import type { Bucket, Goal } from '@/types/finance';
 export default function Goals({
     goals,
     buckets,
+    archivedGoals = [],
 }: {
     goals: Goal[];
     buckets: Bucket[];
+    archivedGoals?: Pick<Goal, 'id' | 'name' | 'targetAmount' | 'deadline'>[];
 }) {
+    const [editing, setEditing] = useState<Goal | null>(null);
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState({
         name: '',
         target_amount_egp: '',
         deadline: '2026-12-31',
         priority: '1',
+        monthly_contribution_egp: '',
         notes: '',
     });
     const update = (key: string, value: string) =>
         setForm((current) => ({ ...current, [key]: value }));
+    const begin = (goal?: Goal) => {
+        setEditing(goal ?? null);
+        setForm(
+            goal
+                ? {
+                      name: goal.name,
+                      target_amount_egp: String(goal.targetAmount),
+                      deadline: goal.deadline ?? '',
+                      priority: String(goal.priority ?? 1),
+                      monthly_contribution_egp:
+                          goal.plannedMonthlyContribution !== null &&
+                          goal.plannedMonthlyContribution !== undefined
+                              ? String(goal.plannedMonthlyContribution)
+                              : '',
+                      notes: goal.notes ?? '',
+                  }
+                : {
+                      name: '',
+                      target_amount_egp: '',
+                      deadline: '2026-12-31',
+                      priority: '1',
+                      monthly_contribution_egp: '',
+                      notes: '',
+                  },
+        );
+        setOpen(true);
+    };
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
-        router.post('/goals', form, {
-            onSuccess: () => {
-                setOpen(false);
-                setForm({
-                    name: '',
-                    target_amount_egp: '',
-                    deadline: '2026-12-31',
-                    priority: '1',
-                    notes: '',
-                });
+        const url = editing ? `/goals/${editing.id}` : '/goals';
+        router[editing ? 'put' : 'post'](
+            url,
+            { ...form, status: editing?.status ?? 'active' },
+            {
+                onSuccess: () => {
+                    setOpen(false);
+                    setEditing(null);
+                },
             },
-        });
+        );
     };
 
     return (
@@ -55,9 +86,7 @@ export default function Goals({
                 eyebrow="Money with a job"
                 title="Goals"
                 description="Give near-term money a clear destination so it does not get mistaken for long-term investment capital."
-                action={
-                    <Button onClick={() => setOpen(true)}>+ Add goal</Button>
-                }
+                action={<Button onClick={() => begin()}>+ Add goal</Button>}
             />
             <div className="grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
                 <Card>
@@ -90,6 +119,32 @@ export default function Goals({
                                                 · {goal.monthsRemaining ?? '—'}{' '}
                                                 months remaining
                                             </p>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                variant="ghost"
+                                                className="h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
+                                                onClick={() => begin(goal)}
+                                            >
+                                                Edit
+                                            </Button>
+                                            <Button
+                                                variant="danger"
+                                                className="h-7 border-0 bg-transparent px-2 text-xs text-destructive hover:bg-transparent"
+                                                onClick={() => {
+                                                    if (
+                                                        confirm(
+                                                            'Archive this goal?',
+                                                        )
+                                                    ) {
+                                                        router.delete(
+                                                            `/goals/${goal.id}`,
+                                                        );
+                                                    }
+                                                }}
+                                            >
+                                                Archive
+                                            </Button>
                                         </div>
                                         <p className="text-lg font-semibold text-foreground">
                                             {formatEGP(goal.allocatedAmount)}{' '}
@@ -170,6 +225,34 @@ export default function Goals({
                             description="Create a goal such as a car, a home, or a future opportunity."
                         />
                     )}
+                    {archivedGoals.length > 0 && (
+                        <div className="border-t border-border p-5">
+                            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                                Archived goals
+                            </p>
+                            <div className="mt-3 space-y-2">
+                                {archivedGoals.map((goal) => (
+                                    <div
+                                        key={goal.id}
+                                        className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm opacity-70"
+                                    >
+                                        <span>{goal.name}</span>
+                                        <Button
+                                            variant="ghost"
+                                            className="h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
+                                            onClick={() =>
+                                                router.post(
+                                                    `/goals/${goal.id}/restore`,
+                                                )
+                                            }
+                                        >
+                                            Restore
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </Card>
                 <Card>
                     <CardHeader
@@ -216,8 +299,13 @@ export default function Goals({
             </div>
             {open && (
                 <FormModal
-                    title="Add a financial goal"
-                    onClose={() => setOpen(false)}
+                    title={
+                        editing ? 'Edit financial goal' : 'Add a financial goal'
+                    }
+                    onClose={() => {
+                        setOpen(false);
+                        setEditing(null);
+                    }}
                 >
                     <form
                         onSubmit={submit}
@@ -233,6 +321,24 @@ export default function Goals({
                                 value={form.name}
                                 onChange={(e) => update('name', e.target.value)}
                                 placeholder="e.g. Car"
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="goal-contribution">
+                                Planned contribution / month (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="goal-contribution"
+                                type="number"
+                                min="0"
+                                value={form.monthly_contribution_egp}
+                                onChange={(e) =>
+                                    update(
+                                        'monthly_contribution_egp',
+                                        e.target.value,
+                                    )
+                                }
+                                placeholder="Used when policy is manual"
                             />
                         </Field>
                         <Field>
@@ -253,12 +359,11 @@ export default function Goals({
                             <FieldLabel htmlFor="goal-deadline">
                                 Deadline
                             </FieldLabel>
-                            <Input
+                            <DatePicker
                                 id="goal-deadline"
-                                type="date"
                                 value={form.deadline}
-                                onChange={(e) =>
-                                    update('deadline', e.target.value)
+                                onChange={(deadline) =>
+                                    update('deadline', deadline)
                                 }
                             />
                         </Field>
@@ -283,7 +388,9 @@ export default function Goals({
                             >
                                 Cancel
                             </Button>
-                            <Button type="submit">Create goal</Button>
+                            <Button type="submit">
+                                {editing ? 'Save changes' : 'Create goal'}
+                            </Button>
                         </div>
                     </form>
                 </FormModal>

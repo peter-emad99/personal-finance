@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
     AppShell,
     Badge,
@@ -7,6 +8,13 @@ import {
     PageHeader,
     Progress,
 } from '@/components/app-shell';
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+} from '@/components/ui/sheet';
 import { formatCompactEGP, formatEGP } from '@/types/finance';
 import type { Bucket, Goal, Summary } from '@/types/finance';
 
@@ -42,6 +50,10 @@ export default function Dashboard({
     wealthTrend,
     recurringCommitments,
     liabilities,
+    dataFreshness,
+    attentionQueue,
+    decisionJournal,
+    allocationPolicy,
 }: {
     summary: Summary;
     assetAllocation: Allocation[];
@@ -54,6 +66,7 @@ export default function Dashboard({
     targetAllocation: Record<string, number>;
     wealthMetrics: {
         savingsRate: number;
+        investmentRate?: number;
         monthlyWealthContribution: number;
         debtToNetWorth: number;
         committedIncomeRate: number;
@@ -70,7 +83,51 @@ export default function Dashboard({
         balance: number;
         monthlyPayment: number;
     }[];
+    dataFreshness?: {
+        lastUpdated?: string | null;
+        cashFlowSource?: string;
+        valuationFreshness?: {
+            status: string;
+            ageDays: number | null;
+            freshnessPeriodDays: number;
+        };
+        reviewStatus?: string;
+        demoDataWarning?: boolean;
+        backup?: { status: string; verifiedAt?: string | null };
+    };
+    attentionQueue?: {
+        key: string;
+        title: string;
+        reason: string;
+        rule: string;
+        source: string;
+        actionUrl: string;
+    }[];
+    decisionJournal?: {
+        id: number;
+        decision: string;
+        chosenAction: string | null;
+        reviewDate: string | null;
+        status: string;
+    }[];
+    allocationPolicy?: {
+        label: string;
+        currentPercent: number;
+        targetPercent: number;
+        minPercent: number;
+        maxPercent: number;
+        tolerancePercent: number;
+        status: string;
+        rule: string;
+        source: string;
+    }[];
 }) {
+    const [detail, setDetail] = useState<{
+        title: string;
+        description: string;
+        formula: string;
+        source: string;
+    } | null>(null);
     const largestAsset = assetAllocation[0];
     const largestCurrency = currencyExposure[0];
 
@@ -97,6 +154,46 @@ export default function Dashboard({
                     </div>
                 }
             />
+            <Card className="mb-4 border-dashed">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 p-4 text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">
+                        Data status
+                    </span>
+                    <span>
+                        Cash flow:{' '}
+                        {dataFreshness?.cashFlowSource?.replaceAll('_', ' ') ??
+                            'unknown'}
+                    </span>
+                    <span>
+                        Review: {dataFreshness?.reviewStatus ?? 'missing'}
+                    </span>
+                    <span>
+                        Valuation:{' '}
+                        {dataFreshness?.valuationFreshness?.status ?? 'unknown'}
+                        {dataFreshness?.valuationFreshness?.ageDays !== null &&
+                        dataFreshness?.valuationFreshness?.ageDays !== undefined
+                            ? ` (${dataFreshness.valuationFreshness.ageDays}d old)`
+                            : ''}
+                    </span>
+                    <span>
+                        Backup: {dataFreshness?.backup?.status ?? 'missing'}
+                    </span>
+                    {dataFreshness?.demoDataWarning && (
+                        <Badge variant="secondary">Demo data detected</Badge>
+                    )}
+                    <span className="ml-auto">
+                        Updated{' '}
+                        {dataFreshness?.lastUpdated
+                            ? new Date(
+                                  dataFreshness.lastUpdated,
+                              ).toLocaleString('en-EG')
+                            : 'not yet'}
+                    </span>
+                    <Button href="/monthly-review" size="sm">
+                        Review this month
+                    </Button>
+                </div>
+            </Card>
             <div className="grid gap-4 xl:grid-cols-[1.65fr_1fr]">
                 <Card className="overflow-hidden border-0 bg-sidebar text-sidebar-foreground">
                     <div className="relative p-6 sm:p-8">
@@ -111,9 +208,21 @@ export default function Dashboard({
                                     As of {asOf}
                                 </Badge>
                             </div>
-                            <p className="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">
+                            <button
+                                type="button"
+                                className="mt-4 text-left text-4xl font-semibold tracking-tight sm:text-5xl"
+                                onClick={() =>
+                                    setDetail({
+                                        title: 'Net worth',
+                                        description:
+                                            'Total assets minus active liabilities.',
+                                        formula: `${formatEGP(summary.totalAssets ?? 0)} − ${formatEGP(summary.liabilities ?? 0)} = ${formatEGP(summary.netWorth)}`,
+                                        source: 'assets and liabilities',
+                                    })
+                                }
+                            >
                                 {formatEGP(summary.netWorth)}
-                            </p>
+                            </button>
                             <div className="mt-8 grid grid-cols-2 gap-5 border-t border-white/10 pt-5 sm:grid-cols-5">
                                 <Metric
                                     label="Investable"
@@ -122,9 +231,10 @@ export default function Dashboard({
                                     )}
                                 />
                                 <Metric
-                                    label="Liquid"
+                                    label="Available ≤3d"
                                     value={formatCompactEGP(
-                                        summary.liquidAssets,
+                                        summary.availableWithinThreeDays ??
+                                            summary.liquidAssets,
                                     )}
                                 />
                                 <Metric
@@ -163,20 +273,30 @@ export default function Dashboard({
                             </p>
                         </div>
                         <Badge
-                            className={`rounded-full border-0 px-2.5 py-1 text-xs font-semibold ${summary.emergencyCoverageMonths >= 6 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'}`}
+                            className={`rounded-full border-0 px-2.5 py-1 text-xs font-semibold ${summary.emergencyCoverageMonths >= (summary.emergencyReserveMonths ?? 6) ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'}`}
                         >
-                            {summary.emergencyCoverageMonths >= 6
+                            {summary.emergencyCoverageMonths >=
+                            (summary.emergencyReserveMonths ?? 6)
                                 ? 'On baseline'
                                 : 'Needs attention'}
                         </Badge>
                     </div>
                     <Progress
-                        value={(summary.emergencyCoverageMonths / 6) * 100}
+                        value={
+                            (summary.emergencyCoverageMonths /
+                                Math.max(
+                                    1,
+                                    summary.emergencyReserveMonths ?? 6,
+                                )) *
+                            100
+                        }
                         color="var(--chart-2)"
                     />
                     <div className="mt-3 flex justify-between text-xs text-muted-foreground">
                         <span>{formatEGP(summary.emergencyFund)} saved</span>
-                        <span>6 months target</span>
+                        <span>
+                            {summary.emergencyReserveMonths ?? 6} months target
+                        </span>
                     </div>
                     <div className="mt-7 grid grid-cols-2 gap-3">
                         <MiniMetric
@@ -202,7 +322,7 @@ export default function Dashboard({
                             </Button>
                         }
                     />
-                    <div className="grid gap-3 p-5 sm:grid-cols-4">
+                    <div className="grid gap-3 p-5 sm:grid-cols-5">
                         <MiniMetric
                             label="Invested this month"
                             value={formatCompactEGP(
@@ -214,6 +334,10 @@ export default function Dashboard({
                             label="Savings rate"
                             value={`${wealthMetrics.savingsRate}%`}
                             positive
+                        />
+                        <MiniMetric
+                            label="Investment rate"
+                            value={`${wealthMetrics.investmentRate ?? summary.investmentRate ?? 0}%`}
                         />
                         <MiniMetric
                             label="Income committed"
@@ -312,6 +436,78 @@ export default function Dashboard({
                     </div>
                 </Card>
             </div>
+            <div className="mt-4 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                <Card>
+                    <CardHeader
+                        title="Attention queue"
+                        meta="At most three explainable next actions"
+                    />
+                    <div className="flex flex-col gap-3 p-5">
+                        {(attentionQueue ?? []).map((alert) => (
+                            <div
+                                key={alert.key}
+                                className="flex items-start justify-between gap-3 rounded-xl bg-muted p-3"
+                            >
+                                <div>
+                                    <p className="text-sm font-semibold text-foreground">
+                                        {alert.title}
+                                    </p>
+                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                        {alert.reason}
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                        Rule: {alert.rule}
+                                    </p>
+                                </div>
+                                <Button
+                                    href={alert.actionUrl}
+                                    size="sm"
+                                    variant="ghost"
+                                >
+                                    Fix
+                                </Button>
+                            </div>
+                        ))}
+                        {!(attentionQueue ?? []).length && (
+                            <p className="text-sm text-muted-foreground">
+                                No actionable alerts under the configured rules.
+                            </p>
+                        )}
+                    </div>
+                </Card>
+                <Card>
+                    <CardHeader
+                        title="Decision journal"
+                        meta="Recent choices and review dates"
+                        action={
+                            <Button href="/decision-journal" variant="ghost">
+                                Open journal
+                            </Button>
+                        }
+                    />
+                    <div className="flex flex-col gap-3 p-5">
+                        {(decisionJournal ?? []).slice(0, 3).map((entry) => (
+                            <div
+                                key={entry.id}
+                                className="border-b border-border pb-3 text-xs last:border-0"
+                            >
+                                <p className="font-semibold text-foreground">
+                                    {entry.decision}
+                                </p>
+                                <p className="mt-1 text-muted-foreground">
+                                    {entry.chosenAction ?? 'Action not chosen'}{' '}
+                                    · {entry.reviewDate ?? 'No review date'}
+                                </p>
+                            </div>
+                        ))}
+                        {!(decisionJournal ?? []).length && (
+                            <p className="text-sm text-muted-foreground">
+                                Record a decision when an assumption matters.
+                            </p>
+                        )}
+                    </div>
+                </Card>
+            </div>
             <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_0.9fr]">
                 <Card>
                     <CardHeader
@@ -364,54 +560,70 @@ export default function Dashboard({
                         meta="Your personal allocation policy"
                     />
                     <div className="flex flex-col gap-4 p-5">
-                        {Object.entries(targetAllocation).map(
-                            ([label, target], index) => {
-                                const current =
-                                    assetAllocation.find(
-                                        (item) => item.label === label,
-                                    )?.percent ?? 0;
-                                const delta = current - target;
+                        {(
+                            allocationPolicy ??
+                            Object.entries(targetAllocation).map(
+                                ([label, target]) => ({
+                                    label,
+                                    currentPercent:
+                                        assetAllocation.find(
+                                            (item) => item.label === label,
+                                        )?.percent ?? 0,
+                                    targetPercent: target,
+                                    minPercent: target,
+                                    maxPercent: target,
+                                    tolerancePercent: 0,
+                                    status: 'within_range',
+                                    rule: `Target ${target}%`,
+                                    source: 'financial_settings',
+                                }),
+                            )
+                        ).map((item, index) => {
+                            const {
+                                label,
+                                currentPercent: current,
+                                targetPercent: target,
+                            } = item;
 
-                                return (
-                                    <div key={label}>
-                                        <div className="mb-1.5 flex items-center justify-between text-xs">
-                                            <span className="font-medium text-muted-foreground">
-                                                {label}
+                            return (
+                                <div key={label}>
+                                    <div className="mb-1.5 flex items-center justify-between text-xs">
+                                        <span className="font-medium text-muted-foreground">
+                                            {label}
+                                        </span>
+                                        <span
+                                            className={
+                                                item.status !== 'within_range'
+                                                    ? 'font-semibold text-amber-700 dark:text-amber-300'
+                                                    : 'text-muted-foreground'
+                                            }
+                                        >
+                                            {current}%{' '}
+                                            <span className="text-muted-foreground/70">
+                                                / {item.minPercent}–
+                                                {item.maxPercent}%
                                             </span>
-                                            <span
-                                                className={
-                                                    delta > 3
-                                                        ? 'font-semibold text-amber-700 dark:text-amber-300'
-                                                        : 'text-muted-foreground'
-                                                }
-                                            >
-                                                {current}%{' '}
-                                                <span className="text-muted-foreground/70">
-                                                    / {target}%
-                                                </span>
-                                            </span>
-                                        </div>
-                                        <div className="relative h-2 rounded-full bg-muted">
-                                            <div
-                                                className="h-full rounded-full"
-                                                style={{
-                                                    width: `${Math.min(100, current)}%`,
-                                                    backgroundColor:
-                                                        colors[
-                                                            index %
-                                                                colors.length
-                                                        ],
-                                                }}
-                                            />
-                                            <span
-                                                className="absolute -top-1 h-4 w-0.5 bg-foreground"
-                                                style={{ left: `${target}%` }}
-                                            />
-                                        </div>
+                                        </span>
                                     </div>
-                                );
-                            },
-                        )}
+                                    <div className="relative h-2 rounded-full bg-muted">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{
+                                                width: `${Math.min(100, current)}%`,
+                                                backgroundColor:
+                                                    colors[
+                                                        index % colors.length
+                                                    ],
+                                            }}
+                                        />
+                                        <span
+                                            className="absolute -top-1 h-4 w-0.5 bg-foreground"
+                                            style={{ left: `${target}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </Card>
                 <Card>
@@ -613,6 +825,47 @@ export default function Dashboard({
                     </div>
                 </Card>
             </div>
+            <Sheet
+                open={detail !== null}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setDetail(null);
+                    }
+                }}
+            >
+                <SheetContent side="right">
+                    <SheetHeader>
+                        <SheetTitle>
+                            {detail?.title ?? 'Calculation detail'}
+                        </SheetTitle>
+                        <SheetDescription>
+                            {detail?.description}
+                        </SheetDescription>
+                    </SheetHeader>
+                    <div className="flex flex-col gap-4 px-4 text-sm">
+                        <div className="rounded-xl bg-muted p-4">
+                            <p className="text-xs text-muted-foreground">
+                                Formula
+                            </p>
+                            <p className="mt-2 font-semibold text-foreground">
+                                {detail?.formula}
+                            </p>
+                        </div>
+                        <div className="rounded-xl border border-border p-4">
+                            <p className="text-xs text-muted-foreground">
+                                Source
+                            </p>
+                            <p className="mt-2 text-foreground">
+                                {detail?.source}
+                            </p>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                                Values are planning projections and retain the
+                                source status shown in the dashboard strip.
+                            </p>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
         </AppShell>
     );
 }

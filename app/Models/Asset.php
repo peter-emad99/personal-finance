@@ -2,11 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToUser;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Asset extends Model
 {
+    use BelongsToUser, SoftDeletes;
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -26,6 +32,18 @@ class Asset extends Model
     {
         return $this->belongsToMany(Bucket::class, 'asset_bucket_allocations')
             ->using(AssetBucketAllocation::class)
-            ->withPivot('amount_egp')->withTimestamps();
+            ->withPivot('amount_egp', 'user_id')->withTimestamps();
+    }
+
+    /** @return HasMany<AssetValuation, $this> */
+    public function valuations(): HasMany
+    {
+        return $this->hasMany(AssetValuation::class);
+    }
+
+    /** @return BelongsTo<Account, $this> */
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class);
     }
 }

@@ -45,6 +45,13 @@ class CommitmentController extends Controller
         return back()->with('success', 'Recurring commitment removed.');
     }
 
+    public function restore(int $commitment): RedirectResponse
+    {
+        RecurringCommitment::withTrashed()->findOrFail($commitment)->restore();
+
+        return back()->with('success', 'Recurring commitment restored.');
+    }
+
     /** @return array<string, mixed> */
     private function validated(Request $request): array
     {

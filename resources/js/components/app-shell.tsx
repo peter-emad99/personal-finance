@@ -1,6 +1,7 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     BriefcaseBusiness,
+    BookOpen,
     Calculator,
     CreditCard,
     Database,
@@ -12,6 +13,7 @@ import {
     Monitor,
     Moon,
     Repeat2,
+    Settings,
     Sun,
     WalletCards,
 } from 'lucide-react';
@@ -29,8 +31,9 @@ import {
 import {
     DropdownMenu,
     DropdownMenuContent,
-    DropdownMenuItem,
     DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -60,11 +63,29 @@ const navigation = [
     { href: '/buckets', label: 'Buckets', icon: Database },
     { href: '/goals', label: 'Goals', icon: Flag },
     { href: '/monthly-review', label: 'Monthly review', icon: Gauge },
+    { href: '/ledger', label: 'Ledger & imports', icon: BookOpen },
+    {
+        href: '/transaction-categories',
+        label: 'Transaction categories',
+        icon: ListChecks,
+    },
+    { href: '/valuations', label: 'Valuation history', icon: FileClock },
+    { href: '/fx-rates', label: 'FX rates', icon: Repeat2 },
+    { href: '/reconciliation', label: 'Reconciliation', icon: ListChecks },
     { href: '/commitments', label: 'Commitments', icon: Repeat2 },
     { href: '/liabilities', label: 'Liabilities', icon: CreditCard },
+    { href: '/liability-history', label: 'Liability history', icon: FileClock },
     { href: '/allocations', label: 'Allocations', icon: ListChecks },
+    {
+        href: '/allocation-reconciliation',
+        label: 'Reconcile purposes',
+        icon: ListChecks,
+    },
     { href: '/scenarios', label: 'Scenarios', icon: Calculator },
     { href: '/snapshots', label: 'Snapshots', icon: FileClock },
+    { href: '/settings/financial', label: 'Financial policy', icon: Settings },
+    { href: '/decision-journal', label: 'Decision journal', icon: FileClock },
+    { href: '/operations', label: 'Operations', icon: Settings },
 ];
 
 function AppSidebar({ currentPath }: { currentPath: string }) {
@@ -125,6 +146,15 @@ function AppSidebar({ currentPath }: { currentPath: string }) {
                 </SidebarGroup>
             </SidebarContent>
             <SidebarFooter className="gap-3 p-3 md:p-4">
+                <SidebarMenu className="group-data-[collapsible=icon]:hidden">
+                    <SidebarMenuItem>
+                        <SidebarMenuButton
+                            onClick={() => router.post('/logout')}
+                        >
+                            <span>Sign out</span>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                </SidebarMenu>
                 <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/40 p-3 group-data-[collapsible=icon]:hidden">
                     <div className="flex items-center gap-2 text-xs font-semibold text-sidebar-foreground">
                         <BriefcaseBusiness className="size-3.5 text-sidebar-primary" />
@@ -160,6 +190,9 @@ export function AppShell({
     title,
 }: PropsWithChildren<{ title: string }>) {
     const currentPath = window.location.pathname;
+    const { flash } = usePage<{
+        flash?: { success?: string | null; error?: string | null };
+    }>().props;
 
     return (
         <ThemeProvider>
@@ -178,6 +211,19 @@ export function AppShell({
                             </div>
                         </header>
                         <main className="min-h-screen">
+                            {(flash?.success || flash?.error) && (
+                                <div
+                                    role={flash.error ? 'alert' : 'status'}
+                                    className={cn(
+                                        'mx-auto max-w-[1500px] px-4 pt-4 text-sm sm:px-6 lg:px-8',
+                                        flash.error
+                                            ? 'text-destructive'
+                                            : 'text-muted-foreground',
+                                    )}
+                                >
+                                    {flash.error ?? flash.success}
+                                </div>
+                            )}
                             <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
                                 {children}
                             </div>
@@ -217,29 +263,31 @@ function ThemeMenu({ inSidebar = false }: { inSidebar?: boolean }) {
                 )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuLabel>Theme</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {(['system', 'light', 'dark'] as ThemeMode[]).map((mode) => (
-                    <DropdownMenuItem
-                        key={mode}
-                        onClick={() => setTheme(mode)}
-                        className="capitalize"
-                    >
-                        {mode === 'system' ? (
-                            <Monitor />
-                        ) : mode === 'light' ? (
-                            <Sun />
-                        ) : (
-                            <Moon />
-                        )}
-                        {mode}
-                        {theme === mode && (
-                            <span className="ml-auto text-xs text-muted-foreground">
-                                Active
-                            </span>
-                        )}
-                    </DropdownMenuItem>
-                ))}
+                <DropdownMenuRadioGroup
+                    value={theme}
+                    onValueChange={(value) => setTheme(value as ThemeMode)}
+                >
+                    <DropdownMenuLabel>Theme</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {(['system', 'light', 'dark'] as ThemeMode[]).map(
+                        (mode) => (
+                            <DropdownMenuRadioItem
+                                key={mode}
+                                value={mode}
+                                className="capitalize"
+                            >
+                                {mode === 'system' ? (
+                                    <Monitor />
+                                ) : mode === 'light' ? (
+                                    <Sun />
+                                ) : (
+                                    <Moon />
+                                )}
+                                {mode}
+                            </DropdownMenuRadioItem>
+                        ),
+                    )}
+                </DropdownMenuRadioGroup>
             </DropdownMenuContent>
         </DropdownMenu>
     );

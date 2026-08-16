@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToUser;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Snapshot extends Model
 {
+    use BelongsToUser, SoftDeletes;
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -20,6 +24,8 @@ class Snapshot extends Model
             'free_cash_flow_egp' => 'decimal:2',
             'emergency_coverage_months' => 'decimal:2',
             'asset_breakdown' => 'array',
+            'change_attribution' => 'array',
+            'captured_at' => 'datetime',
         ];
     }
 }

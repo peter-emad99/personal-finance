@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MonthlyFinancialReview;
 use App\Services\FinanceService;
+use App\Services\LedgerService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
@@ -34,6 +35,7 @@ class MonthlyReviewController extends Controller
             'one_time_expenses' => ['required', 'numeric', 'min:0'],
             'debt_payments' => ['required', 'numeric', 'min:0'],
             'invested' => ['required', 'numeric', 'min:0'],
+            'manual_adjustment_egp' => ['nullable', 'numeric'],
             'status' => ['required', 'in:open,closed'],
             'notes' => ['nullable', 'string'],
         ]);
@@ -48,11 +50,49 @@ class MonthlyReviewController extends Controller
             'one_time_expenses_egp' => $data['one_time_expenses'],
             'debt_payments_egp' => $data['debt_payments'],
             'invested_egp' => $data['invested'],
+            'manual_adjustment_egp' => $data['manual_adjustment_egp'] ?? 0,
             'status' => $data['status'],
             'notes' => $data['notes'] ?: null,
         ])->save();
 
         return redirect()->route('monthly-review.index', ['month' => $month->format('Y-m')])->with('success', 'Monthly review saved.');
+    }
+
+    public function destroy(MonthlyFinancialReview $review): RedirectResponse
+    {
+        $review->delete();
+
+        return back()->with('success', 'Monthly review archived.');
+    }
+
+    public function derive(Request $request, LedgerService $ledger): RedirectResponse
+    {
+        $data = $request->validate(['month' => ['required', 'date_format:Y-m'], 'closed' => ['sometimes', 'boolean']]);
+        $month = Carbon::createFromFormat('Y-m', $data['month'])->startOfMonth();
+        $ledger->deriveMonthlyReview($month, (bool) ($data['closed'] ?? false));
+
+        return redirect()->route('monthly-review.index', ['month' => $month->format('Y-m')])->with('success', 'Monthly review derived from confirmed ledger transactions.');
+    }
+
+    public function close(MonthlyFinancialReview $review): RedirectResponse
+    {
+        $review->update(['status' => 'closed', 'closed_at' => now()]);
+
+        return back()->with('success', 'Monthly review closed.');
+    }
+
+    public function reopen(MonthlyFinancialReview $review): RedirectResponse
+    {
+        $review->update(['status' => 'open', 'reopened_at' => now()]);
+
+        return back()->with('success', 'Monthly review reopened for a recorded revision.');
+    }
+
+    public function restore(int $review): RedirectResponse
+    {
+        MonthlyFinancialReview::withTrashed()->findOrFail($review)->restore();
+
+        return back()->with('success', 'Monthly review restored.');
     }
 
     /** @return list<array<string, mixed>> */

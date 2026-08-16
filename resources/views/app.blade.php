@@ -10,7 +10,6 @@
                     const preference = localStorage.getItem('personal-finance-theme') || 'system';
                     const dark = preference === 'dark' || (preference === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                     document.documentElement.classList.toggle('dark', dark);
-                    document.documentElement.classList.toggle('light', !dark);
                     document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
                 } catch (_) {
                     // ThemeProvider applies the system default after boot.

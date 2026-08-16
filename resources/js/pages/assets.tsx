@@ -10,7 +10,6 @@ import {
     PageHeader,
 } from '@/components/app-shell';
 import { FormModal } from '@/components/form';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
@@ -44,7 +43,6 @@ const blank = {
     acquired_on: '',
     account_name: '',
     liquidity: 'immediate',
-    is_liquid: true,
     notes: '',
 };
 
@@ -55,17 +53,45 @@ export default function Assets({
     assets: Asset[];
     buckets: BucketOption[];
 }) {
+    const [editing, setEditing] = useState<Asset | null>(null);
     const [open, setOpen] = useState(false);
     const [allocationAsset, setAllocationAsset] = useState<Asset | null>(null);
     const [allocations, setAllocations] = useState<Record<number, string>>({});
     const [form, setForm] = useState(blank);
     const update = (key: string, value: string | boolean) =>
         setForm((current) => ({ ...current, [key]: value }));
+    const begin = (asset?: Asset) => {
+        setEditing(asset ?? null);
+        setForm(
+            asset
+                ? {
+                      name: asset.name,
+                      type: asset.type,
+                      quantity:
+                          asset.quantity === null ? '' : String(asset.quantity),
+                      currency: asset.currency,
+                      cost_basis_egp: String(asset.costBasis),
+                      current_value_egp: String(asset.currentValue),
+                      unit_price_egp:
+                          asset.unitPrice === null
+                              ? ''
+                              : String(asset.unitPrice),
+                      acquired_on: asset.acquiredOn ?? '',
+                      account_name: asset.accountName ?? '',
+                      liquidity: asset.liquidity,
+                      notes: asset.notes ?? '',
+                  }
+                : blank,
+        );
+        setOpen(true);
+    };
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
-        router.post('/assets', form, {
+        const url = editing ? `/assets/${editing.id}` : '/assets';
+        router[editing ? 'put' : 'post'](url, form, {
             onSuccess: () => {
                 setOpen(false);
+                setEditing(null);
                 setForm(blank);
             },
         });
@@ -108,9 +134,7 @@ export default function Assets({
                 eyebrow="Balance sheet"
                 title="Assets"
                 description="Track what you own, where it lives, how liquid it is, and what each part is meant to do."
-                action={
-                    <Button onClick={() => setOpen(true)}>+ Add asset</Button>
-                }
+                action={<Button onClick={() => begin()}>+ Add asset</Button>}
             />
             <Card>
                 <CardHeader
@@ -146,7 +170,7 @@ export default function Assets({
                             {assets.map((asset) => (
                                 <TableRow
                                     key={asset.id}
-                                    className="hover:bg-muted/40"
+                                    className={`hover:bg-muted/40 ${asset.archived ? 'opacity-60' : ''}`}
                                 >
                                     <TableCell className="px-5 py-4">
                                         <p className="font-semibold text-foreground">
@@ -195,23 +219,47 @@ export default function Assets({
                                         </Button>
                                     </TableCell>
                                     <TableCell className="px-5 py-4 text-right">
-                                        <Button
-                                            variant="danger"
-                                            className="h-7 border-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-destructive"
-                                            onClick={() => {
-                                                if (
-                                                    confirm(
-                                                        'Remove this asset?',
+                                        {!asset.archived && (
+                                            <>
+                                                <Button
+                                                    variant="ghost"
+                                                    className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
+                                                    onClick={() => begin(asset)}
+                                                >
+                                                    Edit
+                                                </Button>
+                                                <Button
+                                                    variant="danger"
+                                                    className="h-7 border-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-destructive"
+                                                    onClick={() => {
+                                                        if (
+                                                            confirm(
+                                                                'Archive this asset?',
+                                                            )
+                                                        ) {
+                                                            router.delete(
+                                                                `/assets/${asset.id}`,
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    Archive
+                                                </Button>
+                                            </>
+                                        )}
+                                        {asset.archived && (
+                                            <Button
+                                                variant="ghost"
+                                                className="h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
+                                                onClick={() =>
+                                                    router.post(
+                                                        `/assets/${asset.id}/restore`,
                                                     )
-                                                ) {
-                                                    router.delete(
-                                                        `/assets/${asset.id}`,
-                                                    );
                                                 }
-                                            }}
-                                        >
-                                            Remove
-                                        </Button>
+                                            >
+                                                Restore
+                                            </Button>
+                                        )}
                                     </TableCell>
                                 </TableRow>
                             ))}
@@ -226,7 +274,13 @@ export default function Assets({
                 </div>
             </Card>
             {open && (
-                <FormModal title="Add an asset" onClose={() => setOpen(false)}>
+                <FormModal
+                    title={editing ? 'Edit asset' : 'Add an asset'}
+                    onClose={() => {
+                        setOpen(false);
+                        setEditing(null);
+                    }}
+                >
                     <form
                         onSubmit={submit}
                         className="grid gap-4 sm:grid-cols-2"
@@ -397,15 +451,11 @@ export default function Assets({
                                 placeholder="e.g. Brokerage, bank, physical"
                             />
                         </Field>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Checkbox
-                                checked={form.is_liquid}
-                                onCheckedChange={(checked) =>
-                                    update('is_liquid', checked === true)
-                                }
-                            />{' '}
-                            Include in liquid assets
-                        </div>
+                        <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+                            Availability is determined by the selected liquidity
+                            tier; the legacy liquid flag is no longer used in
+                            calculations.
+                        </p>
                         <div className="flex justify-end gap-2 sm:col-span-2">
                             <Button
                                 variant="ghost"

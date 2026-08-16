@@ -8,6 +8,7 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { FormModal } from '@/components/form';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -289,12 +290,11 @@ export default function Commitments({
                             <FieldLabel htmlFor="commitment-next-due">
                                 Next due
                             </FieldLabel>
-                            <Input
+                            <DatePicker
                                 id="commitment-next-due"
-                                type="date"
                                 value={form.next_due_on}
-                                onChange={(e) =>
-                                    update('next_due_on', e.target.value)
+                                onChange={(next_due_on) =>
+                                    update('next_due_on', next_due_on)
                                 }
                             />
                         </Field>
@@ -302,12 +302,11 @@ export default function Commitments({
                             <FieldLabel htmlFor="commitment-renewal">
                                 Renewal date
                             </FieldLabel>
-                            <Input
+                            <DatePicker
                                 id="commitment-renewal"
-                                type="date"
                                 value={form.renewal_on}
-                                onChange={(e) =>
-                                    update('renewal_on', e.target.value)
+                                onChange={(renewal_on) =>
+                                    update('renewal_on', renewal_on)
                                 }
                             />
                         </Field>

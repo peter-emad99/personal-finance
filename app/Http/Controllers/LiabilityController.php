@@ -39,6 +39,13 @@ class LiabilityController extends Controller
         return back()->with('success', 'Liability removed.');
     }
 
+    public function restore(int $liability): RedirectResponse
+    {
+        Liability::withTrashed()->findOrFail($liability)->restore();
+
+        return back()->with('success', 'Liability restored.');
+    }
+
     /** @return array<string, mixed> */
     private function validated(Request $request): array
     {

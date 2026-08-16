@@ -1,7 +1,13 @@
 <?php
 
+use App\Console\Commands\BootstrapOwnerCommand;
 use App\Console\Commands\McpServeCommand;
+use App\Console\Commands\PurgeExpiredBackupsCommand;
+use App\Console\Commands\VerifyOperationsCommand;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RequestContext;
+use App\Http\Middleware\SecurityHeaders;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -14,9 +20,14 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
-    ->withCommands([McpServeCommand::class])
+    ->withCommands([McpServeCommand::class, BootstrapOwnerCommand::class, VerifyOperationsCommand::class, PurgeExpiredBackupsCommand::class])
+    ->withSchedule(function (Schedule $schedule): void {
+        $schedule->command('finance:verify-operations')->dailyAt('03:30')->withoutOverlapping();
+    })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
+            RequestContext::class,
+            SecurityHeaders::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);

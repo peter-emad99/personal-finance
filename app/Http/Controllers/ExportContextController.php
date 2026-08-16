@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Services\FinanceService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -10,7 +11,37 @@ class ExportContextController extends Controller
 {
     public function __invoke(Request $request, FinanceService $finance): SymfonyResponse
     {
-        $context = $finance->exportContext();
+        $scope = $request->string('scope')->toString() ?: 'full_financial_context';
+        abort_unless(in_array($scope, ['dashboard_summary', 'full_financial_context', 'decision_context', 'redacted_context'], true), 422, 'Unsupported context scope.');
+        $context = $finance->exportContext(null, $scope);
+        if ($scope === 'dashboard_summary') {
+            $context = collect($context)->only(['schema_version', 'generated_at', 'base_currency', 'dashboard_version', 'data_freshness', 'limitations', 'policy', 'summary', 'source_status', 'attention_queue', 'allocation_policy', 'debt_summary'])->all();
+        } elseif ($scope === 'decision_context') {
+            $context = collect($context)->only(['schema_version', 'generated_at', 'base_currency', 'dashboard_version', 'data_freshness', 'limitations', 'policy', 'summary', 'goals', 'monthly_review', 'allocation_plans', 'snapshots', 'decision_journal', 'attention_queue', 'audit_references'])->all();
+        } elseif ($scope === 'redacted_context') {
+            $context = [
+                'schema_version' => $context['schema_version'],
+                'generated_at' => $context['generated_at'],
+                'base_currency' => $context['base_currency'],
+                'dashboard_version' => $context['dashboard_version'],
+                'data_freshness' => $context['data_freshness'],
+                'limitations' => $context['limitations'],
+                'summary' => ['record_counts' => ['assets' => count($context['assets']), 'goals' => count($context['goals']), 'buckets' => count($context['buckets'])]],
+                'asset_allocation' => $context['asset_allocation'],
+                'currency_exposure' => $context['currency_exposure'],
+                'liquidity' => array_map(fn (array $row): array => ['label' => $row['label']], $context['liquidity']),
+            ];
+        }
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'export',
+            'entity_type' => 'financial_context',
+            'tool_name' => 'web_export_context',
+            'agent_id' => 'web-session',
+            'request_id' => $request->attributes->get('request_id'),
+            'after_state' => ['scope' => $scope, 'format' => $request->string('format')->toString() ?: 'json'],
+            'dashboard_version' => $context['dashboard_version'] ?? null,
+        ]);
         if ($request->string('format')->toString() === 'markdown') {
             return response($this->markdown($context), 200, ['Content-Type' => 'text/markdown; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="decision-context.md"']);
         }

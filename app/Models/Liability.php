@@ -2,10 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToUser;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Liability extends Model
 {
+    use BelongsToUser, SoftDeletes;
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -19,5 +24,11 @@ class Liability extends Model
             'payoff_on' => 'date',
             'is_active' => 'boolean',
         ];
+    }
+
+    /** @return HasMany<LiabilityBalanceHistory, $this> */
+    public function balanceHistories(): HasMany
+    {
+        return $this->hasMany(LiabilityBalanceHistory::class);
     }
 }

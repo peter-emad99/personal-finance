@@ -15,7 +15,7 @@ A local, single-user personal finance workspace built with Laravel 13, Inertia, 
 - Monthly financial reviews: editable month totals, history, planned direction, and invested amount.
 - Recurring commitments: subscriptions, renewals, utilities, insurance, and other predictable obligations with monthly and annual equivalents.
 - Liabilities: balances, rates, payments, payoff dates, and true net worth after debt.
-- Agent-ready read-only MCP server for financial context, monthly reviews, goals, assets, commitments, liabilities, purchase analysis, and decision exports.
+- Agent-ready local MCP owner control plane for financial context, calculations, and validated CRUD/archive/restore mutations with audit and dashboard reflection.
 
 ## UI system
 
@@ -38,11 +38,32 @@ npm install
 npm run build
 ```
 
+On a fresh or upgraded database, bootstrap the owner before opening the
+dashboard or starting MCP. Set `FINANCE_OWNER_EMAIL`, `FINANCE_OWNER_NAME`, and
+`FINANCE_OWNER_PASSWORD` in `.env` before the first migration where possible,
+or rotate/create the account interactively:
+
+```bash
+php artisan finance:bootstrap-owner owner@example.test --name="Your name"
+```
+
+The Phase 3 migration creates one local owner when none exists and backfills
+that owner onto every existing financial record (including ledger/import,
+allocation, valuation, policy, snapshot, and audit rows). It also changes
+single-user unique keys to include `user_id`. Review the backfill owner before
+hosting an existing database for multiple people; records with a shared legacy
+account must be exported and reassigned deliberately rather than guessed.
+
 With Herd, open the project through its local site. For a temporary server:
 
 ```bash
 php artisan serve
 ```
+
+Session cookies default to `Secure` when `APP_ENV=production` and remain
+usable over local HTTP in `local` or `testing`. Leave `SESSION_SECURE_COOKIE`
+blank to use that environment-aware default; set it explicitly to `true` for
+any HTTPS deployment and never override it to `false` in production.
 
 The seed contains clearly labeled demo figures based on the product brief. Replace them with your actual data from Assets, Buckets, Goals, and Cash flow before relying on the outputs.
 
@@ -61,7 +82,7 @@ The app intentionally does not connect to banks, fetch live market prices, execu
 
 ## Agent access through MCP
 
-The project includes a read-only Model Context Protocol server over stdio. MCP clients launch it as a local subprocess and can then discuss the same financial context used by the dashboard.
+The project includes a local Model Context Protocol server over stdio. MCP clients launch it as a local subprocess and can inspect or manage the same financial records used by the dashboard. Mutations are explicit, validated, transactional, soft-archived by default, and return an audit id plus a reflected dashboard delta.
 
 Run it manually to verify the server:
 
@@ -69,9 +90,27 @@ Run it manually to verify the server:
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"local-test","version":"1"}}}' '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | php artisan mcp:serve
 ```
 
-Example client configuration is in `.mcp.example.json`. The available read-only tools include `get_financial_overview`, `get_monthly_review`, `list_assets`, `list_goals`, `list_recurring_commitments`, `list_liabilities`, `evaluate_purchase`, and `get_decision_context`.
+Example client configuration is in `.mcp.example.json`. The server includes dashboard/context tools, explicit CRUD/archive/restore tools for current entities, allocation reconciliation, purchase analysis, redacted context, and audit-log inspection. Historical `as_of` inputs are intentionally unsupported until dated valuation and ledger records exist.
 
-The MCP server deliberately has no write tools yet. This prevents an agent from changing financial records without an explicit, separately designed approval flow.
+MCP is intentionally local-only: `php artisan mcp:serve` resolves the
+bootstrapped owner and refuses to start when it is missing. No unauthenticated
+remote MCP endpoint is exposed. A hosted deployment must add an authenticated
+transport and a review of agent scopes before enabling external access.
+
+## Backups and operations
+
+`/operations` (or the MCP `create_backup`, `verify_backup`, and
+`validate_data_integrity` tools) creates encrypted SQLite backups under the
+private local disk, records checksums/retention, and verifies decryption before
+the archive is trusted. Keep `APP_KEY` backed up separately: without it an
+encrypted archive cannot be restored. The scheduled
+`finance:verify-operations` command checks integrity and the latest backup;
+failed imports/backups are logged with a request id. SQLite backups are
+supported by this workflow; configure a database-native dump and restore test
+before production MySQL/PostgreSQL hosting. Expired archives are never purged
+implicitly; review retention first, then run
+`php artisan finance:purge-expired-backups --force` (or the MCP
+`purge_expired_backups` tool with `confirm=true`).
 
 ## Future bank-statement analysis
 

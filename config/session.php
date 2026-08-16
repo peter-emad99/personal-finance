@@ -2,6 +2,14 @@
 
 use Illuminate\Support\Str;
 
+$sessionSecureCookie = env('SESSION_SECURE_COOKIE');
+
+if ($sessionSecureCookie === null || $sessionSecureCookie === '') {
+    $sessionSecureCookie = env('APP_ENV', 'production') === 'production';
+} else {
+    $sessionSecureCookie = filter_var($sessionSecureCookie, FILTER_VALIDATE_BOOLEAN);
+}
+
 return [
 
     /*
@@ -47,7 +55,7 @@ return [
     |
     */
 
-    'encrypt' => env('SESSION_ENCRYPT', false),
+    'encrypt' => env('SESSION_ENCRYPT', true),
 
     /*
     |--------------------------------------------------------------------------
@@ -169,7 +177,10 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // Explicitly override with SESSION_SECURE_COOKIE when needed. Otherwise,
+    // production defaults to secure cookies while local/testing HTTP remains
+    // usable. Keep this free of container calls so Artisan can bootstrap.
+    'secure' => $sessionSecureCookie,
 
     /*
     |--------------------------------------------------------------------------

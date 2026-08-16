@@ -9,6 +9,7 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { FormModal } from '@/components/form';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -249,13 +250,11 @@ export default function CashFlow({
                             <FieldLabel htmlFor="cash-flow-date">
                                 Date
                             </FieldLabel>
-                            <Input
+                            <DatePicker
                                 id="cash-flow-date"
-                                type="date"
-                                required
                                 value={form.occurred_on}
-                                onChange={(e) =>
-                                    update('occurred_on', e.target.value)
+                                onChange={(occurred_on) =>
+                                    update('occurred_on', occurred_on)
                                 }
                             />
                         </Field>

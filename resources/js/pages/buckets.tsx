@@ -19,32 +19,53 @@ type Bucket = {
     purpose: string | null;
     color: string;
     goalName: string | null;
+    goalId: number | null;
     targetAmount: number;
     currentAmount: number;
     assetCount: number;
+    archived?: boolean;
 };
 
 export default function Buckets({ buckets }: { buckets: Bucket[] }) {
+    const [editing, setEditing] = useState<Bucket | null>(null);
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState({
         name: '',
         purpose: '',
         target_amount_egp: '',
         color: '#7c8cf8',
+        goal_id: null as number | null,
     });
     const update = (key: string, value: string) =>
         setForm((current) => ({ ...current, [key]: value }));
+    const begin = (bucket?: Bucket) => {
+        setEditing(bucket ?? null);
+        setForm(
+            bucket
+                ? {
+                      name: bucket.name,
+                      purpose: bucket.purpose ?? '',
+                      target_amount_egp: String(bucket.targetAmount),
+                      color: bucket.color,
+                      goal_id: bucket.goalId ?? null,
+                  }
+                : {
+                      name: '',
+                      purpose: '',
+                      target_amount_egp: '',
+                      color: '#7c8cf8',
+                      goal_id: null,
+                  },
+        );
+        setOpen(true);
+    };
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
-        router.post('/buckets', form, {
+        const url = editing ? `/buckets/${editing.id}` : '/buckets';
+        router[editing ? 'put' : 'post'](url, form, {
             onSuccess: () => {
                 setOpen(false);
-                setForm({
-                    name: '',
-                    purpose: '',
-                    target_amount_egp: '',
-                    color: '#7c8cf8',
-                });
+                setEditing(null);
             },
         });
     };
@@ -55,13 +76,14 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                 eyebrow="Purpose before performance"
                 title="Buckets"
                 description="An asset tells you what you own. A bucket tells you what that money is for."
-                action={
-                    <Button onClick={() => setOpen(true)}>+ Add bucket</Button>
-                }
+                action={<Button onClick={() => begin()}>+ Add bucket</Button>}
             />
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {buckets.map((bucket) => (
-                    <Card key={bucket.id}>
+                    <Card
+                        key={bucket.id}
+                        className={bucket.archived ? 'opacity-60' : ''}
+                    >
                         <div className="p-5">
                             <div className="flex items-start justify-between">
                                 <div>
@@ -115,12 +137,63 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                                     </div>
                                 </>
                             )}
-                            <a
-                                href="/assets"
-                                className="mt-5 inline-block text-xs font-semibold text-primary"
-                            >
-                                Assign assets →
-                            </a>
+                            <div className="mt-5 flex items-center justify-between gap-2">
+                                <a
+                                    href="/assets"
+                                    className="text-xs font-semibold text-primary"
+                                >
+                                    Assign assets →
+                                </a>
+                                <div>
+                                    {!bucket.archived && (
+                                        <>
+                                            <Button
+                                                variant="ghost"
+                                                className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
+                                                onClick={() => begin(bucket)}
+                                            >
+                                                Edit
+                                            </Button>
+                                            {bucket.goalId ? (
+                                                <span className="text-[11px] text-muted-foreground">
+                                                    Managed by goal
+                                                </span>
+                                            ) : (
+                                                <Button
+                                                    variant="danger"
+                                                    className="h-7 border-0 bg-transparent px-2 text-xs text-destructive hover:bg-transparent"
+                                                    onClick={() => {
+                                                        if (
+                                                            confirm(
+                                                                'Archive this bucket?',
+                                                            )
+                                                        ) {
+                                                            router.delete(
+                                                                `/buckets/${bucket.id}`,
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    Archive
+                                                </Button>
+                                            )}
+                                        </>
+                                    )}
+                                    {bucket.archived && (
+                                        <Button
+                                            variant="ghost"
+                                            className="h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
+                                            onClick={() =>
+                                                router.post(
+                                                    `/buckets/${bucket.id}/restore`,
+                                                )
+                                            }
+                                        >
+                                            Restore
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </Card>
                 ))}
@@ -135,8 +208,15 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
             </div>
             {open && (
                 <FormModal
-                    title="Create a purpose bucket"
-                    onClose={() => setOpen(false)}
+                    title={
+                        editing
+                            ? 'Edit purpose bucket'
+                            : 'Create a purpose bucket'
+                    }
+                    onClose={() => {
+                        setOpen(false);
+                        setEditing(null);
+                    }}
                 >
                     <form onSubmit={submit} className="flex flex-col gap-4">
                         <Field>
@@ -198,7 +278,9 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                             >
                                 Cancel
                             </Button>
-                            <Button type="submit">Create bucket</Button>
+                            <Button type="submit">
+                                {editing ? 'Save changes' : 'Create bucket'}
+                            </Button>
                         </div>
                     </form>
                 </FormModal>

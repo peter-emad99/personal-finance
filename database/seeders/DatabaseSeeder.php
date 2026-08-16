@@ -8,6 +8,8 @@ use App\Models\CashFlow;
 use App\Models\Goal;
 use App\Models\MonthlyFinancialReview;
 use App\Models\RecurringCommitment;
+use App\Models\User;
+use App\Support\OwnerContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -15,6 +17,8 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $owner = User::query()->where('email', config('finance.owner_email'))->firstOrFail();
+        OwnerContext::set($owner);
         $car = Goal::firstOrCreate(['name' => 'Car'], [
             'target_amount_egp' => 1600000, 'deadline' => '2026-12-31', 'priority' => 1, 'status' => 'active',
             'notes' => 'Demo goal based on the product brief.',
@@ -48,7 +52,7 @@ class DatabaseSeeder extends Seeder
             foreach ($allocations as $allocation) {
                 DB::table('asset_bucket_allocations')->updateOrInsert(
                     ['asset_id' => $asset->id, 'bucket_id' => $buckets[$allocation['bucket']]->id],
-                    ['amount_egp' => $allocation['amount'], 'updated_at' => now(), 'created_at' => now()],
+                    ['user_id' => $owner->id, 'amount_egp' => $allocation['amount'], 'updated_at' => now(), 'created_at' => now()],
                 );
             }
         }

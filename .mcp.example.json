@@ -3,7 +3,7 @@
         "personal-finance": {
             "command": "php",
             "args": [
-                "/Users/peter/Desktop/projects/laravel/artisan",
+                "/Users/peter/Desktop/projects/laravel/personal-finance/artisan",
                 "mcp:serve"
             ],
             "env": {

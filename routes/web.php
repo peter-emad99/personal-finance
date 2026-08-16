@@ -1,0 +1,46 @@
+<?php
+
+use App\Http\Controllers\AllocationController;
+use App\Http\Controllers\AssetController;
+use App\Http\Controllers\BucketController;
+use App\Http\Controllers\CommitmentController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExportContextController;
+use App\Http\Controllers\GoalController;
+use App\Http\Controllers\LiabilityController;
+use App\Http\Controllers\MonthlyReviewController;
+use App\Http\Controllers\SnapshotController;
+use App\Services\FinanceService;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/', DashboardController::class)->name('dashboard');
+Route::get('/assets', [AssetController::class, 'index'])->name('assets.index');
+Route::post('/assets', [AssetController::class, 'store'])->name('assets.store');
+Route::put('/assets/{asset}', [AssetController::class, 'update'])->name('assets.update');
+Route::delete('/assets/{asset}', [AssetController::class, 'destroy'])->name('assets.destroy');
+Route::put('/assets/{asset}/allocations', [AssetController::class, 'updateAllocations'])->name('assets.allocations.update');
+Route::get('/buckets', [BucketController::class, 'index'])->name('buckets.index');
+Route::post('/buckets', [BucketController::class, 'store'])->name('buckets.store');
+Route::put('/buckets/{bucket}', [BucketController::class, 'update'])->name('buckets.update');
+Route::delete('/buckets/{bucket}', [BucketController::class, 'destroy'])->name('buckets.destroy');
+Route::get('/goals', [GoalController::class, 'index'])->name('goals.index');
+Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
+Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
+Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
+Route::get('/monthly-review', [MonthlyReviewController::class, 'index'])->name('monthly-review.index');
+Route::post('/monthly-review', [MonthlyReviewController::class, 'store'])->name('monthly-review.store');
+Route::redirect('/cash-flow', '/monthly-review')->name('cash-flow.index');
+Route::get('/commitments', [CommitmentController::class, 'index'])->name('commitments.index');
+Route::post('/commitments', [CommitmentController::class, 'store'])->name('commitments.store');
+Route::put('/commitments/{commitment}', [CommitmentController::class, 'update'])->name('commitments.update');
+Route::delete('/commitments/{commitment}', [CommitmentController::class, 'destroy'])->name('commitments.destroy');
+Route::get('/liabilities', [LiabilityController::class, 'index'])->name('liabilities.index');
+Route::post('/liabilities', [LiabilityController::class, 'store'])->name('liabilities.store');
+Route::put('/liabilities/{liability}', [LiabilityController::class, 'update'])->name('liabilities.update');
+Route::delete('/liabilities/{liability}', [LiabilityController::class, 'destroy'])->name('liabilities.destroy');
+Route::get('/allocations', [AllocationController::class, 'index'])->name('allocations.index');
+Route::post('/allocations', [AllocationController::class, 'store'])->name('allocations.store');
+Route::get('/snapshots', [SnapshotController::class, 'index'])->name('snapshots.index');
+Route::post('/snapshots', [SnapshotController::class, 'store'])->name('snapshots.store');
+Route::get('/export/context', ExportContextController::class)->name('export.context');
+Route::get('/scenarios', fn (FinanceService $finance) => Inertia\Inertia::render('scenarios', ['dashboard' => $finance->dashboard()]))->name('scenarios.index');

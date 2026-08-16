@@ -1,0 +1,14 @@
+{
+    "mcpServers": {
+        "personal-finance": {
+            "command": "php",
+            "args": [
+                "/Users/peter/Desktop/projects/laravel/artisan",
+                "mcp:serve"
+            ],
+            "env": {
+                "APP_ENV": "local"
+            }
+        }
+    }
+}

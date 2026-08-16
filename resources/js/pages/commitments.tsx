@@ -8,7 +8,17 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
-import { Field, FormModal, SelectField } from '@/components/form';
+import { FormModal } from '@/components/form';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import {
     Table,
     TableBody,
@@ -85,18 +95,18 @@ export default function Commitments({
             />
             <div className="mb-4 grid gap-4 sm:grid-cols-2">
                 <Card className="p-5">
-                    <p className="text-xs font-semibold tracking-wider text-[#8993a3] uppercase">
+                    <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                         Monthly commitments
                     </p>
-                    <p className="mt-3 text-2xl font-semibold text-[#a46e14]">
+                    <p className="mt-3 text-2xl font-semibold text-amber-600 dark:text-amber-400">
                         {formatEGP(summary.monthly)}
                     </p>
                 </Card>
                 <Card className="p-5">
-                    <p className="text-xs font-semibold tracking-wider text-[#8993a3] uppercase">
+                    <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                         Annual commitment
                     </p>
-                    <p className="mt-3 text-2xl font-semibold text-[#273246]">
+                    <p className="mt-3 text-2xl font-semibold text-foreground">
                         {formatEGP(summary.annual)}
                     </p>
                 </Card>
@@ -108,7 +118,7 @@ export default function Commitments({
                 />
                 <div className="overflow-x-auto">
                     <Table className="min-w-[780px] text-left text-sm">
-                        <TableHeader className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
+                        <TableHeader className="bg-muted/50 text-[11px] tracking-wider text-muted-foreground uppercase">
                             <TableRow>
                                 <TableHead className="px-5 py-3">
                                     Name
@@ -128,7 +138,7 @@ export default function Commitments({
                                 <TableHead />
                             </TableRow>
                         </TableHeader>
-                        <TableBody className="divide-y divide-[#eef0f4]">
+                        <TableBody className="divide-y divide-border">
                             {commitments.map((item) => (
                                 <TableRow
                                     key={item.id}
@@ -137,39 +147,39 @@ export default function Commitments({
                                     }
                                 >
                                     <TableCell className="px-5 py-4">
-                                        <p className="font-semibold text-[#273246]">
+                                        <p className="font-semibold text-foreground">
                                             {item.name}
                                         </p>
-                                        <p className="mt-1 text-xs text-[#8993a3]">
+                                        <p className="mt-1 text-xs text-muted-foreground">
                                             {item.isActive
                                                 ? 'Active'
                                                 : 'Inactive'}
                                         </p>
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-[#58657a]">
+                                    <TableCell className="px-5 py-4 text-muted-foreground">
                                         {item.category}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-[#58657a]">
+                                    <TableCell className="px-5 py-4 text-muted-foreground">
                                         {formatEGP(item.amount)} /{' '}
                                         {item.frequency}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 font-semibold text-[#a46e14]">
+                                    <TableCell className="px-5 py-4 font-semibold text-amber-600 dark:text-amber-400">
                                         {formatEGP(item.monthlyAmount)}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-xs text-[#8993a3]">
+                                    <TableCell className="px-5 py-4 text-xs text-muted-foreground">
                                         {item.nextDueOn ?? '—'}
                                     </TableCell>
                                     <TableCell className="px-5 py-4 text-right">
                                         <Button
                                             variant="ghost"
-                                            className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-[#6878d5] hover:bg-transparent"
+                                            className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
                                             onClick={() => begin(item)}
                                         >
                                             Edit
                                         </Button>
                                         <Button
                                             variant="danger"
-                                            className="h-7 border-0 bg-transparent px-2 text-xs text-[#c65365] hover:bg-transparent"
+                                            className="h-7 border-0 bg-transparent px-2 text-xs text-destructive hover:bg-transparent"
                                             onClick={() =>
                                                 router.delete(
                                                     `/commitments/${item.id}`,
@@ -200,76 +210,148 @@ export default function Commitments({
                         onSubmit={submit}
                         className="grid gap-4 sm:grid-cols-2"
                     >
-                        <Field
-                            label="Name"
-                            required
-                            value={form.name}
-                            onChange={(e) => update('name', e.target.value)}
-                            placeholder="Insurance, Netflix, rent..."
-                        />
-                        <Field
-                            label="Category"
-                            required
-                            value={form.category}
-                            onChange={(e) => update('category', e.target.value)}
-                            placeholder="subscription, housing..."
-                        />
-                        <Field
-                            label="Amount (EGP)"
-                            required
-                            type="number"
-                            min="0"
-                            value={form.amount_egp}
-                            onChange={(e) =>
-                                update('amount_egp', e.target.value)
-                            }
-                        />
-                        <SelectField
-                            label="Frequency"
-                            value={form.frequency}
-                            onChange={(e) =>
-                                update('frequency', e.target.value)
-                            }
-                        >
-                            <option value="monthly">Monthly</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="quarterly">Quarterly</option>
-                            <option value="yearly">Yearly</option>
-                        </SelectField>
-                        <Field
-                            label="Next due"
-                            type="date"
-                            value={form.next_due_on}
-                            onChange={(e) =>
-                                update('next_due_on', e.target.value)
-                            }
-                        />
-                        <Field
-                            label="Renewal date"
-                            type="date"
-                            value={form.renewal_on}
-                            onChange={(e) =>
-                                update('renewal_on', e.target.value)
-                            }
-                        />
-                        <SelectField
-                            label="Status"
-                            value={form.is_active}
-                            onChange={(e) =>
-                                update('is_active', e.target.value)
-                            }
-                        >
-                            <option value="1">Active</option>
-                            <option value="0">Inactive</option>
-                        </SelectField>
-                        <div className="sm:col-span-2">
-                            <Field
-                                label="Notes"
-                                value={form.notes}
+                        <Field>
+                            <FieldLabel htmlFor="commitment-name">
+                                Name
+                            </FieldLabel>
+                            <Input
+                                id="commitment-name"
+                                required
+                                value={form.name}
+                                onChange={(e) => update('name', e.target.value)}
+                                placeholder="Insurance, Netflix, rent..."
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="commitment-category">
+                                Category
+                            </FieldLabel>
+                            <Input
+                                id="commitment-category"
+                                required
+                                value={form.category}
                                 onChange={(e) =>
-                                    update('notes', e.target.value)
+                                    update('category', e.target.value)
+                                }
+                                placeholder="subscription, housing..."
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="commitment-amount">
+                                Amount (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="commitment-amount"
+                                required
+                                type="number"
+                                min="0"
+                                value={form.amount_egp}
+                                onChange={(e) =>
+                                    update('amount_egp', e.target.value)
                                 }
                             />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="commitment-frequency">
+                                Frequency
+                            </FieldLabel>
+                            <Select
+                                value={form.frequency}
+                                onValueChange={(value) =>
+                                    update('frequency', String(value ?? ''))
+                                }
+                            >
+                                <SelectTrigger
+                                    id="commitment-frequency"
+                                    className="w-full"
+                                >
+                                    <SelectValue placeholder="Select frequency" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        <SelectItem value="monthly">
+                                            Monthly
+                                        </SelectItem>
+                                        <SelectItem value="weekly">
+                                            Weekly
+                                        </SelectItem>
+                                        <SelectItem value="quarterly">
+                                            Quarterly
+                                        </SelectItem>
+                                        <SelectItem value="yearly">
+                                            Yearly
+                                        </SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="commitment-next-due">
+                                Next due
+                            </FieldLabel>
+                            <Input
+                                id="commitment-next-due"
+                                type="date"
+                                value={form.next_due_on}
+                                onChange={(e) =>
+                                    update('next_due_on', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="commitment-renewal">
+                                Renewal date
+                            </FieldLabel>
+                            <Input
+                                id="commitment-renewal"
+                                type="date"
+                                value={form.renewal_on}
+                                onChange={(e) =>
+                                    update('renewal_on', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="commitment-status">
+                                Status
+                            </FieldLabel>
+                            <Select
+                                value={form.is_active}
+                                onValueChange={(value) =>
+                                    update('is_active', String(value ?? ''))
+                                }
+                            >
+                                <SelectTrigger
+                                    id="commitment-status"
+                                    className="w-full"
+                                >
+                                    <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        <SelectItem value="1">
+                                            Active
+                                        </SelectItem>
+                                        <SelectItem value="0">
+                                            Inactive
+                                        </SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                        <div className="sm:col-span-2">
+                            <Field>
+                                <FieldLabel htmlFor="commitment-notes">
+                                    Notes
+                                </FieldLabel>
+                                <Input
+                                    id="commitment-notes"
+                                    value={form.notes}
+                                    onChange={(e) =>
+                                        update('notes', e.target.value)
+                                    }
+                                />
+                            </Field>
                         </div>
                         <div className="flex justify-end gap-2 sm:col-span-2">
                             <Button

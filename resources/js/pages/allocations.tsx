@@ -8,7 +8,8 @@ import {
     PageHeader,
     Progress,
 } from '@/components/app-shell';
-import { Field } from '@/components/form';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import { formatCompactEGP, formatEGP } from '@/types/finance';
 import type { Bucket } from '@/types/finance';
 
@@ -81,37 +82,49 @@ export default function Allocations({
                                 year: 'numeric',
                             })}
                         />
-                        <div className="space-y-4 p-5">
-                            <Field
-                                label="Planned income (EGP)"
-                                type="number"
-                                value={income}
-                                onChange={(e) => setIncome(e.target.value)}
-                            />
-                            <Field
-                                label="Planned expenses (EGP)"
-                                type="number"
-                                value={expenses}
-                                onChange={(e) => setExpenses(e.target.value)}
-                            />
-                            <div className="rounded-2xl bg-[#1c2a45] p-5 text-white">
-                                <p className="text-xs text-[#aeb9d1]">
+                        <div className="flex flex-col gap-4 p-5">
+                            <Field>
+                                <FieldLabel htmlFor="planned-income">
+                                    Planned income (EGP)
+                                </FieldLabel>
+                                <Input
+                                    id="planned-income"
+                                    type="number"
+                                    value={income}
+                                    onChange={(e) => setIncome(e.target.value)}
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="planned-expenses">
+                                    Planned expenses (EGP)
+                                </FieldLabel>
+                                <Input
+                                    id="planned-expenses"
+                                    type="number"
+                                    value={expenses}
+                                    onChange={(e) =>
+                                        setExpenses(e.target.value)
+                                    }
+                                />
+                            </Field>
+                            <div className="rounded-2xl bg-sidebar p-5 text-sidebar-foreground">
+                                <p className="text-xs text-sidebar-foreground/70">
                                     Available to allocate
                                 </p>
                                 <p className="mt-2 text-3xl font-semibold">
                                     {formatEGP(available)}
                                 </p>
-                                <p className="mt-2 text-xs leading-5 text-[#aeb9d1]">
+                                <p className="mt-2 text-xs leading-5 text-sidebar-foreground/70">
                                     Income − expenses − obligations. This is the
                                     ceiling for your monthly plan.
                                 </p>
                             </div>
-                            <div className="rounded-xl bg-[#f8f9fb] p-4">
+                            <div className="rounded-xl bg-muted p-4">
                                 <div className="flex justify-between text-xs">
-                                    <span className="font-semibold text-[#58657a]">
+                                    <span className="font-semibold text-muted-foreground">
                                         Plan coverage
                                     </span>
-                                    <span className="font-semibold text-[#4d5a6d]">
+                                    <span className="font-semibold text-muted-foreground">
                                         {formatCompactEGP(plannedTotal)} /{' '}
                                         {formatCompactEGP(available)}
                                     </span>
@@ -126,12 +139,12 @@ export default function Allocations({
                                         }
                                         color={
                                             plannedTotal > available
-                                                ? '#e39b53'
-                                                : '#63bf85'
+                                                ? 'var(--chart-3)'
+                                                : 'var(--chart-2)'
                                         }
                                     />
                                 </div>
-                                <p className="mt-2 text-[11px] text-[#8993a3]">
+                                <p className="mt-2 text-[11px] text-muted-foreground">
                                     {plannedTotal > available
                                         ? `${formatCompactEGP(plannedTotal - available)} over your available cash flow`
                                         : `${formatCompactEGP(Math.max(0, available - plannedTotal))} still unassigned`}
@@ -144,66 +157,85 @@ export default function Allocations({
                             title="Planned vs actual"
                             meta="Use buckets instead of vague savings categories"
                         />
-                        <div className="divide-y divide-[#eef0f4]">
+                        <div className="divide-y divide-border">
                             {items.map((item, index) => (
                                 <div
                                     key={item.bucketId}
                                     className="grid items-center gap-3 p-4 sm:grid-cols-[1fr_150px_150px]"
                                 >
                                     <div>
-                                        <p className="text-sm font-semibold text-[#4d5a6d]">
+                                        <p className="text-sm font-semibold text-muted-foreground">
                                             {item.bucketName}
                                         </p>
-                                        <p className="mt-1 text-xs text-[#9aa3b1]">
+                                        <p className="mt-1 text-xs text-muted-foreground">
                                             {item.actual
                                                 ? `${Math.round((item.actual / Math.max(1, item.planned)) * 100)}% of plan moved`
                                                 : 'No actual entered yet'}
                                         </p>
                                     </div>
-                                    <Field
-                                        label="Planned"
-                                        type="number"
-                                        value={String(item.planned)}
-                                        onChange={(e) =>
-                                            setItems((current) =>
-                                                current.map((row, rowIndex) =>
-                                                    rowIndex === index
-                                                        ? {
-                                                              ...row,
-                                                              planned: Number(
-                                                                  e.target
-                                                                      .value,
-                                                              ),
-                                                          }
-                                                        : row,
-                                                ),
-                                            )
-                                        }
-                                    />
-                                    <Field
-                                        label="Actual"
-                                        type="number"
-                                        value={String(item.actual)}
-                                        onChange={(e) =>
-                                            setItems((current) =>
-                                                current.map((row, rowIndex) =>
-                                                    rowIndex === index
-                                                        ? {
-                                                              ...row,
-                                                              actual: Number(
-                                                                  e.target
-                                                                      .value,
-                                                              ),
-                                                          }
-                                                        : row,
-                                                ),
-                                            )
-                                        }
-                                    />
+                                    <Field>
+                                        <FieldLabel
+                                            htmlFor={`planned-${item.bucketId}`}
+                                        >
+                                            Planned
+                                        </FieldLabel>
+                                        <Input
+                                            id={`planned-${item.bucketId}`}
+                                            type="number"
+                                            value={String(item.planned)}
+                                            onChange={(e) =>
+                                                setItems((current) =>
+                                                    current.map(
+                                                        (row, rowIndex) =>
+                                                            rowIndex === index
+                                                                ? {
+                                                                      ...row,
+                                                                      planned:
+                                                                          Number(
+                                                                              e
+                                                                                  .target
+                                                                                  .value,
+                                                                          ),
+                                                                  }
+                                                                : row,
+                                                    ),
+                                                )
+                                            }
+                                        />
+                                    </Field>
+                                    <Field>
+                                        <FieldLabel
+                                            htmlFor={`actual-${item.bucketId}`}
+                                        >
+                                            Actual
+                                        </FieldLabel>
+                                        <Input
+                                            id={`actual-${item.bucketId}`}
+                                            type="number"
+                                            value={String(item.actual)}
+                                            onChange={(e) =>
+                                                setItems((current) =>
+                                                    current.map(
+                                                        (row, rowIndex) =>
+                                                            rowIndex === index
+                                                                ? {
+                                                                      ...row,
+                                                                      actual: Number(
+                                                                          e
+                                                                              .target
+                                                                              .value,
+                                                                      ),
+                                                                  }
+                                                                : row,
+                                                    ),
+                                                )
+                                            }
+                                        />
+                                    </Field>
                                 </div>
                             ))}
                         </div>
-                        <div className="flex justify-end border-t border-[#eef0f4] p-5">
+                        <div className="flex justify-end border-t border-border p-5">
                             <Button type="submit">Save monthly plan</Button>
                         </div>
                     </Card>

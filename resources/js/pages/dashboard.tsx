@@ -20,12 +20,12 @@ type Commitment = {
 };
 
 const colors = [
-    '#7c8cf8',
-    '#f6c453',
-    '#79c2d0',
-    '#f08da1',
-    '#a6d98c',
-    '#9a8ce3',
+    'var(--chart-1)',
+    'var(--chart-3)',
+    'var(--chart-2)',
+    'var(--chart-4)',
+    'var(--chart-5)',
+    'var(--ring)',
 ];
 
 export default function Dashboard({
@@ -98,16 +98,16 @@ export default function Dashboard({
                 }
             />
             <div className="grid gap-4 xl:grid-cols-[1.65fr_1fr]">
-                <Card className="overflow-hidden border-0 bg-[#1c2a45] text-white">
+                <Card className="overflow-hidden border-0 bg-sidebar text-sidebar-foreground">
                     <div className="relative p-6 sm:p-8">
-                        <div className="absolute -top-28 -right-20 h-72 w-72 rounded-full border-[32px] border-[#5a6dad]/15" />
-                        <div className="absolute -right-4 -bottom-36 h-72 w-72 rounded-full border-[32px] border-[#a8b7ff]/10" />
+                        <div className="absolute -top-28 -right-20 h-72 w-72 rounded-full border-[32px] border-sidebar-primary/15" />
+                        <div className="absolute -right-4 -bottom-36 h-72 w-72 rounded-full border-[32px] border-sidebar-primary/10" />
                         <div className="relative">
                             <div className="flex items-center justify-between">
-                                <p className="text-xs font-semibold tracking-[0.16em] text-[#aeb9d1] uppercase">
+                                <p className="text-xs font-semibold tracking-[0.16em] text-sidebar-foreground/70 uppercase">
                                     Net worth
                                 </p>
-                                <Badge className="rounded-full border-0 bg-[#a8b7ff]/15 px-3 py-1 text-xs text-[#c7d0ff]">
+                                <Badge className="rounded-full border-0 bg-sidebar-primary/15 px-3 py-1 text-xs text-sidebar-primary">
                                     As of {asOf}
                                 </Badge>
                             </div>
@@ -152,18 +152,18 @@ export default function Dashboard({
                 <Card className="p-6">
                     <div className="flex items-start justify-between">
                         <div>
-                            <p className="text-xs font-semibold tracking-[0.14em] text-[#8993a3] uppercase">
+                            <p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
                                 Emergency fund
                             </p>
-                            <p className="mt-3 text-3xl font-semibold text-[#202a39]">
+                            <p className="mt-3 text-3xl font-semibold text-foreground">
                                 {summary.emergencyCoverageMonths}{' '}
-                                <span className="text-base font-medium text-[#8993a3]">
+                                <span className="text-base font-medium text-muted-foreground">
                                     months
                                 </span>
                             </p>
                         </div>
                         <Badge
-                            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${summary.emergencyCoverageMonths >= 6 ? 'bg-[#eaf8ef] text-[#328654]' : 'bg-[#fff4df] text-[#a46e14]'}`}
+                            className={`rounded-full border-0 px-2.5 py-1 text-xs font-semibold ${summary.emergencyCoverageMonths >= 6 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'}`}
                         >
                             {summary.emergencyCoverageMonths >= 6
                                 ? 'On baseline'
@@ -172,9 +172,9 @@ export default function Dashboard({
                     </div>
                     <Progress
                         value={(summary.emergencyCoverageMonths / 6) * 100}
-                        color="#63bf85"
+                        color="var(--chart-2)"
                     />
-                    <div className="mt-3 flex justify-between text-xs text-[#8a94a3]">
+                    <div className="mt-3 flex justify-between text-xs text-muted-foreground">
                         <span>{formatEGP(summary.emergencyFund)} saved</span>
                         <span>6 months target</span>
                     </div>
@@ -224,7 +224,7 @@ export default function Dashboard({
                             value={`${wealthMetrics.debtToNetWorth}%`}
                         />
                     </div>
-                    <div className="border-t border-[#eef0f4] px-5 py-4">
+                    <div className="border-t border-border px-5 py-4">
                         <div className="flex items-end gap-2">
                             {wealthTrend.slice(-8).map((point) => {
                                 const max = Math.max(
@@ -238,13 +238,13 @@ export default function Dashboard({
                                         className="flex flex-1 flex-col items-center gap-1"
                                     >
                                         <div
-                                            className="w-full rounded-t-md bg-[#a8b7ff]"
+                                            className="w-full rounded-t-md bg-primary"
                                             style={{
                                                 height: `${Math.max(8, (point.netWorth / max) * 72)}px`,
                                             }}
                                             title={`${point.asOf}: ${formatEGP(point.netWorth)}`}
                                         />
-                                        <span className="text-[9px] text-[#9aa3b1]">
+                                        <span className="text-[9px] text-muted-foreground">
                                             {point.asOf.slice(5)}
                                         </span>
                                     </div>
@@ -263,35 +263,35 @@ export default function Dashboard({
                             </Button>
                         }
                     />
-                    <div className="space-y-3 p-5">
-                        <div className="flex items-center justify-between rounded-xl bg-[#fff8ef] px-3.5 py-3">
-                            <span className="text-xs font-semibold text-[#80602a]">
+                    <div className="flex flex-col gap-3 p-5">
+                        <div className="flex items-center justify-between rounded-xl bg-amber-100 px-3.5 py-3 dark:bg-amber-950/50">
+                            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">
                                 Recurring commitments
                             </span>
-                            <span className="text-sm font-semibold text-[#a46e14]">
+                            <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">
                                 {formatCompactEGP(
                                     summary.recurringCommitments ?? 0,
                                 )}
                                 /mo
                             </span>
                         </div>
-                        <div className="flex items-center justify-between rounded-xl bg-[#fff0f1] px-3.5 py-3">
-                            <span className="text-xs font-semibold text-[#95505d]">
+                        <div className="flex items-center justify-between rounded-xl bg-destructive/10 px-3.5 py-3">
+                            <span className="text-xs font-semibold text-destructive">
                                 Active liabilities
                             </span>
-                            <span className="text-sm font-semibold text-[#c65365]">
+                            <span className="text-sm font-semibold text-destructive">
                                 {formatCompactEGP(summary.liabilities ?? 0)}
                             </span>
                         </div>
                         {recurringCommitments.slice(0, 3).map((item) => (
                             <div
                                 key={item.id}
-                                className="flex items-center justify-between border-b border-[#eef0f4] pb-2 text-xs"
+                                className="flex items-center justify-between border-b border-border pb-2 text-xs"
                             >
-                                <span className="text-[#697589]">
+                                <span className="text-muted-foreground">
                                     {item.name}
                                 </span>
-                                <span className="font-semibold text-[#4d5a6d]">
+                                <span className="font-semibold text-muted-foreground">
                                     {formatCompactEGP(item.monthlyAmount)}
                                 </span>
                             </div>
@@ -301,10 +301,10 @@ export default function Dashboard({
                                 key={item.id}
                                 className="flex items-center justify-between text-xs"
                             >
-                                <span className="text-[#697589]">
+                                <span className="text-muted-foreground">
                                     {item.name}
                                 </span>
-                                <span className="font-semibold text-[#c65365]">
+                                <span className="font-semibold text-destructive">
                                     {formatCompactEGP(item.balance)}
                                 </span>
                             </div>
@@ -322,11 +322,11 @@ export default function Dashboard({
                                 : 'Add assets to see the mix'
                         }
                     />
-                    <div className="space-y-4 p-5">
+                    <div className="flex flex-col gap-4 p-5">
                         {assetAllocation.map((item, index) => (
                             <div key={item.label}>
                                 <div className="mb-1.5 flex items-center justify-between text-xs">
-                                    <span className="flex items-center gap-2 font-medium text-[#4f5b6e]">
+                                    <span className="flex items-center gap-2 font-medium text-muted-foreground">
                                         <span
                                             className="h-2.5 w-2.5 rounded-full"
                                             style={{
@@ -338,9 +338,9 @@ export default function Dashboard({
                                         />
                                         {item.label}
                                     </span>
-                                    <span className="font-semibold text-[#273246]">
+                                    <span className="font-semibold text-foreground">
                                         {item.percent}%{' '}
-                                        <span className="ml-2 font-normal text-[#929aa8]">
+                                        <span className="ml-2 font-normal text-muted-foreground">
                                             {formatCompactEGP(item.value)}
                                         </span>
                                     </span>
@@ -352,7 +352,7 @@ export default function Dashboard({
                             </div>
                         ))}
                         {assetAllocation.length === 0 && (
-                            <p className="text-sm text-[#8993a3]">
+                            <p className="text-sm text-muted-foreground">
                                 No assets yet.
                             </p>
                         )}
@@ -363,7 +363,7 @@ export default function Dashboard({
                         title="Current vs target"
                         meta="Your personal allocation policy"
                     />
-                    <div className="space-y-4 p-5">
+                    <div className="flex flex-col gap-4 p-5">
                         {Object.entries(targetAllocation).map(
                             ([label, target], index) => {
                                 const current =
@@ -375,23 +375,23 @@ export default function Dashboard({
                                 return (
                                     <div key={label}>
                                         <div className="mb-1.5 flex items-center justify-between text-xs">
-                                            <span className="font-medium text-[#4f5b6e]">
+                                            <span className="font-medium text-muted-foreground">
                                                 {label}
                                             </span>
                                             <span
                                                 className={
                                                     delta > 3
-                                                        ? 'font-semibold text-[#bd7a1b]'
-                                                        : 'text-[#8993a3]'
+                                                        ? 'font-semibold text-amber-700 dark:text-amber-300'
+                                                        : 'text-muted-foreground'
                                                 }
                                             >
                                                 {current}%{' '}
-                                                <span className="text-[#b3bac5]">
+                                                <span className="text-muted-foreground/70">
                                                     / {target}%
                                                 </span>
                                             </span>
                                         </div>
-                                        <div className="relative h-2 rounded-full bg-[#edf0f5]">
+                                        <div className="relative h-2 rounded-full bg-muted">
                                             <div
                                                 className="h-full rounded-full"
                                                 style={{
@@ -404,7 +404,7 @@ export default function Dashboard({
                                                 }}
                                             />
                                             <span
-                                                className="absolute -top-1 h-4 w-0.5 bg-[#273246]"
+                                                className="absolute -top-1 h-4 w-0.5 bg-foreground"
                                                 style={{ left: `${target}%` }}
                                             />
                                         </div>
@@ -419,17 +419,17 @@ export default function Dashboard({
                         title="Liquidity view"
                         meta="If you need money tomorrow"
                     />
-                    <div className="space-y-3 p-5">
+                    <div className="flex flex-col gap-3 p-5">
                         {liquidity.map((item, index) => (
                             <div
                                 key={item.label}
-                                className="flex items-center justify-between rounded-xl bg-[#f8f9fb] px-3.5 py-3"
+                                className="flex items-center justify-between rounded-xl bg-muted px-3.5 py-3"
                             >
                                 <div>
-                                    <p className="text-xs font-semibold text-[#4d5a6d]">
+                                    <p className="text-xs font-semibold text-muted-foreground">
                                         {item.label.replaceAll('_', ' ')}
                                     </p>
-                                    <p className="mt-1 text-[11px] text-[#9aa3b0]">
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
                                         {index === 0
                                             ? 'Cash and current accounts'
                                             : index === 1
@@ -439,17 +439,17 @@ export default function Dashboard({
                                                 : 'Not readily accessible'}
                                     </p>
                                 </div>
-                                <span className="text-sm font-semibold text-[#273246]">
+                                <span className="text-sm font-semibold text-foreground">
                                     {formatCompactEGP(item.value)}
                                 </span>
                             </div>
                         ))}
                         {largestCurrency && (
-                            <div className="border-t border-[#eef0f4] pt-4">
-                                <p className="text-[11px] tracking-wider text-[#9aa3b1] uppercase">
+                            <div className="border-t border-border pt-4">
+                                <p className="text-[11px] tracking-wider text-muted-foreground uppercase">
                                     Largest currency exposure
                                 </p>
-                                <p className="mt-1 text-sm font-semibold text-[#4d5a6d]">
+                                <p className="mt-1 text-sm font-semibold text-muted-foreground">
                                     {largestCurrency.label} ·{' '}
                                     {largestCurrency.percent}%
                                 </p>
@@ -469,15 +469,15 @@ export default function Dashboard({
                             </Button>
                         }
                     />
-                    <div className="divide-y divide-[#eef0f4]">
+                    <div className="divide-y divide-border">
                         {goals.slice(0, 3).map((goal) => (
                             <div key={goal.id} className="p-5">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
-                                        <h3 className="text-sm font-semibold text-[#273246]">
+                                        <h3 className="text-sm font-semibold text-foreground">
                                             {goal.name}
                                         </h3>
-                                        <p className="mt-1 text-xs text-[#8993a3]">
+                                        <p className="mt-1 text-xs text-muted-foreground">
                                             {goal.deadline
                                                 ? `Due ${new Date(goal.deadline).toLocaleDateString('en-EG', { month: 'short', year: 'numeric' })}`
                                                 : 'No deadline set'}{' '}
@@ -486,7 +486,7 @@ export default function Dashboard({
                                         </p>
                                     </div>
                                     <Badge
-                                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${goal.onTrack ? 'bg-[#eaf8ef] text-[#328654]' : 'bg-[#fff1e8] text-[#b76a2b]'}`}
+                                        className={`rounded-full border-0 px-2.5 py-1 text-[11px] font-semibold ${goal.onTrack ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'}`}
                                     >
                                         {goal.onTrack
                                             ? 'On track'
@@ -499,21 +499,21 @@ export default function Dashboard({
                                             value={goal.fundingPercent}
                                             color={
                                                 goal.onTrack
-                                                    ? '#63bf85'
-                                                    : '#f0ad59'
+                                                    ? 'var(--chart-2)'
+                                                    : 'var(--chart-3)'
                                             }
                                         />
                                     </div>
-                                    <span className="text-xs font-semibold text-[#4d5a6d]">
+                                    <span className="text-xs font-semibold text-muted-foreground">
                                         {goal.fundingPercent}%
                                     </span>
                                 </div>
                                 <div className="mt-3 flex flex-wrap justify-between gap-2 text-xs">
-                                    <span className="text-[#8993a3]">
+                                    <span className="text-muted-foreground">
                                         {formatEGP(goal.allocatedAmount)}{' '}
                                         allocated
                                     </span>
-                                    <span className="font-semibold text-[#4d5a6d]">
+                                    <span className="font-semibold text-muted-foreground">
                                         {formatCompactEGP(
                                             goal.requiredMonthlyContribution,
                                         )}
@@ -521,7 +521,7 @@ export default function Dashboard({
                                     </span>
                                 </div>
                                 {!goal.onTrack && (
-                                    <p className="mt-3 rounded-lg bg-[#fff8ef] px-3 py-2 text-xs text-[#a46e14]">
+                                    <p className="mt-3 rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
                                         Off track by{' '}
                                         {formatCompactEGP(goal.gapPerMonth)}
                                         /month against current free cash flow.
@@ -530,7 +530,7 @@ export default function Dashboard({
                             </div>
                         ))}
                         {goals.length === 0 && (
-                            <p className="p-5 text-sm text-[#8993a3]">
+                            <p className="p-5 text-sm text-muted-foreground">
                                 Create your first goal to start planning.
                             </p>
                         )}
@@ -541,33 +541,33 @@ export default function Dashboard({
                         title="Rules-based signals"
                         meta="Observations from your data"
                     />
-                    <div className="space-y-3 p-5">
+                    <div className="flex flex-col gap-3 p-5">
                         {insights.length ? (
                             insights.map((insight, index) => (
                                 <div
                                     key={insight}
-                                    className="flex gap-3 rounded-xl bg-[#f8f9fb] p-3.5"
+                                    className="flex gap-3 rounded-xl bg-muted p-3.5"
                                 >
                                     <span
-                                        className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs ${index === 0 ? 'bg-[#fff0d8] text-[#a46e14]' : 'bg-[#e9edff] text-[#6576d2]'}`}
+                                        className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs ${index === 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' : 'bg-secondary text-secondary-foreground'}`}
                                     >
                                         {index === 0 ? '!' : 'i'}
                                     </span>
-                                    <p className="text-xs leading-5 text-[#58657a]">
+                                    <p className="text-xs leading-5 text-muted-foreground">
                                         {insight}
                                     </p>
                                 </div>
                             ))
                         ) : (
-                            <p className="text-sm text-[#8993a3]">
+                            <p className="text-sm text-muted-foreground">
                                 No signals yet. Keep your data current.
                             </p>
                         )}
-                        <div className="mt-5 rounded-xl border border-dashed border-[#d9deea] p-4">
-                            <p className="text-xs font-semibold text-[#4d5a6d]">
+                        <div className="mt-5 rounded-xl border border-dashed border-border p-4">
+                            <p className="text-xs font-semibold text-muted-foreground">
                                 What this dashboard is for
                             </p>
-                            <p className="mt-1 text-xs leading-5 text-[#8993a3]">
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
                                 Clarity before action: allocation, liquidity,
                                 goals, and trade-offs. It does not make trades
                                 or pretend to be a financial advisor.
@@ -591,19 +591,19 @@ export default function Dashboard({
                         {buckets.map((bucket) => (
                             <div
                                 key={bucket.id}
-                                className="rounded-xl border border-[#edf0f4] p-3.5"
+                                className="rounded-xl border border-border p-3.5"
                             >
                                 <span
                                     className="mb-3 block h-1.5 w-8 rounded-full"
                                     style={{ backgroundColor: bucket.color }}
                                 />
-                                <p className="text-xs font-semibold text-[#4d5a6d]">
+                                <p className="text-xs font-semibold text-muted-foreground">
                                     {bucket.name}
                                 </p>
-                                <p className="mt-2 text-lg font-semibold text-[#273246]">
+                                <p className="mt-2 text-lg font-semibold text-foreground">
                                     {formatCompactEGP(bucket.currentAmount)}
                                 </p>
-                                <p className="mt-1 text-[11px] text-[#9aa3b1]">
+                                <p className="mt-1 text-[11px] text-muted-foreground">
                                     {bucket.goalName ??
                                         bucket.purpose ??
                                         'Flexible allocation'}
@@ -620,7 +620,7 @@ export default function Dashboard({
 function Metric({ label, value }: { label: string; value: string }) {
     return (
         <div>
-            <p className="text-[11px] text-[#aeb9d1]">{label}</p>
+            <p className="text-[11px] text-sidebar-foreground/70">{label}</p>
             <p className="mt-1 text-sm font-semibold">{value}</p>
         </div>
     );
@@ -635,10 +635,10 @@ function MiniMetric({
     positive?: boolean;
 }) {
     return (
-        <div className="rounded-xl bg-[#f8f9fb] p-3">
-            <p className="text-[11px] text-[#8993a3]">{label}</p>
+        <div className="rounded-xl bg-muted p-3">
+            <p className="text-[11px] text-muted-foreground">{label}</p>
             <p
-                className={`mt-1 text-sm font-semibold ${positive ? 'text-[#328654]' : 'text-[#273246]'}`}
+                className={`mt-1 text-sm font-semibold ${positive ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}
             >
                 {value}
             </p>

@@ -9,12 +9,16 @@ import {
     Gauge,
     LayoutDashboard,
     ListChecks,
-    PanelLeft,
+    Monitor,
+    Moon,
     Repeat2,
+    Sun,
     WalletCards,
 } from 'lucide-react';
 import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
 
+import { ThemeProvider, useTheme } from '@/components/theme-provider';
+import type { ThemeMode } from '@/components/theme-provider';
 import { Button as UiButton } from '@/components/ui/button';
 import {
     Card as UiCard,
@@ -22,6 +26,14 @@ import {
     CardHeader as UiCardHeader,
     CardTitle as UiCardTitle,
 } from '@/components/ui/card';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Progress as UiProgress } from '@/components/ui/progress';
 import {
     Sidebar,
@@ -58,7 +70,7 @@ const navigation = [
 function AppSidebar({ currentPath }: { currentPath: string }) {
     return (
         <Sidebar collapsible="icon">
-            <SidebarHeader className="p-4">
+            <SidebarHeader className="p-3 md:p-4">
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton
@@ -82,11 +94,11 @@ function AppSidebar({ currentPath }: { currentPath: string }) {
                 </SidebarMenu>
             </SidebarHeader>
             <SidebarSeparator />
-            <SidebarContent>
-                <SidebarGroup>
+            <SidebarContent className="px-2">
+                <SidebarGroup className="px-2 py-3">
                     <SidebarGroupLabel>Workspace</SidebarGroupLabel>
                     <SidebarGroupContent>
-                        <SidebarMenu>
+                        <SidebarMenu className="gap-1.5">
                             {navigation.map((item) => {
                                 const active =
                                     item.href === '/'
@@ -99,6 +111,7 @@ function AppSidebar({ currentPath }: { currentPath: string }) {
                                         <SidebarMenuButton
                                             render={<Link href={item.href} />}
                                             isActive={active}
+                                            className="h-10 px-3"
                                             tooltip={item.label}
                                         >
                                             <Icon />
@@ -111,7 +124,7 @@ function AppSidebar({ currentPath }: { currentPath: string }) {
                     </SidebarGroupContent>
                 </SidebarGroup>
             </SidebarContent>
-            <SidebarFooter className="p-4">
+            <SidebarFooter className="gap-3 p-3 md:p-4">
                 <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/40 p-3 group-data-[collapsible=icon]:hidden">
                     <div className="flex items-center gap-2 text-xs font-semibold text-sidebar-foreground">
                         <BriefcaseBusiness className="size-3.5 text-sidebar-primary" />
@@ -136,6 +149,7 @@ function AppSidebar({ currentPath }: { currentPath: string }) {
                         </a>
                     </div>
                 </div>
+                <ThemeMenu inSidebar />
             </SidebarFooter>
         </Sidebar>
     );
@@ -148,27 +162,86 @@ export function AppShell({
     const currentPath = window.location.pathname;
 
     return (
-        <TooltipProvider>
-            <Head title={title} />
-            <SidebarProvider>
-                <AppSidebar currentPath={currentPath} />
-                <SidebarInset>
-                    <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur-sm md:hidden">
-                        <SidebarTrigger>
-                            <PanelLeft />
-                        </SidebarTrigger>
-                        <span className="text-sm font-semibold text-foreground">
-                            Personal finance OS
-                        </span>
-                    </header>
-                    <main className="min-h-screen">
-                        <div className="mx-auto max-w-[1500px] px-5 py-6 sm:px-8 lg:px-10 lg:py-9">
-                            {children}
-                        </div>
-                    </main>
-                </SidebarInset>
-            </SidebarProvider>
-        </TooltipProvider>
+        <ThemeProvider>
+            <TooltipProvider>
+                <Head title={title} />
+                <SidebarProvider>
+                    <AppSidebar currentPath={currentPath} />
+                    <SidebarInset>
+                        <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur-sm md:hidden">
+                            <SidebarTrigger />
+                            <span className="text-sm font-semibold text-foreground">
+                                Personal finance OS
+                            </span>
+                            <div className="ml-auto">
+                                <ThemeMenu />
+                            </div>
+                        </header>
+                        <main className="min-h-screen">
+                            <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+                                {children}
+                            </div>
+                        </main>
+                    </SidebarInset>
+                </SidebarProvider>
+            </TooltipProvider>
+        </ThemeProvider>
+    );
+}
+
+function ThemeMenu({ inSidebar = false }: { inSidebar?: boolean }) {
+    const { theme, setTheme } = useTheme();
+
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger
+                render={
+                    <UiButton
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Choose theme"
+                        className={cn(
+                            inSidebar
+                                ? 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                        )}
+                    />
+                }
+            >
+                {theme === 'dark' ? (
+                    <Moon />
+                ) : theme === 'light' ? (
+                    <Sun />
+                ) : (
+                    <Monitor />
+                )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuLabel>Theme</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {(['system', 'light', 'dark'] as ThemeMode[]).map((mode) => (
+                    <DropdownMenuItem
+                        key={mode}
+                        onClick={() => setTheme(mode)}
+                        className="capitalize"
+                    >
+                        {mode === 'system' ? (
+                            <Monitor />
+                        ) : mode === 'light' ? (
+                            <Sun />
+                        ) : (
+                            <Moon />
+                        )}
+                        {mode}
+                        {theme === mode && (
+                            <span className="ml-auto text-xs text-muted-foreground">
+                                Active
+                            </span>
+                        )}
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
     );
 }
 

@@ -7,7 +7,7 @@
 
 @theme {
     --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
 
@@ -90,6 +90,41 @@
     --sidebar-ring: #a8b7ff;
 }
 
+.dark {
+    --background: #0b1020;
+    --foreground: #eef2ff;
+    --card: #121a2c;
+    --card-foreground: #eef2ff;
+    --popover: #121a2c;
+    --popover-foreground: #eef2ff;
+    --primary: #b8c2ff;
+    --primary-foreground: #131a31;
+    --secondary: #202b4a;
+    --secondary-foreground: #d9deff;
+    --muted: #172137;
+    --muted-foreground: #9da9c3;
+    --accent: #263354;
+    --accent-foreground: #eef2ff;
+    --destructive: #ff9cac;
+    --destructive-foreground: #32121a;
+    --border: #273552;
+    --input: #344362;
+    --ring: #a8b7ff;
+    --chart-1: #a8b7ff;
+    --chart-2: #63d4b3;
+    --chart-3: #ffc37a;
+    --chart-4: #ff9cac;
+    --chart-5: #b7a8ff;
+    --sidebar: #0e1628;
+    --sidebar-foreground: #f3f5ff;
+    --sidebar-primary: #b8c2ff;
+    --sidebar-primary-foreground: #151d38;
+    --sidebar-accent: #202d4d;
+    --sidebar-accent-foreground: #f3f5ff;
+    --sidebar-border: #2c3a5b;
+    --sidebar-ring: #b8c2ff;
+}
+
 @layer base {
     * {
         @apply border-border outline-ring/50;
@@ -118,6 +153,6 @@ button {
     cursor: pointer;
 }
 ::selection {
-    background: #cfd6ff;
-    color: #17202b;
+    background: var(--accent);
+    color: var(--foreground);
 }

@@ -9,7 +9,17 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
-import { Field, FormModal, SelectField } from '@/components/form';
+import { FormModal } from '@/components/form';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import {
     Table,
     TableBody,
@@ -92,7 +102,7 @@ export default function CashFlow({
                 />
                 <div className="overflow-x-auto">
                     <Table className="min-w-[650px] text-left text-sm">
-                        <TableHeader className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
+                        <TableHeader className="bg-muted/50 text-[11px] tracking-wider text-muted-foreground uppercase">
                             <TableRow>
                                 <TableHead className="px-5 py-3">
                                     Date
@@ -112,10 +122,10 @@ export default function CashFlow({
                                 <TableHead />
                             </TableRow>
                         </TableHeader>
-                        <TableBody className="divide-y divide-[#eef0f4]">
+                        <TableBody className="divide-y divide-border">
                             {flows.map((flow) => (
                                 <TableRow key={flow.id}>
-                                    <TableCell className="px-5 py-4 text-xs text-[#8993a3]">
+                                    <TableCell className="px-5 py-4 text-xs text-muted-foreground">
                                         {new Date(
                                             flow.occurred_on,
                                         ).toLocaleDateString('en-EG', {
@@ -125,27 +135,27 @@ export default function CashFlow({
                                     </TableCell>
                                     <TableCell className="px-5 py-4">
                                         <Badge
-                                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${flow.type === 'income' ? 'bg-[#eaf8ef] text-[#328654]' : flow.type === 'obligation' ? 'bg-[#fff1e8] text-[#b76a2b]' : 'bg-[#eef1ff] text-[#6878d5]'}`}
+                                            className={`rounded-full border-0 px-2.5 py-1 text-[11px] font-semibold ${flow.type === 'income' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : flow.type === 'obligation' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' : 'bg-secondary text-secondary-foreground'}`}
                                         >
                                             {flow.type}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 font-medium text-[#4d5a6d]">
+                                    <TableCell className="px-5 py-4 font-medium text-muted-foreground">
                                         {flow.category}
                                     </TableCell>
                                     <TableCell
-                                        className={`px-5 py-4 font-semibold ${flow.type === 'income' ? 'text-[#328654]' : 'text-[#4d5a6d]'}`}
+                                        className={`px-5 py-4 font-semibold ${flow.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}
                                     >
                                         {flow.type === 'income' ? '+' : '-'}
                                         {formatEGP(flow.amount_egp)}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-xs text-[#8993a3]">
+                                    <TableCell className="px-5 py-4 text-xs text-muted-foreground">
                                         {flow.notes || '—'}
                                     </TableCell>
                                     <TableCell className="px-5 py-4 text-right">
                                         <Button
                                             variant="danger"
-                                            className="h-7 border-0 bg-transparent px-2 text-xs text-[#a4acb9] hover:bg-transparent hover:text-[#c65365]"
+                                            className="h-7 border-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-destructive"
                                             onClick={() =>
                                                 router.delete(
                                                     `/cash-flow/${flow.id}`,
@@ -176,49 +186,93 @@ export default function CashFlow({
                         onSubmit={submit}
                         className="grid gap-4 sm:grid-cols-2"
                     >
-                        <SelectField
-                            label="Type"
-                            value={form.type}
-                            onChange={(e) => update('type', e.target.value)}
-                        >
-                            <option value="income">Income</option>
-                            <option value="expense">Expense</option>
-                            <option value="obligation">Obligation</option>
-                        </SelectField>
-                        <Field
-                            label="Category"
-                            required
-                            value={form.category}
-                            onChange={(e) => update('category', e.target.value)}
-                            placeholder="essential, lifestyle, salary..."
-                        />
-                        <Field
-                            label="Amount (EGP)"
-                            type="number"
-                            required
-                            value={form.amount_egp}
-                            onChange={(e) =>
-                                update('amount_egp', e.target.value)
-                            }
-                        />
-                        <Field
-                            label="Date"
-                            type="date"
-                            required
-                            value={form.occurred_on}
-                            onChange={(e) =>
-                                update('occurred_on', e.target.value)
-                            }
-                        />
-                        <div className="sm:col-span-2">
-                            <Field
-                                label="Notes"
-                                value={form.notes}
-                                onChange={(e) =>
-                                    update('notes', e.target.value)
+                        <Field>
+                            <FieldLabel htmlFor="cash-flow-type">
+                                Type
+                            </FieldLabel>
+                            <Select
+                                value={form.type}
+                                onValueChange={(value) =>
+                                    update('type', String(value ?? ''))
                                 }
-                                placeholder="Optional context"
+                            >
+                                <SelectTrigger
+                                    id="cash-flow-type"
+                                    className="w-full"
+                                >
+                                    <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        <SelectItem value="income">
+                                            Income
+                                        </SelectItem>
+                                        <SelectItem value="expense">
+                                            Expense
+                                        </SelectItem>
+                                        <SelectItem value="obligation">
+                                            Obligation
+                                        </SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="cash-flow-category">
+                                Category
+                            </FieldLabel>
+                            <Input
+                                id="cash-flow-category"
+                                required
+                                value={form.category}
+                                onChange={(e) =>
+                                    update('category', e.target.value)
+                                }
+                                placeholder="essential, lifestyle, salary..."
                             />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="cash-flow-amount">
+                                Amount (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="cash-flow-amount"
+                                type="number"
+                                required
+                                value={form.amount_egp}
+                                onChange={(e) =>
+                                    update('amount_egp', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="cash-flow-date">
+                                Date
+                            </FieldLabel>
+                            <Input
+                                id="cash-flow-date"
+                                type="date"
+                                required
+                                value={form.occurred_on}
+                                onChange={(e) =>
+                                    update('occurred_on', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <div className="sm:col-span-2">
+                            <Field>
+                                <FieldLabel htmlFor="cash-flow-notes">
+                                    Notes
+                                </FieldLabel>
+                                <Input
+                                    id="cash-flow-notes"
+                                    value={form.notes}
+                                    onChange={(e) =>
+                                        update('notes', e.target.value)
+                                    }
+                                    placeholder="Optional context"
+                                />
+                            </Field>
                         </div>
                         <div className="flex justify-end gap-2 sm:col-span-2">
                             <Button
@@ -247,14 +301,14 @@ function SummaryCard({
 }) {
     const text =
         color === 'green'
-            ? 'text-[#328654]'
+            ? 'text-emerald-600 dark:text-emerald-400'
             : color === 'amber'
-              ? 'text-[#a46e14]'
-              : 'text-[#6878d5]';
+              ? 'text-amber-600 dark:text-amber-400'
+              : 'text-primary';
 
     return (
         <Card className="p-5">
-            <p className="text-xs font-semibold tracking-wider text-[#8993a3] uppercase">
+            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 {label}
             </p>
             <p className={`mt-3 text-2xl font-semibold ${text}`}>

@@ -6,7 +6,16 @@ import {
     PageHeader,
     Progress,
 } from '@/components/app-shell';
-import { Field, SelectField } from '@/components/form';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { formatCompactEGP, formatEGP } from '@/types/finance';
 import type { Summary } from '@/types/finance';
 
@@ -98,73 +107,120 @@ export default function Scenarios({
                         title="Scenario inputs"
                         meta="Planning math, not a prediction"
                     />
-                    <div className="space-y-4 p-5">
-                        <SelectField
-                            label="Scenario"
-                            value={mode}
-                            onChange={(e) => setMode(e.target.value)}
-                        >
-                            <option value="cash">Buy car cash</option>
-                            <option value="finance">
-                                Finance part of purchase
-                            </option>
-                        </SelectField>
-                        <Field
-                            label="Car price (EGP)"
-                            type="number"
-                            value={price}
-                            onChange={(e) => setPrice(e.target.value)}
-                        />
-                        <Field
-                            label="Monthly savings after purchase (EGP)"
-                            type="number"
-                            value={monthlySavings}
-                            onChange={(e) => setMonthlySavings(e.target.value)}
-                        />
+                    <div className="flex flex-col gap-4 p-5">
+                        <Field>
+                            <FieldLabel htmlFor="scenario-mode">
+                                Scenario
+                            </FieldLabel>
+                            <Select
+                                value={mode}
+                                onValueChange={(value) =>
+                                    setMode(String(value ?? ''))
+                                }
+                            >
+                                <SelectTrigger
+                                    id="scenario-mode"
+                                    className="w-full"
+                                >
+                                    <SelectValue placeholder="Select scenario" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        <SelectItem value="cash">
+                                            Buy car cash
+                                        </SelectItem>
+                                        <SelectItem value="finance">
+                                            Finance part of purchase
+                                        </SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="scenario-price">
+                                Car price (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="scenario-price"
+                                type="number"
+                                value={price}
+                                onChange={(e) => setPrice(e.target.value)}
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="scenario-savings">
+                                Monthly savings after purchase (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="scenario-savings"
+                                type="number"
+                                value={monthlySavings}
+                                onChange={(e) =>
+                                    setMonthlySavings(e.target.value)
+                                }
+                            />
+                        </Field>
                         {mode === 'finance' && (
                             <>
-                                <Field
-                                    label="Down payment (EGP)"
-                                    type="number"
-                                    value={downPayment}
-                                    onChange={(e) =>
-                                        setDownPayment(e.target.value)
-                                    }
-                                />
-                                <Field
-                                    label="Annual interest (%)"
-                                    type="number"
-                                    step="0.1"
-                                    value={interest}
-                                    onChange={(e) =>
-                                        setInterest(e.target.value)
-                                    }
-                                />
-                                <Field
-                                    label="Tenure (months)"
-                                    type="number"
-                                    value={tenure}
-                                    onChange={(e) => setTenure(e.target.value)}
-                                />
+                                <Field>
+                                    <FieldLabel htmlFor="scenario-down-payment">
+                                        Down payment (EGP)
+                                    </FieldLabel>
+                                    <Input
+                                        id="scenario-down-payment"
+                                        type="number"
+                                        value={downPayment}
+                                        onChange={(e) =>
+                                            setDownPayment(e.target.value)
+                                        }
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel htmlFor="scenario-interest">
+                                        Annual interest (%)
+                                    </FieldLabel>
+                                    <Input
+                                        id="scenario-interest"
+                                        type="number"
+                                        step="0.1"
+                                        value={interest}
+                                        onChange={(e) =>
+                                            setInterest(e.target.value)
+                                        }
+                                    />
+                                </Field>
+                                <Field>
+                                    <FieldLabel htmlFor="scenario-tenure">
+                                        Tenure (months)
+                                    </FieldLabel>
+                                    <Input
+                                        id="scenario-tenure"
+                                        type="number"
+                                        value={tenure}
+                                        onChange={(e) =>
+                                            setTenure(e.target.value)
+                                        }
+                                    />
+                                </Field>
                             </>
                         )}
-                        <div className="rounded-xl border border-dashed border-[#d9deea] p-4">
-                            <p className="text-xs font-semibold text-[#4d5a6d]">
+                        <div className="rounded-xl border border-dashed border-border p-4">
+                            <p className="text-xs font-semibold text-muted-foreground">
                                 Current starting point
                             </p>
                             <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                                <span className="text-[#8993a3]">
+                                <span className="text-muted-foreground">
                                     Liquid assets
                                 </span>
-                                <span className="text-right font-semibold text-[#4d5a6d]">
+                                <span className="text-right font-semibold text-muted-foreground">
                                     {formatCompactEGP(
                                         dashboard.summary.liquidAssets,
                                     )}
                                 </span>
-                                <span className="text-[#8993a3]">
+                                <span className="text-muted-foreground">
                                     Free cash flow
                                 </span>
-                                <span className="text-right font-semibold text-[#4d5a6d]">
+                                <span className="text-right font-semibold text-muted-foreground">
                                     {formatCompactEGP(
                                         dashboard.summary.freeCashFlow,
                                     )}
@@ -173,10 +229,10 @@ export default function Scenarios({
                         </div>
                     </div>
                 </Card>
-                <div className="space-y-4">
+                <div className="flex flex-col gap-4">
                     <Card className="overflow-hidden">
-                        <div className="bg-[#1c2a45] p-6 text-white">
-                            <p className="text-xs tracking-[0.16em] text-[#aeb9d1] uppercase">
+                        <div className="bg-sidebar p-6 text-sidebar-foreground">
+                            <p className="text-xs tracking-[0.16em] text-sidebar-foreground/70 uppercase">
                                 Selected scenario
                             </p>
                             <h2 className="mt-2 text-2xl font-semibold">
@@ -184,7 +240,7 @@ export default function Scenarios({
                                     ? 'Buy the car cash'
                                     : '50% down + financing'}
                             </h2>
-                            <p className="mt-2 max-w-xl text-sm leading-6 text-[#bac5da]">
+                            <p className="mt-2 max-w-xl text-sm leading-6 text-sidebar-foreground/70">
                                 A transparent comparison using your current
                                 numbers. Change the inputs and watch the
                                 trade-offs update.
@@ -194,12 +250,12 @@ export default function Scenarios({
                             {choices.map((choice) => (
                                 <div
                                     key={choice.label}
-                                    className="rounded-xl bg-[#f8f9fb] p-4"
+                                    className="rounded-xl bg-muted p-4"
                                 >
-                                    <p className="text-xs text-[#8993a3]">
+                                    <p className="text-xs text-muted-foreground">
                                         {choice.label}
                                     </p>
-                                    <p className="mt-2 text-lg font-semibold text-[#273246]">
+                                    <p className="mt-2 text-lg font-semibold text-foreground">
                                         {choice.suffix
                                             ? `${choice.value.toFixed(1)}${choice.suffix}`
                                             : formatCompactEGP(choice.value)}
@@ -213,9 +269,9 @@ export default function Scenarios({
                             title="Impact on your financial position"
                             meta="What remains after the decision"
                         />
-                        <div className="space-y-5 p-5">
+                        <div className="flex flex-col gap-5 p-5">
                             <div
-                                className={`rounded-xl p-4 ${result.confidence === 'comfortable' ? 'bg-[#eaf8ef] text-[#328654]' : result.confidence === 'review' ? 'bg-[#fff8ef] text-[#a46e14]' : 'bg-[#fff0f1] text-[#c65365]'}`}
+                                className={`rounded-xl p-4 ${result.confidence === 'comfortable' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : result.confidence === 'review' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' : 'bg-destructive/10 text-destructive'}`}
                             >
                                 <p className="text-xs font-semibold tracking-wider uppercase">
                                     Financial confidence: {result.confidence}
@@ -234,7 +290,7 @@ export default function Scenarios({
                                 label="Cash / liquidity remaining"
                                 value={result.afterPurchaseCash}
                                 total={dashboard.summary.liquidAssets}
-                                color="#7c8cf8"
+                                color="var(--chart-1)"
                             />
                             <Impact
                                 label="Emergency coverage"
@@ -242,34 +298,36 @@ export default function Scenarios({
                                 total={6}
                                 suffix=" months"
                                 color={
-                                    result.coverage >= 6 ? '#63bf85' : '#f0ad59'
+                                    result.coverage >= 6
+                                        ? 'var(--chart-2)'
+                                        : 'var(--chart-3)'
                                 }
                             />
                             <div className="grid gap-3 sm:grid-cols-2">
-                                <div className="rounded-xl border border-[#edf0f4] p-4">
-                                    <p className="text-xs text-[#8993a3]">
+                                <div className="rounded-xl border border-border p-4">
+                                    <p className="text-xs text-muted-foreground">
                                         Financing cost
                                     </p>
-                                    <p className="mt-2 text-xl font-semibold text-[#273246]">
+                                    <p className="mt-2 text-xl font-semibold text-foreground">
                                         {formatEGP(result.totalInterest)}
                                     </p>
-                                    <p className="mt-1 text-xs text-[#8993a3]">
+                                    <p className="mt-1 text-xs text-muted-foreground">
                                         Interest over the full term
                                     </p>
                                 </div>
-                                <div className="rounded-xl border border-[#edf0f4] p-4">
-                                    <p className="text-xs text-[#8993a3]">
+                                <div className="rounded-xl border border-border p-4">
+                                    <p className="text-xs text-muted-foreground">
                                         Monthly payment
                                     </p>
-                                    <p className="mt-2 text-xl font-semibold text-[#273246]">
+                                    <p className="mt-2 text-xl font-semibold text-foreground">
                                         {formatEGP(result.payment)}
                                     </p>
-                                    <p className="mt-1 text-xs text-[#8993a3]">
+                                    <p className="mt-1 text-xs text-muted-foreground">
                                         Before other obligations
                                     </p>
                                 </div>
                             </div>
-                            <div className="rounded-xl bg-[#fff8ef] p-4 text-xs leading-5 text-[#966b2a]">
+                            <div className="rounded-xl bg-amber-100 p-4 text-xs leading-5 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
                                 This is a planning calculator. Add a
                                 depreciation assumption, insurance, maintenance,
                                 and a real lender quote before making a purchase
@@ -299,8 +357,10 @@ function Impact({
     return (
         <div>
             <div className="flex justify-between text-xs">
-                <span className="font-semibold text-[#58657a]">{label}</span>
-                <span className="font-semibold text-[#4d5a6d]">
+                <span className="font-semibold text-muted-foreground">
+                    {label}
+                </span>
+                <span className="font-semibold text-foreground">
                     {suffix ? `${value.toFixed(1)}${suffix}` : formatEGP(value)}
                 </span>
             </div>

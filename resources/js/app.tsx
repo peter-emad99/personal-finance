@@ -1,4 +1,5 @@
 import { createInertiaApp } from '@inertiajs/react';
+import '@fontsource-variable/inter';
 import '../css/app.css';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';

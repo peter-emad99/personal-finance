@@ -8,7 +8,17 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
-import { Field, FormModal, SelectField } from '@/components/form';
+import { FormModal } from '@/components/form';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import {
     Table,
     TableBody,
@@ -97,18 +107,18 @@ export default function Liabilities({
             />
             <div className="mb-4 grid gap-4 sm:grid-cols-2">
                 <Card className="p-5">
-                    <p className="text-xs font-semibold tracking-wider text-[#8993a3] uppercase">
+                    <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                         Outstanding balance
                     </p>
-                    <p className="mt-3 text-2xl font-semibold text-[#c65365]">
+                    <p className="mt-3 text-2xl font-semibold text-destructive">
                         {formatEGP(total)}
                     </p>
                 </Card>
                 <Card className="p-5">
-                    <p className="text-xs font-semibold tracking-wider text-[#8993a3] uppercase">
+                    <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                         Monthly payments
                     </p>
-                    <p className="mt-3 text-2xl font-semibold text-[#273246]">
+                    <p className="mt-3 text-2xl font-semibold text-foreground">
                         {formatEGP(monthly)}
                     </p>
                 </Card>
@@ -120,7 +130,7 @@ export default function Liabilities({
                 />
                 <div className="overflow-x-auto">
                     <Table className="min-w-[820px] text-left text-sm">
-                        <TableHeader className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
+                        <TableHeader className="bg-muted/50 text-[11px] tracking-wider text-muted-foreground uppercase">
                             <TableRow>
                                 <TableHead className="px-5 py-3">
                                     Name
@@ -143,7 +153,7 @@ export default function Liabilities({
                                 <TableHead />
                             </TableRow>
                         </TableHeader>
-                        <TableBody className="divide-y divide-[#eef0f4]">
+                        <TableBody className="divide-y divide-border">
                             {liabilities.map((item) => (
                                 <TableRow
                                     key={item.id}
@@ -152,43 +162,43 @@ export default function Liabilities({
                                     }
                                 >
                                     <TableCell className="px-5 py-4">
-                                        <p className="font-semibold text-[#273246]">
+                                        <p className="font-semibold text-foreground">
                                             {item.name}
                                         </p>
-                                        <p className="mt-1 text-xs text-[#8993a3]">
+                                        <p className="mt-1 text-xs text-muted-foreground">
                                             {item.isActive
                                                 ? 'Active'
                                                 : 'Inactive'}
                                         </p>
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-[#58657a]">
+                                    <TableCell className="px-5 py-4 text-muted-foreground">
                                         {item.type}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 font-semibold text-[#c65365]">
+                                    <TableCell className="px-5 py-4 font-semibold text-destructive">
                                         {formatEGP(item.balance)}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-[#58657a]">
+                                    <TableCell className="px-5 py-4 text-muted-foreground">
                                         {formatEGP(item.monthlyPayment)}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-[#58657a]">
+                                    <TableCell className="px-5 py-4 text-muted-foreground">
                                         {item.interestRate === null
                                             ? '—'
                                             : `${item.interestRate}%`}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-xs text-[#8993a3]">
+                                    <TableCell className="px-5 py-4 text-xs text-muted-foreground">
                                         {item.payoffOn ?? '—'}
                                     </TableCell>
                                     <TableCell className="px-5 py-4 text-right">
                                         <Button
                                             variant="ghost"
-                                            className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-[#6878d5] hover:bg-transparent"
+                                            className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
                                             onClick={() => begin(item)}
                                         >
                                             Edit
                                         </Button>
                                         <Button
                                             variant="danger"
-                                            className="h-7 border-0 bg-transparent px-2 text-xs text-[#c65365] hover:bg-transparent"
+                                            className="h-7 border-0 bg-transparent px-2 text-xs text-destructive hover:bg-transparent"
                                             onClick={() =>
                                                 router.delete(
                                                     `/liabilities/${item.id}`,
@@ -219,93 +229,167 @@ export default function Liabilities({
                         onSubmit={submit}
                         className="grid gap-4 sm:grid-cols-2"
                     >
-                        <Field
-                            label="Name"
-                            required
-                            value={form.name}
-                            onChange={(e) => update('name', e.target.value)}
-                            placeholder="Car loan, credit card..."
-                        />
-                        <Field
-                            label="Type"
-                            required
-                            value={form.type}
-                            onChange={(e) => update('type', e.target.value)}
-                            placeholder="loan, credit_card..."
-                        />
-                        <Field
-                            label="Current balance (EGP)"
-                            required
-                            type="number"
-                            min="0"
-                            value={form.balance_egp}
-                            onChange={(e) =>
-                                update('balance_egp', e.target.value)
-                            }
-                        />
-                        <Field
-                            label="Original balance (EGP)"
-                            type="number"
-                            min="0"
-                            value={form.original_balance_egp}
-                            onChange={(e) =>
-                                update('original_balance_egp', e.target.value)
-                            }
-                        />
-                        <Field
-                            label="Interest rate (%)"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={form.interest_rate_percent}
-                            onChange={(e) =>
-                                update('interest_rate_percent', e.target.value)
-                            }
-                        />
-                        <Field
-                            label="Monthly payment (EGP)"
-                            required
-                            type="number"
-                            min="0"
-                            value={form.monthly_payment_egp}
-                            onChange={(e) =>
-                                update('monthly_payment_egp', e.target.value)
-                            }
-                        />
-                        <Field
-                            label="Due day"
-                            type="number"
-                            min="1"
-                            max="31"
-                            value={form.due_day}
-                            onChange={(e) => update('due_day', e.target.value)}
-                        />
-                        <Field
-                            label="Expected payoff"
-                            type="date"
-                            value={form.payoff_on}
-                            onChange={(e) =>
-                                update('payoff_on', e.target.value)
-                            }
-                        />
-                        <SelectField
-                            label="Status"
-                            value={form.is_active}
-                            onChange={(e) =>
-                                update('is_active', e.target.value)
-                            }
-                        >
-                            <option value="1">Active</option>
-                            <option value="0">Inactive / paid off</option>
-                        </SelectField>
-                        <div className="sm:col-span-2">
-                            <Field
-                                label="Notes"
-                                value={form.notes}
+                        <Field>
+                            <FieldLabel htmlFor="liability-name">
+                                Name
+                            </FieldLabel>
+                            <Input
+                                id="liability-name"
+                                required
+                                value={form.name}
+                                onChange={(e) => update('name', e.target.value)}
+                                placeholder="Car loan, credit card..."
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="liability-type">
+                                Type
+                            </FieldLabel>
+                            <Input
+                                id="liability-type"
+                                required
+                                value={form.type}
+                                onChange={(e) => update('type', e.target.value)}
+                                placeholder="loan, credit_card..."
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="liability-balance">
+                                Current balance (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="liability-balance"
+                                required
+                                type="number"
+                                min="0"
+                                value={form.balance_egp}
                                 onChange={(e) =>
-                                    update('notes', e.target.value)
+                                    update('balance_egp', e.target.value)
                                 }
                             />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="liability-original-balance">
+                                Original balance (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="liability-original-balance"
+                                type="number"
+                                min="0"
+                                value={form.original_balance_egp}
+                                onChange={(e) =>
+                                    update(
+                                        'original_balance_egp',
+                                        e.target.value,
+                                    )
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="liability-interest">
+                                Interest rate (%)
+                            </FieldLabel>
+                            <Input
+                                id="liability-interest"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={form.interest_rate_percent}
+                                onChange={(e) =>
+                                    update(
+                                        'interest_rate_percent',
+                                        e.target.value,
+                                    )
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="liability-payment">
+                                Monthly payment (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="liability-payment"
+                                required
+                                type="number"
+                                min="0"
+                                value={form.monthly_payment_egp}
+                                onChange={(e) =>
+                                    update(
+                                        'monthly_payment_egp',
+                                        e.target.value,
+                                    )
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="liability-due-day">
+                                Due day
+                            </FieldLabel>
+                            <Input
+                                id="liability-due-day"
+                                type="number"
+                                min="1"
+                                max="31"
+                                value={form.due_day}
+                                onChange={(e) =>
+                                    update('due_day', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="liability-payoff">
+                                Expected payoff
+                            </FieldLabel>
+                            <Input
+                                id="liability-payoff"
+                                type="date"
+                                value={form.payoff_on}
+                                onChange={(e) =>
+                                    update('payoff_on', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="liability-status">
+                                Status
+                            </FieldLabel>
+                            <Select
+                                value={form.is_active}
+                                onValueChange={(value) =>
+                                    update('is_active', String(value ?? ''))
+                                }
+                            >
+                                <SelectTrigger
+                                    id="liability-status"
+                                    className="w-full"
+                                >
+                                    <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        <SelectItem value="1">
+                                            Active
+                                        </SelectItem>
+                                        <SelectItem value="0">
+                                            Inactive / paid off
+                                        </SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                        <div className="sm:col-span-2">
+                            <Field>
+                                <FieldLabel htmlFor="liability-notes">
+                                    Notes
+                                </FieldLabel>
+                                <Input
+                                    id="liability-notes"
+                                    value={form.notes}
+                                    onChange={(e) =>
+                                        update('notes', e.target.value)
+                                    }
+                                />
+                            </Field>
                         </div>
                         <div className="flex justify-end gap-2 sm:col-span-2">
                             <Button

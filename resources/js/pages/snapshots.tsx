@@ -8,7 +8,9 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
-import { Field, FormModal } from '@/components/form';
+import { FormModal } from '@/components/form';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import {
     Table,
     TableBody,
@@ -59,7 +61,7 @@ export default function Snapshots({ snapshots }: { snapshots: Snapshot[] }) {
                 />
                 <div className="overflow-x-auto">
                     <Table className="min-w-[720px] text-left text-sm">
-                        <TableHeader className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
+                        <TableHeader className="bg-muted/50 text-[11px] tracking-wider text-muted-foreground uppercase">
                             <TableRow>
                                 <TableHead className="px-5 py-3">
                                     As of
@@ -81,10 +83,10 @@ export default function Snapshots({ snapshots }: { snapshots: Snapshot[] }) {
                                 </TableHead>
                             </TableRow>
                         </TableHeader>
-                        <TableBody className="divide-y divide-[#eef0f4]">
+                        <TableBody className="divide-y divide-border">
                             {snapshots.map((snapshot) => (
                                 <TableRow key={snapshot.id}>
-                                    <TableCell className="px-5 py-4 font-medium text-[#4d5a6d]">
+                                    <TableCell className="px-5 py-4 font-medium text-muted-foreground">
                                         {new Date(
                                             snapshot.as_of,
                                         ).toLocaleDateString('en-EG', {
@@ -93,21 +95,21 @@ export default function Snapshots({ snapshots }: { snapshots: Snapshot[] }) {
                                             year: 'numeric',
                                         })}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 font-semibold text-[#273246]">
+                                    <TableCell className="px-5 py-4 font-semibold text-foreground">
                                         {formatEGP(snapshot.net_worth_egp)}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-[#58657a]">
+                                    <TableCell className="px-5 py-4 text-muted-foreground">
                                         {formatEGP(snapshot.liquid_assets_egp)}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-[#58657a]">
+                                    <TableCell className="px-5 py-4 text-muted-foreground">
                                         {formatEGP(
                                             snapshot.investable_net_worth_egp,
                                         )}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 font-semibold text-[#328654]">
+                                    <TableCell className="px-5 py-4 font-semibold text-emerald-600 dark:text-emerald-400">
                                         {formatEGP(snapshot.free_cash_flow_egp)}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-[#58657a]">
+                                    <TableCell className="px-5 py-4 text-muted-foreground">
                                         {snapshot.emergency_coverage_months}{' '}
                                         months
                                     </TableCell>
@@ -128,23 +130,33 @@ export default function Snapshots({ snapshots }: { snapshots: Snapshot[] }) {
                     title="Save a snapshot"
                     onClose={() => setOpen(false)}
                 >
-                    <form onSubmit={submit} className="space-y-4">
-                        <Field
-                            label="As of"
-                            type="date"
-                            value={form.as_of}
-                            onChange={(e) =>
-                                setForm({ ...form, as_of: e.target.value })
-                            }
-                        />
-                        <Field
-                            label="Notes"
-                            value={form.notes}
-                            onChange={(e) =>
-                                setForm({ ...form, notes: e.target.value })
-                            }
-                            placeholder="What changed this month?"
-                        />
+                    <form onSubmit={submit} className="flex flex-col gap-4">
+                        <Field>
+                            <FieldLabel htmlFor="snapshot-as-of">
+                                As of
+                            </FieldLabel>
+                            <Input
+                                id="snapshot-as-of"
+                                type="date"
+                                value={form.as_of}
+                                onChange={(e) =>
+                                    setForm({ ...form, as_of: e.target.value })
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="snapshot-notes">
+                                Notes
+                            </FieldLabel>
+                            <Input
+                                id="snapshot-notes"
+                                value={form.notes}
+                                onChange={(e) =>
+                                    setForm({ ...form, notes: e.target.value })
+                                }
+                                placeholder="What changed this month?"
+                            />
+                        </Field>
                         <div className="flex justify-end gap-2">
                             <Button
                                 variant="ghost"

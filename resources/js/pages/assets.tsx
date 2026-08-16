@@ -9,8 +9,18 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
-import { Field, FormModal, SelectField } from '@/components/form';
+import { FormModal } from '@/components/form';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import {
     Table,
     TableBody,
@@ -109,7 +119,7 @@ export default function Assets({
                 />
                 <div className="overflow-x-auto">
                     <Table className="min-w-[840px] text-left text-sm">
-                        <TableHeader className="bg-[#fafbfc] text-[11px] tracking-wider text-[#99a2af] uppercase">
+                        <TableHeader className="bg-muted/50 text-[11px] tracking-wider text-muted-foreground uppercase">
                             <TableRow>
                                 <TableHead className="px-5 py-3">
                                     Asset
@@ -132,44 +142,44 @@ export default function Assets({
                                 <TableHead className="px-5 py-3" />
                             </TableRow>
                         </TableHeader>
-                        <TableBody className="divide-y divide-[#eef0f4]">
+                        <TableBody className="divide-y divide-border">
                             {assets.map((asset) => (
                                 <TableRow
                                     key={asset.id}
-                                    className="hover:bg-[#fbfcfe]"
+                                    className="hover:bg-muted/40"
                                 >
                                     <TableCell className="px-5 py-4">
-                                        <p className="font-semibold text-[#273246]">
+                                        <p className="font-semibold text-foreground">
                                             {asset.name}
                                         </p>
-                                        <p className="mt-1 text-xs text-[#9aa3b1]">
+                                        <p className="mt-1 text-xs text-muted-foreground">
                                             {asset.quantity
                                                 ? `${asset.quantity} ${asset.currency}`
                                                 : (asset.accountName ??
                                                   'No account set')}
                                         </p>
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-[#58657a]">
+                                    <TableCell className="px-5 py-4 text-muted-foreground">
                                         {asset.type}
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 font-semibold text-[#273246]">
+                                    <TableCell className="px-5 py-4 font-semibold text-foreground">
                                         {formatEGP(asset.currentValue)}
                                     </TableCell>
                                     <TableCell
-                                        className={`px-5 py-4 font-medium ${asset.gainLoss >= 0 ? 'text-[#328654]' : 'text-[#c65365]'}`}
+                                        className={`px-5 py-4 font-medium ${asset.gainLoss >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}`}
                                     >
                                         {asset.gainLoss >= 0 ? '+' : ''}
                                         {formatEGP(asset.gainLoss)}
                                     </TableCell>
                                     <TableCell className="px-5 py-4">
-                                        <Badge className="rounded-full bg-[#eef1ff] px-2.5 py-1 text-[11px] font-semibold text-[#6878d5]">
+                                        <Badge className="rounded-full border-0 bg-secondary px-2.5 py-1 text-[11px] font-semibold text-secondary-foreground">
                                             {labelize(asset.liquidity)}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell className="px-5 py-4 text-xs text-[#738094]">
+                                    <TableCell className="px-5 py-4 text-xs text-muted-foreground">
                                         <Button
                                             variant="ghost"
-                                            className="h-auto justify-start border-0 p-0 text-left text-xs font-semibold text-[#6878d5] hover:bg-transparent hover:text-[#4d5aaf]"
+                                            className="h-auto justify-start border-0 p-0 text-left text-xs font-semibold text-primary hover:bg-transparent hover:text-primary/80"
                                             onClick={() =>
                                                 openAllocations(asset)
                                             }
@@ -187,7 +197,7 @@ export default function Assets({
                                     <TableCell className="px-5 py-4 text-right">
                                         <Button
                                             variant="danger"
-                                            className="h-7 border-0 bg-transparent px-2 text-xs text-[#a4acb9] hover:bg-transparent hover:text-[#c65365]"
+                                            className="h-7 border-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-destructive"
                                             onClick={() => {
                                                 if (
                                                     confirm(
@@ -221,89 +231,173 @@ export default function Assets({
                         onSubmit={submit}
                         className="grid gap-4 sm:grid-cols-2"
                     >
-                        <Field
-                            label="Name"
-                            required
-                            value={form.name}
-                            onChange={(e) => update('name', e.target.value)}
-                            placeholder="e.g. Gold holdings"
-                        />
-                        <SelectField
-                            label="Type"
-                            value={form.type}
-                            onChange={(e) => update('type', e.target.value)}
-                        >
-                            <option>Cash</option>
-                            <option>USD</option>
-                            <option>Gold</option>
-                            <option>Egyptian equities</option>
-                            <option>Mutual funds</option>
-                            <option>Fixed income</option>
-                            <option>Other</option>
-                        </SelectField>
-                        <Field
-                            label="Quantity"
-                            type="number"
-                            step="any"
-                            value={form.quantity}
-                            onChange={(e) => update('quantity', e.target.value)}
-                            placeholder="Optional"
-                        />
-                        <Field
-                            label="Currency"
-                            value={form.currency}
-                            onChange={(e) => update('currency', e.target.value)}
-                        />
-                        <Field
-                            label="Current value (EGP)"
-                            type="number"
-                            step="0.01"
-                            required
-                            value={form.current_value_egp}
-                            onChange={(e) =>
-                                update('current_value_egp', e.target.value)
-                            }
-                        />
-                        <Field
-                            label="Cost basis (EGP)"
-                            type="number"
-                            step="0.01"
-                            value={form.cost_basis_egp}
-                            onChange={(e) =>
-                                update('cost_basis_egp', e.target.value)
-                            }
-                        />
-                        <Field
-                            label="Unit price (EGP)"
-                            type="number"
-                            step="0.01"
-                            value={form.unit_price_egp}
-                            onChange={(e) =>
-                                update('unit_price_egp', e.target.value)
-                            }
-                        />
-                        <SelectField
-                            label="Liquidity"
-                            value={form.liquidity}
-                            onChange={(e) =>
-                                update('liquidity', e.target.value)
-                            }
-                        >
-                            <option value="immediate">Immediate</option>
-                            <option value="within_3_days">Within 3 days</option>
-                            <option value="longer_term">Longer term</option>
-                            <option value="illiquid">Illiquid</option>
-                        </SelectField>
-                        <Field
-                            label="Account / location"
-                            className="sm:col-span-2"
-                            value={form.account_name}
-                            onChange={(e) =>
-                                update('account_name', e.target.value)
-                            }
-                            placeholder="e.g. Brokerage, bank, physical"
-                        />
-                        <div className="flex items-center gap-2 text-sm text-[#58657a]">
+                        <Field>
+                            <FieldLabel htmlFor="asset-name">Name</FieldLabel>
+                            <Input
+                                id="asset-name"
+                                required
+                                value={form.name}
+                                onChange={(e) => update('name', e.target.value)}
+                                placeholder="e.g. Gold holdings"
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="asset-type">Type</FieldLabel>
+                            <Select
+                                value={form.type}
+                                onValueChange={(value) =>
+                                    update('type', String(value ?? ''))
+                                }
+                            >
+                                <SelectTrigger
+                                    id="asset-type"
+                                    className="w-full"
+                                >
+                                    <SelectValue placeholder="Select asset type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        <SelectItem value="Cash">
+                                            Cash
+                                        </SelectItem>
+                                        <SelectItem value="USD">USD</SelectItem>
+                                        <SelectItem value="Gold">
+                                            Gold
+                                        </SelectItem>
+                                        <SelectItem value="Egyptian equities">
+                                            Egyptian equities
+                                        </SelectItem>
+                                        <SelectItem value="Mutual funds">
+                                            Mutual funds
+                                        </SelectItem>
+                                        <SelectItem value="Fixed income">
+                                            Fixed income
+                                        </SelectItem>
+                                        <SelectItem value="Other">
+                                            Other
+                                        </SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="asset-quantity">
+                                Quantity
+                            </FieldLabel>
+                            <Input
+                                id="asset-quantity"
+                                type="number"
+                                step="any"
+                                value={form.quantity}
+                                onChange={(e) =>
+                                    update('quantity', e.target.value)
+                                }
+                                placeholder="Optional"
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="asset-currency">
+                                Currency
+                            </FieldLabel>
+                            <Input
+                                id="asset-currency"
+                                value={form.currency}
+                                onChange={(e) =>
+                                    update('currency', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="asset-current-value">
+                                Current value (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="asset-current-value"
+                                type="number"
+                                step="0.01"
+                                required
+                                value={form.current_value_egp}
+                                onChange={(e) =>
+                                    update('current_value_egp', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="asset-cost-basis">
+                                Cost basis (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="asset-cost-basis"
+                                type="number"
+                                step="0.01"
+                                value={form.cost_basis_egp}
+                                onChange={(e) =>
+                                    update('cost_basis_egp', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="asset-unit-price">
+                                Unit price (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="asset-unit-price"
+                                type="number"
+                                step="0.01"
+                                value={form.unit_price_egp}
+                                onChange={(e) =>
+                                    update('unit_price_egp', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="asset-liquidity">
+                                Liquidity
+                            </FieldLabel>
+                            <Select
+                                value={form.liquidity}
+                                onValueChange={(value) =>
+                                    update('liquidity', String(value ?? ''))
+                                }
+                            >
+                                <SelectTrigger
+                                    id="asset-liquidity"
+                                    className="w-full"
+                                >
+                                    <SelectValue placeholder="Select liquidity" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectGroup>
+                                        <SelectItem value="immediate">
+                                            Immediate
+                                        </SelectItem>
+                                        <SelectItem value="within_3_days">
+                                            Within 3 days
+                                        </SelectItem>
+                                        <SelectItem value="longer_term">
+                                            Longer term
+                                        </SelectItem>
+                                        <SelectItem value="illiquid">
+                                            Illiquid
+                                        </SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                        <Field className="sm:col-span-2">
+                            <FieldLabel htmlFor="asset-account">
+                                Account / location
+                            </FieldLabel>
+                            <Input
+                                id="asset-account"
+                                value={form.account_name}
+                                onChange={(e) =>
+                                    update('account_name', e.target.value)
+                                }
+                                placeholder="e.g. Brokerage, bank, physical"
+                            />
+                        </Field>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Checkbox
                                 checked={form.is_liquid}
                                 onCheckedChange={(checked) =>
@@ -329,27 +423,34 @@ export default function Assets({
                     title={`Assign ${allocationAsset.name}`}
                     onClose={() => setAllocationAsset(null)}
                 >
-                    <form onSubmit={saveAllocations} className="space-y-4">
-                        <p className="text-sm leading-6 text-[#738094]">
+                    <form
+                        onSubmit={saveAllocations}
+                        className="flex flex-col gap-4"
+                    >
+                        <p className="text-sm leading-6 text-muted-foreground">
                             Split this asset across buckets. The total cannot
                             exceed {formatEGP(allocationAsset.currentValue)}.
                         </p>
                         {buckets.map((bucket) => (
-                            <Field
-                                key={bucket.id}
-                                label={`${bucket.name} (EGP)`}
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={allocations[bucket.id] ?? ''}
-                                onChange={(event) =>
-                                    setAllocations((current) => ({
-                                        ...current,
-                                        [bucket.id]: event.target.value,
-                                    }))
-                                }
-                                placeholder="0"
-                            />
+                            <Field key={bucket.id}>
+                                <FieldLabel htmlFor={`allocation-${bucket.id}`}>
+                                    {bucket.name} (EGP)
+                                </FieldLabel>
+                                <Input
+                                    id={`allocation-${bucket.id}`}
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={allocations[bucket.id] ?? ''}
+                                    onChange={(event) =>
+                                        setAllocations((current) => ({
+                                            ...current,
+                                            [bucket.id]: event.target.value,
+                                        }))
+                                    }
+                                    placeholder="0"
+                                />
+                            </Field>
                         ))}
                         <div className="flex justify-end gap-2">
                             <Button

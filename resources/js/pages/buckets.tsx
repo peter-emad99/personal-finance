@@ -8,7 +8,8 @@ import {
     PageHeader,
     Progress,
 } from '@/components/app-shell';
-import { Field, FormModal } from '@/components/form';
+import { FormModal } from '@/components/form';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { formatEGP } from '@/types/finance';
 
@@ -70,20 +71,20 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                                             backgroundColor: bucket.color,
                                         }}
                                     />
-                                    <h2 className="text-base font-semibold text-[#273246]">
+                                    <h2 className="text-base font-semibold text-foreground">
                                         {bucket.name}
                                     </h2>
-                                    <p className="mt-1 text-xs text-[#8993a3]">
+                                    <p className="mt-1 text-xs text-muted-foreground">
                                         {bucket.goalName ??
                                             bucket.purpose ??
                                             'Flexible allocation'}
                                     </p>
                                 </div>
-                                <Badge className="rounded-full border-0 bg-[#f8f9fb] px-2.5 py-1 text-[10px] font-semibold text-[#8993a3]">
+                                <Badge className="rounded-full border-0 bg-muted px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
                                     {bucket.assetCount} assets
                                 </Badge>
                             </div>
-                            <p className="mt-6 text-2xl font-semibold text-[#273246]">
+                            <p className="mt-6 text-2xl font-semibold text-foreground">
                                 {formatEGP(bucket.currentAmount)}
                             </p>
                             {bucket.targetAmount > 0 && (
@@ -98,7 +99,7 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                                             color={bucket.color}
                                         />
                                     </div>
-                                    <div className="mt-2 flex justify-between text-xs text-[#8993a3]">
+                                    <div className="mt-2 flex justify-between text-xs text-muted-foreground">
                                         <span>
                                             {Math.round(
                                                 (bucket.currentAmount /
@@ -116,7 +117,7 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                             )}
                             <a
                                 href="/assets"
-                                className="mt-5 inline-block text-xs font-semibold text-[#6878d5]"
+                                className="mt-5 inline-block text-xs font-semibold text-primary"
                             >
                                 Assign assets →
                             </a>
@@ -125,7 +126,7 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                 ))}
                 {!buckets.length && (
                     <Card className="sm:col-span-2 xl:col-span-3">
-                        <div className="p-10 text-center text-sm text-[#8993a3]">
+                        <div className="p-10 text-center text-sm text-muted-foreground">
                             Create your first bucket to separate goals from
                             long-term wealth.
                         </div>
@@ -137,39 +138,59 @@ export default function Buckets({ buckets }: { buckets: Bucket[] }) {
                     title="Create a purpose bucket"
                     onClose={() => setOpen(false)}
                 >
-                    <form onSubmit={submit} className="space-y-4">
-                        <Field
-                            label="Bucket name"
-                            required
-                            value={form.name}
-                            onChange={(e) => update('name', e.target.value)}
-                            placeholder="e.g. Opportunity Fund"
-                        />
-                        <Field
-                            label="Purpose"
-                            value={form.purpose}
-                            onChange={(e) => update('purpose', e.target.value)}
-                            placeholder="What is this money for?"
-                        />
-                        <Field
-                            label="Target amount (EGP)"
-                            type="number"
-                            value={form.target_amount_egp}
-                            onChange={(e) =>
-                                update('target_amount_egp', e.target.value)
-                            }
-                        />
-                        <label className="flex items-center gap-3 text-xs font-semibold text-[#58657a]">
-                            Color{' '}
+                    <form onSubmit={submit} className="flex flex-col gap-4">
+                        <Field>
+                            <FieldLabel htmlFor="bucket-name">
+                                Bucket name
+                            </FieldLabel>
                             <Input
+                                id="bucket-name"
+                                required
+                                value={form.name}
+                                onChange={(e) => update('name', e.target.value)}
+                                placeholder="e.g. Opportunity Fund"
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="bucket-purpose">
+                                Purpose
+                            </FieldLabel>
+                            <Input
+                                id="bucket-purpose"
+                                value={form.purpose}
+                                onChange={(e) =>
+                                    update('purpose', e.target.value)
+                                }
+                                placeholder="What is this money for?"
+                            />
+                        </Field>
+                        <Field>
+                            <FieldLabel htmlFor="bucket-target">
+                                Target amount (EGP)
+                            </FieldLabel>
+                            <Input
+                                id="bucket-target"
+                                type="number"
+                                value={form.target_amount_egp}
+                                onChange={(e) =>
+                                    update('target_amount_egp', e.target.value)
+                                }
+                            />
+                        </Field>
+                        <Field orientation="horizontal">
+                            <FieldLabel htmlFor="bucket-color">
+                                Color
+                            </FieldLabel>
+                            <Input
+                                id="bucket-color"
                                 type="color"
                                 value={form.color}
                                 onChange={(e) =>
                                     update('color', e.target.value)
                                 }
-                                className="h-9 w-14 rounded-lg border border-[#dfe3ea] bg-white p-1"
+                                className="w-14"
                             />
-                        </label>
+                        </Field>
                         <div className="flex justify-end gap-2">
                             <Button
                                 variant="ghost"

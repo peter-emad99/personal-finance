@@ -672,113 +672,169 @@ export default function Buckets({
                                         key={asset.id}
                                         data-invalid={invalid}
                                     >
-                                        <FieldLabel
-                                            htmlFor={`bucket-asset-${asset.id}`}
-                                        >
-                                            <span className="flex items-center gap-2">
-                                                {asset.name}
-                                                <Button
-                                                    type="button"
-                                                    variant="link"
-                                                    size="sm"
-                                                    className="h-auto p-0"
-                                                    onClick={() =>
-                                                        setDetailAsset(asset)
-                                                    }
-                                                >
-                                                    View asset details
-                                                </Button>
-                                            </span>
-                                            <span className="font-normal text-muted-foreground">
-                                                {asset.type} ·{' '}
-                                                {formatEGP(asset.currentValue)}{' '}
-                                                total value
-                                            </span>
-                                        </FieldLabel>
-                                        <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-                                            <p>
-                                                <span className="font-medium text-foreground">
-                                                    {formatEGP(existing)}
-                                                </span>{' '}
-                                                assigned here
-                                            </p>
-                                            <p>
-                                                <span className="font-medium text-foreground">
+                                        <Card size="sm" className="w-full">
+                                            <CardHeader className="border-b">
+                                                <CardTitle>
+                                                    {asset.name}
+                                                </CardTitle>
+                                                <CardDescription>
+                                                    {asset.type} ·{' '}
                                                     {formatEGP(
-                                                        alreadyElsewhere,
-                                                    )}
-                                                </span>{' '}
-                                                assigned elsewhere
-                                            </p>
-                                            <p>
-                                                <span className="font-medium text-foreground">
-                                                    {formatEGP(unassigned)}
-                                                </span>{' '}
-                                                not assigned
-                                            </p>
-                                        </div>
-                                        {otherAllocations.length > 0 && (
-                                            <div className="flex flex-wrap gap-2">
-                                                {otherAllocations.map(
-                                                    (item) => (
-                                                        <Button
-                                                            key={item.bucketId}
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => {
-                                                                setFundingBucket(
-                                                                    null,
-                                                                );
-                                                                requestAnimationFrame(
-                                                                    () =>
-                                                                        document
-                                                                            .getElementById(
-                                                                                `bucket-${item.bucketId}`,
-                                                                            )
-                                                                            ?.scrollIntoView(
-                                                                                {
-                                                                                    behavior:
-                                                                                        'smooth',
-                                                                                    block: 'center',
-                                                                                },
-                                                                            ),
-                                                                );
-                                                            }}
-                                                        >
-                                                            {item.bucketName} ·{' '}
-                                                            {formatEGP(
-                                                                item.amount,
+                                                        asset.currentValue,
+                                                    )}{' '}
+                                                    total value
+                                                </CardDescription>
+                                                <CardAction>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() =>
+                                                            setDetailAsset(
+                                                                asset,
+                                                            )
+                                                        }
+                                                    >
+                                                        View details
+                                                    </Button>
+                                                </CardAction>
+                                            </CardHeader>
+                                            <CardContent className="flex flex-col gap-4">
+                                                <div className="grid gap-3 sm:grid-cols-3">
+                                                    <Card size="sm">
+                                                        <CardContent className="flex flex-col gap-1">
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Reserved here
+                                                            </span>
+                                                            <span className="font-medium text-foreground">
+                                                                {formatEGP(
+                                                                    existing,
+                                                                )}
+                                                            </span>
+                                                        </CardContent>
+                                                    </Card>
+                                                    <Card size="sm">
+                                                        <CardContent className="flex flex-col gap-1">
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Reserved
+                                                                elsewhere
+                                                            </span>
+                                                            <span className="font-medium text-foreground">
+                                                                {formatEGP(
+                                                                    alreadyElsewhere,
+                                                                )}
+                                                            </span>
+                                                        </CardContent>
+                                                    </Card>
+                                                    <Card size="sm">
+                                                        <CardContent className="flex flex-col gap-1">
+                                                            <span className="text-xs text-muted-foreground">
+                                                                Available to
+                                                                assign
+                                                            </span>
+                                                            <span className="font-medium text-foreground">
+                                                                {formatEGP(
+                                                                    unassigned,
+                                                                )}
+                                                            </span>
+                                                        </CardContent>
+                                                    </Card>
+                                                </div>
+                                                {otherAllocations.length >
+                                                    0 && (
+                                                    <div className="flex flex-col gap-2">
+                                                        <p className="text-sm font-medium">
+                                                            Also supporting
+                                                        </p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {otherAllocations.map(
+                                                                (item) => (
+                                                                    <Button
+                                                                        key={
+                                                                            item.bucketId
+                                                                        }
+                                                                        type="button"
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        onClick={() => {
+                                                                            setFundingBucket(
+                                                                                null,
+                                                                            );
+                                                                            requestAnimationFrame(
+                                                                                () =>
+                                                                                    document
+                                                                                        .getElementById(
+                                                                                            `bucket-${item.bucketId}`,
+                                                                                        )
+                                                                                        ?.scrollIntoView(
+                                                                                            {
+                                                                                                behavior:
+                                                                                                    'smooth',
+                                                                                                block: 'center',
+                                                                                            },
+                                                                                        ),
+                                                                            );
+                                                                        }}
+                                                                    >
+                                                                        {
+                                                                            item.bucketName
+                                                                        }{' '}
+                                                                        ·{' '}
+                                                                        {formatEGP(
+                                                                            item.amount,
+                                                                        )}
+                                                                    </Button>
+                                                                ),
                                                             )}
-                                                        </Button>
-                                                    ),
+                                                        </div>
+                                                    </div>
                                                 )}
-                                            </div>
-                                        )}
-                                        <Input
-                                            id={`bucket-asset-${asset.id}`}
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={allocations[asset.id] ?? ''}
-                                            onChange={(event) =>
-                                                setAllocations((current) => ({
-                                                    ...current,
-                                                    [asset.id]:
-                                                        event.target.value,
-                                                }))
-                                            }
-                                            placeholder="0"
-                                            aria-invalid={invalid}
-                                        />
-                                        {invalid && (
-                                            <FieldDescription className="text-destructive">
-                                                This asset has only{' '}
-                                                {formatEGP(available)} available
-                                                after its other purpose
-                                                assignments.
-                                            </FieldDescription>
-                                        )}
+                                                <Field>
+                                                    <FieldLabel
+                                                        htmlFor={`bucket-asset-${asset.id}`}
+                                                    >
+                                                        Amount to reserve for{' '}
+                                                        {fundingBucket.name}
+                                                    </FieldLabel>
+                                                    <Input
+                                                        id={`bucket-asset-${asset.id}`}
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={
+                                                            allocations[
+                                                                asset.id
+                                                            ] ?? ''
+                                                        }
+                                                        onChange={(event) =>
+                                                            setAllocations(
+                                                                (current) => ({
+                                                                    ...current,
+                                                                    [asset.id]:
+                                                                        event
+                                                                            .target
+                                                                            .value,
+                                                                }),
+                                                            )
+                                                        }
+                                                        placeholder="0"
+                                                        aria-invalid={invalid}
+                                                    />
+                                                    <FieldDescription>
+                                                        Up to{' '}
+                                                        {formatEGP(available)}{' '}
+                                                        can be reserved from
+                                                        this asset.
+                                                    </FieldDescription>
+                                                    {invalid && (
+                                                        <FieldDescription className="text-destructive">
+                                                            Reduce this amount
+                                                            before saving.
+                                                        </FieldDescription>
+                                                    )}
+                                                </Field>
+                                            </CardContent>
+                                        </Card>
                                     </Field>
                                 );
                             })}

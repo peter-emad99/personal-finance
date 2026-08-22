@@ -14,6 +14,11 @@ class CashFlow extends Model
 
     protected function casts(): array
     {
-        return ['amount_egp' => 'decimal:2', 'occurred_on' => 'date'];
+        return [
+            'amount' => 'decimal:2',
+            'amount_egp' => 'decimal:2',
+            'exchange_rate' => 'decimal:8',
+            'occurred_on' => 'date',
+        ];
     }
 }

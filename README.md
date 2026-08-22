@@ -60,6 +60,29 @@ With Herd, open the project through its local site. For a temporary server:
 php artisan serve
 ```
 
+## Guided personal-finance setup order
+
+Use this checklist in order. Complete one step, verify the dashboard, then move
+to the next step. Do not rely on the seeded demo figures for decisions.
+
+- [x] 1. Configure the private local owner and environment in `.env`.
+- [ ] 2. Confirm the financial policy: base currency, emergency reserve, liquidity rules, allocation targets, and purchase guardrails.
+- [ ] 3. Add real accounts: banks, cash wallets, brokerages, cards, and investment accounts.
+- [ ] 4. Add transaction categories for income, expenses, transfers, investments, fees, taxes, and debt payments.
+- [ ] 5. Replace or archive demo assets, then add real assets with value, cost basis, currency, liquidity, account, and bucket allocations.
+- [ ] 6. Add liabilities with current balance, interest rate, payment, due day, and payoff date.
+- [ ] 7. Configure purpose buckets and goals, including target amounts, priorities, deadlines, and monthly contributions.
+- [ ] 8. Add recurring commitments such as rent, utilities, insurance, subscriptions, and annual obligations.
+- [ ] 9. Import transaction history through the pending-row review workflow; accept only verified rows.
+- [ ] 10. Add dated asset valuations, liability histories, and FX rates for historical reporting.
+- [ ] 11. Reconcile the month, derive the monthly review, and close it only after checking the source data.
+- [ ] 12. Create and verify encrypted backups, then run regular integrity checks.
+- [ ] 13. Connect the local MCP client using `.mcp.example.json` and keep the server local-only.
+
+The guided setup will request data in the same order. Sensitive credentials belong
+only in `.env`; never put passwords, bank credentials, or private account numbers
+in this document or in MCP notes.
+
 Session cookies default to `Secure` when `APP_ENV=production` and remain
 usable over local HTTP in `local` or `testing`. Leave `SESSION_SECURE_COOKIE`
 blank to use that environment-aware default; set it explicitly to `true` for

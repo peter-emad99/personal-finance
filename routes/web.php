@@ -39,6 +39,7 @@ Route::put('/password', [PasswordController::class, 'update'])->middleware(['aut
 
 Route::middleware('auth')->group(function (): void {
     Route::get('/', DashboardController::class)->name('dashboard');
+    Route::get('/learn', fn () => Inertia\Inertia::render('learn'))->name('learn.index');
     Route::get('/assets', [AssetController::class, 'index'])->name('assets.index');
     Route::post('/assets', [AssetController::class, 'store'])->name('assets.store');
     Route::put('/assets/{asset}', [AssetController::class, 'update'])->name('assets.update');
@@ -50,6 +51,7 @@ Route::middleware('auth')->group(function (): void {
     Route::put('/buckets/{bucket}', [BucketController::class, 'update'])->name('buckets.update');
     Route::delete('/buckets/{bucket}', [BucketController::class, 'destroy'])->name('buckets.destroy');
     Route::post('/buckets/{bucket}/restore', [BucketController::class, 'restore'])->name('buckets.restore');
+    Route::put('/buckets/{bucket}/allocations', [BucketController::class, 'updateAllocations'])->name('buckets.allocations.update');
     Route::get('/goals', [GoalController::class, 'index'])->name('goals.index');
     Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
     Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');

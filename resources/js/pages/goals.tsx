@@ -105,7 +105,11 @@ export default function Goals({
                                                     {goal.name}
                                                 </h2>
                                                 <Badge
-                                                    className={`rounded-full border-0 px-2 py-1 text-[10px] font-bold ${goal.onTrack ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'}`}
+                                                    variant={
+                                                        goal.onTrack
+                                                            ? 'secondary'
+                                                            : 'outline'
+                                                    }
                                                 >
                                                     {goal.onTrack
                                                         ? 'ON TRACK'
@@ -192,9 +196,22 @@ export default function Goals({
                                         </div>
                                         <div className="rounded-xl bg-muted p-3">
                                             <p className="text-muted-foreground">
-                                                Funding sources
+                                                Planned / month
                                             </p>
                                             <p className="mt-1 font-semibold text-muted-foreground">
+                                                {formatCompactEGP(
+                                                    goal.plannedMonthlyContribution ??
+                                                        goal.requiredMonthlyContribution,
+                                                )}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 rounded-xl border p-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <p className="text-xs font-medium text-muted-foreground">
+                                                Backed by real assets
+                                            </p>
+                                            <span className="text-[11px] text-muted-foreground">
                                                 {buckets
                                                     .filter(
                                                         (bucket) =>
@@ -204,12 +221,46 @@ export default function Goals({
                                                     .map(
                                                         (bucket) => bucket.name,
                                                     )
-                                                    .join(', ') || 'No bucket'}
-                                            </p>
+                                                    .join(', ') ||
+                                                    'Goal bucket'}
+                                            </span>
+                                        </div>
+                                        <div className="mt-3 flex flex-col gap-2">
+                                            {(goal.fundingSources ?? []).map(
+                                                (source) => (
+                                                    <div
+                                                        key={source.assetId}
+                                                        className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2 text-xs"
+                                                    >
+                                                        <span className="min-w-0 truncate">
+                                                            {source.assetName}{' '}
+                                                            <span className="text-muted-foreground">
+                                                                ·{' '}
+                                                                {
+                                                                    source.assetType
+                                                                }
+                                                            </span>
+                                                        </span>
+                                                        <span className="shrink-0 font-semibold">
+                                                            {formatCompactEGP(
+                                                                source.amount,
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                ),
+                                            )}
+                                            {!(goal.fundingSources ?? [])
+                                                .length && (
+                                                <p className="text-xs text-muted-foreground">
+                                                    Link cash, gold, or an
+                                                    investment allocation to
+                                                    this goal's bucket.
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                     {!goal.onTrack && (
-                                        <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
+                                        <p className="mt-4 text-xs text-muted-foreground">
                                             This goal is off track by{' '}
                                             {formatCompactEGP(goal.gapPerMonth)}
                                             /month compared with current free

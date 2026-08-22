@@ -32,15 +32,22 @@ class AllocationController extends Controller
         ]);
     }
 
-    public function index(): Response
+    public function index(FinanceService $finance): Response
     {
         $month = now()->startOfMonth()->toDateString();
         $plan = AllocationPlan::with('items.bucket')->where('month', $month)->first();
+        $dashboard = $finance->dashboard();
 
         return Inertia::render('allocations', [
             'month' => $month,
             'plan' => $plan ? ['id' => $plan->id, 'income' => (float) $plan->planned_income_egp, 'expenses' => (float) $plan->planned_expenses_egp, 'items' => $plan->items->map(fn (AllocationPlanItem $item) => ['bucketId' => $item->bucket_id, 'bucketName' => $item->bucket->name, 'planned' => (float) $item->planned_amount_egp, 'actual' => (float) $item->actual_amount_egp])] : null,
             'buckets' => Bucket::orderBy('name')->get(['id', 'name']),
+            'defaults' => [
+                'income' => $dashboard['summary']['income'],
+                'expenses' => $dashboard['summary']['expenses'],
+                'items' => $dashboard['monthlyPlan']['allocationItems'],
+                'source' => $dashboard['monthlyPlan']['source'],
+            ],
         ]);
     }
 

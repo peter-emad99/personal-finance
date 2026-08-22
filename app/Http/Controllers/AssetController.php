@@ -17,7 +17,16 @@ class AssetController extends Controller
     {
         return Inertia::render('assets', [
             'assets' => Asset::withTrashed()->with('buckets')->orderByDesc('current_value_egp')->get()->map(fn (Asset $asset) => $finance->assetPayload($asset))->values(),
-            'buckets' => Bucket::orderBy('name')->get(['id', 'name']),
+            'buckets' => Bucket::with('goal:id,name')
+                ->orderBy('name')
+                ->get(['id', 'name', 'purpose', 'goal_id'])
+                ->map(fn (Bucket $bucket): array => [
+                    'id' => $bucket->id,
+                    'name' => $bucket->name,
+                    'purpose' => $bucket->purpose,
+                    'goalName' => $bucket->goal?->name,
+                ])
+                ->values(),
         ]);
     }
 

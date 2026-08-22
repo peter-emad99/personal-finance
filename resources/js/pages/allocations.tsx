@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 import {
     AppShell,
+    Badge,
     Button,
     Card,
     CardHeader,
@@ -25,26 +26,52 @@ type Plan = {
     expenses: number;
     items: Item[];
 } | null;
+type Defaults = {
+    income: number;
+    expenses: number;
+    source: 'saved_plan' | 'starter_template';
+    items: {
+        bucketId?: number | null;
+        label: string;
+        amount: number;
+        actual: number;
+    }[];
+};
 
 export default function Allocations({
     month,
     plan,
     buckets,
+    defaults,
 }: {
     month: string;
     plan: Plan;
     buckets: Bucket[];
+    defaults: Defaults;
 }) {
+    const suggestedByBucket = new Map(
+        defaults.items
+            .filter((item) => item.bucketId)
+            .map((item) => [item.bucketId, item]),
+    );
     const initialItems =
         plan?.items ??
-        buckets.map((bucket) => ({
-            bucketId: bucket.id,
-            bucketName: bucket.name,
-            planned: 0,
-            actual: 0,
-        }));
-    const [income, setIncome] = useState(String(plan?.income ?? 140000));
-    const [expenses, setExpenses] = useState(String(plan?.expenses ?? 15000));
+        buckets.map((bucket) => {
+            const suggestion = suggestedByBucket.get(bucket.id);
+
+            return {
+                bucketId: bucket.id,
+                bucketName: bucket.name,
+                planned: suggestion?.amount ?? 0,
+                actual: suggestion?.actual ?? 0,
+            };
+        });
+    const [income, setIncome] = useState(
+        String(plan?.income ?? defaults.income),
+    );
+    const [expenses, setExpenses] = useState(
+        String(plan?.expenses ?? defaults.expenses),
+    );
     const [items, setItems] = useState(initialItems);
     const plannedTotal = useMemo(
         () => items.reduce((sum, item) => sum + Number(item.planned || 0), 0),
@@ -77,10 +104,13 @@ export default function Allocations({
                     <Card>
                         <CardHeader
                             title="Monthly inputs"
-                            meta={new Date(month).toLocaleDateString('en-EG', {
-                                month: 'long',
-                                year: 'numeric',
-                            })}
+                            meta={`${new Date(month).toLocaleDateString(
+                                'en-EG',
+                                {
+                                    month: 'long',
+                                    year: 'numeric',
+                                },
+                            )} · ${plan ? 'Saved plan' : 'Starter template'}`}
                         />
                         <div className="flex flex-col gap-4 p-5">
                             <Field>
@@ -157,6 +187,14 @@ export default function Allocations({
                             title="Planned vs actual"
                             meta="Use buckets instead of vague savings categories"
                         />
+                        {!plan && (
+                            <div className="px-5">
+                                <Badge variant="secondary">
+                                    Suggested 20% safety · 30% goals · remainder
+                                    investing
+                                </Badge>
+                            </div>
+                        )}
                         <div className="divide-y divide-border">
                             {items.map((item, index) => (
                                 <div
@@ -170,7 +208,7 @@ export default function Allocations({
                                         <p className="mt-1 text-xs text-muted-foreground">
                                             {item.actual
                                                 ? `${Math.round((item.actual / Math.max(1, item.planned)) * 100)}% of plan moved`
-                                                : 'No actual entered yet'}
+                                                : `${available > 0 ? Math.round((item.planned / available) * 100) : 0}% of available cash · no actual entered yet`}
                                         </p>
                                     </div>
                                     <Field>

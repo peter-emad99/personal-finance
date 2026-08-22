@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Account;
 use App\Models\AllocationPlan;
+use App\Models\AllocationPlanItem;
 use App\Models\Asset;
 use App\Models\AssetValuation;
 use App\Models\AuditLog;
@@ -58,7 +59,7 @@ class FinanceService
         $monthStart = $asOf->copy()->startOfMonth();
         $assets = Asset::with(['buckets', 'valuations'])->orderByDesc('current_value_egp')->get();
         $buckets = Bucket::with('goal')->get();
-        $goals = Goal::with('buckets')->where('status', 'active')->orderBy('priority')->get();
+        $goals = Goal::with('buckets.assets')->where('status', 'active')->orderBy('priority')->get();
         $flows = CashFlow::whereBetween('occurred_on', [$monthStart, $asOf])->get();
         $ledgerSummary = $this->ledgerService->summarizeMonth($monthStart, true);
         $review = MonthlyFinancialReview::whereDate('month', $monthStart)->first();
@@ -205,6 +206,20 @@ class FinanceService
             'liabilities' => $liabilities->map(fn (Liability $liability) => $this->liabilityPayload($liability))->values(),
             'recurringCommitments' => $commitments->map(fn (RecurringCommitment $commitment) => $this->commitmentPayload($commitment))->values(),
             'monthlyReview' => $this->monthlyReviewPayload($review, $monthStart, $flows, $commitments, $ledgerSummary),
+            'monthlyPlan' => $this->monthlyPlanPayload(
+                $monthStart,
+                $flows,
+                $review,
+                $ledgerSummary,
+                $useManualReview,
+                $goalPayloads,
+                $buckets,
+                $income,
+                $expenses,
+                $emergency,
+                $monthlyBase,
+                (int) $policy['emergencyReserveMonths'],
+            ),
             'reconciliation' => $this->ledgerService->reconciliation($monthStart),
             'wealthMetrics' => $this->wealthMetrics($income, $expenses, $invested, $totalLiabilities, $netWorth),
             'wealthTrend' => $this->wealthTrend($asOf, $netWorth, max(0, $netWorth - $reservedForGoals)),
@@ -599,6 +614,26 @@ class FinanceService
         $monthlyFreeCashFlow = $review && $ledgerSummary['source'] !== 'confirmed_ledger'
             ? (float) $review->income_egp - $this->reviewExpenses($review)
             : (float) $ledgerSummary['income'] - round((float) $ledgerSummary['essentialExpenses'] + (float) $ledgerSummary['lifestyleExpenses'] + (float) $ledgerSummary['recurringCommitments'] + (float) $ledgerSummary['oneTimeExpenses'] + (float) $ledgerSummary['debtPayments'], 2);
+        $fundingSources = $goal->buckets
+            ->flatMap(fn (Bucket $bucket) => $bucket->assets->map(fn (Asset $asset): array => [
+                'assetId' => $asset->id,
+                'assetName' => $asset->name,
+                'assetType' => $asset->type,
+                'currency' => $asset->currency,
+                'bucketName' => $bucket->name,
+                'amount' => (float) data_get($asset, 'pivot.amount_egp', 0),
+            ]))
+            ->groupBy('assetId')
+            ->map(fn (Collection $items): array => [
+                'assetId' => $items->first()['assetId'],
+                'assetName' => $items->first()['assetName'],
+                'assetType' => $items->first()['assetType'],
+                'currency' => $items->first()['currency'],
+                'bucketNames' => $items->pluck('bucketName')->unique()->values()->all(),
+                'amount' => round((float) $items->sum('amount'), 2),
+            ])
+            ->sortByDesc('amount')
+            ->values();
 
         return [
             'id' => $goal->id,
@@ -616,6 +651,130 @@ class FinanceService
             'fundingPercent' => $goal->target_amount_egp > 0 ? round($allocated / (float) $goal->target_amount_egp * 100, 1) : 0,
             'onTrack' => $required <= $monthlyFreeCashFlow,
             'gapPerMonth' => max(0, round($required - $monthlyFreeCashFlow, 2)),
+            'fundingSources' => $fundingSources,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, CashFlow>  $flows
+     * @param  array<string, mixed>  $ledgerSummary
+     * @param  Collection<int, mixed>  $goals
+     * @param  Collection<int, Bucket>  $buckets
+     * @return array<string, mixed>
+     */
+    private function monthlyPlanPayload(
+        CarbonInterface $month,
+        Collection $flows,
+        ?MonthlyFinancialReview $review,
+        array $ledgerSummary,
+        bool $useManualReview,
+        Collection $goals,
+        Collection $buckets,
+        float $income,
+        float $expenses,
+        float $emergencyFund,
+        float $monthlyBase,
+        int $reserveMonths,
+    ): array {
+        $incomeSources = collect();
+        $expenseCategories = collect();
+
+        if ($ledgerSummary['source'] === 'confirmed_ledger') {
+            $transactions = $this->ledgerService->confirmedForMonth($month);
+            $incomeTypes = ['income', 'interest', 'dividend', 'withdrawal_reversal'];
+            $expenseTypes = ['expense', 'fee', 'tax', 'withdrawal', 'debt_payment', 'obligation'];
+            $incomeSources = $transactions
+                ->filter(fn (LedgerTransaction $transaction): bool => ! $transaction->isTransfer() && in_array($transaction->transaction_type, $incomeTypes, true))
+                ->groupBy(fn (LedgerTransaction $transaction): string => trim($transaction->description) ?: ($transaction->category?->name ?? 'Income'))
+                ->map(fn (Collection $items, string $label): array => [
+                    'label' => $label,
+                    'currency' => $items->pluck('currency')->unique()->count() === 1 ? (string) $items->first()->currency : 'MIXED',
+                    'nativeAmount' => round((float) $items->sum('amount'), 2),
+                    'amount' => round((float) $items->sum('amount_egp'), 2),
+                ])->sortByDesc('amount')->values();
+            $expenseCategories = $transactions
+                ->filter(fn (LedgerTransaction $transaction): bool => ! $transaction->isTransfer() && in_array($transaction->transaction_type, $expenseTypes, true))
+                ->groupBy(fn (LedgerTransaction $transaction): string => $transaction->category?->name ?? match ($transaction->transaction_type) {
+                    'debt_payment', 'obligation' => 'Debt & obligations',
+                    'fee' => 'Fees',
+                    'tax' => 'Taxes',
+                    default => 'Other expenses',
+                })
+                ->map(fn (Collection $items, string $label): array => [
+                    'label' => $label,
+                    'amount' => round((float) $items->sum('amount_egp'), 2),
+                ])->sortByDesc('amount')->values();
+        } elseif ($useManualReview && $review !== null) {
+            $incomeSources = collect([['label' => 'Monthly income', 'currency' => 'EGP', 'nativeAmount' => (float) $review->income_egp, 'amount' => (float) $review->income_egp]]);
+            $expenseCategories = collect([
+                ['label' => 'Essentials', 'amount' => (float) $review->essential_expenses_egp],
+                ['label' => 'Lifestyle', 'amount' => (float) $review->lifestyle_expenses_egp],
+                ['label' => 'Recurring commitments', 'amount' => (float) $review->recurring_commitments_egp],
+                ['label' => 'One-time expenses', 'amount' => (float) $review->one_time_expenses_egp],
+                ['label' => 'Debt payments', 'amount' => (float) $review->debt_payments_egp],
+            ])->filter(fn (array $item): bool => $item['amount'] > 0)->values();
+        } else {
+            $incomeSources = $flows->where('type', 'income')
+                ->groupBy(fn (CashFlow $flow): string => $flow->category.'|'.($flow->currency ?: 'EGP'))
+                ->map(function (Collection $items, string $key): array {
+                    [$label, $currency] = explode('|', $key, 2);
+
+                    return ['label' => $label, 'currency' => $currency, 'nativeAmount' => round((float) $items->sum(fn (CashFlow $flow): float => (float) ($flow->amount ?? $flow->amount_egp)), 2), 'amount' => round((float) $items->sum('amount_egp'), 2)];
+                })->sortByDesc('amount')->values();
+            $expenseCategories = $flows->whereIn('type', ['expense', 'obligation'])
+                ->groupBy('category')
+                ->map(fn (Collection $items, string $label): array => ['label' => $label, 'amount' => round((float) $items->sum('amount_egp'), 2)])
+                ->sortByDesc('amount')->values();
+        }
+
+        $freeCashFlow = round($income - $expenses, 2);
+        $emergencyTarget = round(max(0, $monthlyBase * $reserveMonths), 2);
+        $emergencyGap = round(max(0, $emergencyTarget - $emergencyFund), 2);
+        $savedPlan = AllocationPlan::with('items.bucket')->whereDate('month', $month->toDateString())->first();
+
+        if ($savedPlan !== null) {
+            $allocationItems = $savedPlan->items->map(fn (AllocationPlanItem $item): array => [
+                'bucketId' => $item->bucket_id,
+                'label' => $item->bucket->name,
+                'amount' => (float) $item->planned_amount_egp,
+                'actual' => (float) $item->actual_amount_egp,
+                'kind' => $item->bucket->goal_id ? 'goal' : (str_contains(strtolower($item->bucket->name), 'emergency') ? 'emergency' : 'investment'),
+            ])->filter(fn (array $item): bool => $item['amount'] > 0)->values();
+            $planSource = 'saved_plan';
+        } else {
+            $available = max(0, $freeCashFlow);
+            $emergencyContribution = min($emergencyGap, round($available * 0.2, 2));
+            $goalPool = min(
+                max(0, $available - $emergencyContribution),
+                round($available * 0.3, 2),
+                (float) $goals->sum(fn (array $goal): float => (float) ($goal['plannedMonthlyContribution'] ?? $goal['requiredMonthlyContribution'] ?? 0)),
+            );
+            $investmentPool = max(0, round($available - $emergencyContribution - $goalPool, 2));
+            $emergencyBucket = $buckets->first(fn (Bucket $bucket): bool => str_contains(strtolower($bucket->name), 'emergency'));
+            $goalBucket = $buckets->first(fn (Bucket $bucket): bool => $bucket->goal_id !== null);
+            $investmentBucket = $buckets->first(fn (Bucket $bucket): bool => $bucket->goal_id === null && ! str_contains(strtolower($bucket->name), 'emergency'));
+            $allocationItems = collect([
+                ['bucketId' => $emergencyBucket?->id, 'label' => $emergencyBucket?->name ?? 'Emergency fund', 'amount' => $emergencyContribution, 'actual' => 0, 'kind' => 'emergency'],
+                ['bucketId' => $goalBucket?->id, 'label' => $goalBucket?->name ?? 'Goals', 'amount' => $goalPool, 'actual' => 0, 'kind' => 'goal'],
+                ['bucketId' => $investmentBucket?->id, 'label' => $investmentBucket?->name ?? 'Long-term investments', 'amount' => $investmentPool, 'actual' => 0, 'kind' => 'investment'],
+            ])->filter(fn (array $item): bool => $item['amount'] > 0)->values();
+            $planSource = 'starter_template';
+        }
+
+        $plannedTotal = round((float) $allocationItems->sum('amount'), 2);
+
+        return [
+            'incomeSources' => $incomeSources,
+            'expenseCategories' => $expenseCategories,
+            'income' => round($income, 2),
+            'expenses' => round($expenses, 2),
+            'freeCashFlow' => $freeCashFlow,
+            'emergencyTarget' => $emergencyTarget,
+            'emergencyGap' => $emergencyGap,
+            'allocationItems' => $allocationItems,
+            'plannedTotal' => $plannedTotal,
+            'unallocated' => round(max(0, $freeCashFlow - $plannedTotal), 2),
+            'source' => $planSource,
         ];
     }
 

@@ -1,13 +1,33 @@
-import { useState } from 'react';
 import {
-    AppShell,
-    Badge,
-    Button,
+    ArrowDownRight,
+    ArrowRight,
+    CircleDollarSign,
+    Coins,
+    Flag,
+    GraduationCap,
+    Landmark,
+    Plus,
+    ReceiptText,
+    ShieldCheck,
+    Sparkles,
+    TrendingUp,
+    WalletCards,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+
+import { AppShell, Button, PageHeader, Progress } from '@/components/app-shell';
+import { Badge } from '@/components/ui/badge';
+import {
     Card,
+    CardAction,
+    CardContent,
+    CardDescription,
+    CardFooter,
     CardHeader,
-    PageHeader,
-    Progress,
-} from '@/components/app-shell';
+    CardTitle,
+} from '@/components/ui/card';
 import {
     Sheet,
     SheetContent,
@@ -15,854 +35,649 @@ import {
     SheetHeader,
     SheetTitle,
 } from '@/components/ui/sheet';
-import { formatCompactEGP, formatEGP } from '@/types/finance';
-import type { Bucket, Goal, Summary } from '@/types/finance';
+import { cn } from '@/lib/utils';
+import { formatCompactEGP, formatEGP, labelize } from '@/types/finance';
+import type { Asset, Goal, Summary } from '@/types/finance';
 
 type Allocation = { label: string; value: number; percent: number };
-type Liquidity = { label: string; value: number };
-type Commitment = {
-    id: number;
-    name: string;
-    monthlyAmount: number;
-    nextDueOn: string | null;
+type MonthlyPlan = {
+    incomeSources: {
+        label: string;
+        currency: string;
+        nativeAmount: number;
+        amount: number;
+    }[];
+    expenseCategories: { label: string; amount: number }[];
+    income: number;
+    expenses: number;
+    freeCashFlow: number;
+    emergencyTarget: number;
+    emergencyGap: number;
+    allocationItems: {
+        bucketId?: number | null;
+        label: string;
+        amount: number;
+        actual: number;
+        kind: 'emergency' | 'goal' | 'investment';
+    }[];
+    plannedTotal: number;
+    unallocated: number;
+    source: 'saved_plan' | 'starter_template';
+};
+type AttentionItem = {
+    key: string;
+    title: string;
+    reason: string;
+    actionUrl: string;
 };
 
-const colors = [
+const chartColors = [
     'var(--chart-1)',
-    'var(--chart-3)',
     'var(--chart-2)',
+    'var(--chart-3)',
     'var(--chart-4)',
     'var(--chart-5)',
-    'var(--ring)',
 ];
 
 export default function Dashboard({
     summary,
+    assets,
     assetAllocation,
     currencyExposure,
-    liquidity,
     goals,
-    buckets,
-    insights,
     asOf,
-    targetAllocation,
-    wealthMetrics,
+    monthlyPlan,
     wealthTrend,
-    recurringCommitments,
-    liabilities,
     dataFreshness,
-    attentionQueue,
-    decisionJournal,
-    allocationPolicy,
+    attentionQueue = [],
 }: {
     summary: Summary;
+    assets: Asset[];
     assetAllocation: Allocation[];
     currencyExposure: Allocation[];
-    liquidity: Liquidity[];
     goals: Goal[];
-    buckets: Bucket[];
-    insights: string[];
     asOf: string;
-    targetAllocation: Record<string, number>;
-    wealthMetrics: {
-        savingsRate: number;
-        investmentRate?: number;
-        monthlyWealthContribution: number;
-        debtToNetWorth: number;
-        committedIncomeRate: number;
-    };
-    wealthTrend: {
-        asOf: string;
-        netWorth: number;
-        investableNetWorth: number;
-    }[];
-    recurringCommitments: Commitment[];
-    liabilities: {
-        id: number;
-        name: string;
-        balance: number;
-        monthlyPayment: number;
-    }[];
+    monthlyPlan: MonthlyPlan;
+    wealthTrend: { asOf: string; netWorth: number }[];
     dataFreshness?: {
-        lastUpdated?: string | null;
         cashFlowSource?: string;
-        valuationFreshness?: {
-            status: string;
-            ageDays: number | null;
-            freshnessPeriodDays: number;
-        };
-        reviewStatus?: string;
+        lastUpdated?: string | null;
         demoDataWarning?: boolean;
-        backup?: { status: string; verifiedAt?: string | null };
     };
-    attentionQueue?: {
-        key: string;
-        title: string;
-        reason: string;
-        rule: string;
-        source: string;
-        actionUrl: string;
-    }[];
-    decisionJournal?: {
-        id: number;
-        decision: string;
-        chosenAction: string | null;
-        reviewDate: string | null;
-        status: string;
-    }[];
-    allocationPolicy?: {
-        label: string;
-        currentPercent: number;
-        targetPercent: number;
-        minPercent: number;
-        maxPercent: number;
-        tolerancePercent: number;
-        status: string;
-        rule: string;
-        source: string;
-    }[];
+    attentionQueue?: AttentionItem[];
 }) {
-    const [detail, setDetail] = useState<{
-        title: string;
-        description: string;
-        formula: string;
-        source: string;
-    } | null>(null);
-    const largestAsset = assetAllocation[0];
-    const largestCurrency = currencyExposure[0];
+    const [showNetWorthDetail, setShowNetWorthDetail] = useState(false);
+    const wealthGroups = useMemo(() => buildWealthGroups(assets), [assets]);
+    const emergencyTarget =
+        monthlyPlan?.emergencyTarget ??
+        summary.expenses * (summary.emergencyReserveMonths ?? 6);
+    const emergencyPercent =
+        emergencyTarget > 0
+            ? (summary.emergencyFund / emergencyTarget) * 100
+            : 0;
+    const hasPositiveSurplus = summary.freeCashFlow >= 0;
 
     return (
-        <AppShell title="Overview">
+        <AppShell title="Dashboard">
             <PageHeader
                 eyebrow={new Date(asOf).toLocaleDateString('en-EG', {
-                    weekday: 'long',
-                    day: 'numeric',
                     month: 'long',
                     year: 'numeric',
                 })}
-                title="Your financial picture"
-                description="A calm view of what you own, what your money is for, and the decisions that need attention."
+                title="Your money, one clear plan"
+                description="See what you own, how this month flows, and where every remaining pound is meant to go."
                 action={
-                    <div className="flex gap-2">
-                        <Button
-                            href="/export/context?format=markdown"
-                            variant="ghost"
-                        >
-                            Export context
+                    <div className="flex flex-wrap gap-2">
+                        <Button href="/learn" variant="ghost">
+                            <GraduationCap data-icon="inline-start" />
+                            Learn the system
                         </Button>
-                        <Button href="/assets">Update assets</Button>
+                        <Button href="/cash-flow" variant="ghost">
+                            <Plus data-icon="inline-start" />
+                            Add income or expense
+                        </Button>
+                        <Button href="/assets">
+                            <WalletCards data-icon="inline-start" />
+                            Update what you own
+                        </Button>
                     </div>
                 }
             />
-            <Card className="mb-4 border-dashed">
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 p-4 text-xs text-muted-foreground">
-                    <span className="font-semibold text-foreground">
-                        Data status
-                    </span>
-                    <span>
-                        Cash flow:{' '}
-                        {dataFreshness?.cashFlowSource?.replaceAll('_', ' ') ??
-                            'unknown'}
-                    </span>
-                    <span>
-                        Review: {dataFreshness?.reviewStatus ?? 'missing'}
-                    </span>
-                    <span>
-                        Valuation:{' '}
-                        {dataFreshness?.valuationFreshness?.status ?? 'unknown'}
-                        {dataFreshness?.valuationFreshness?.ageDays !== null &&
-                        dataFreshness?.valuationFreshness?.ageDays !== undefined
-                            ? ` (${dataFreshness.valuationFreshness.ageDays}d old)`
-                            : ''}
-                    </span>
-                    <span>
-                        Backup: {dataFreshness?.backup?.status ?? 'missing'}
-                    </span>
-                    {dataFreshness?.demoDataWarning && (
-                        <Badge variant="secondary">Demo data detected</Badge>
-                    )}
-                    <span className="ml-auto">
-                        Updated{' '}
-                        {dataFreshness?.lastUpdated
-                            ? new Date(
-                                  dataFreshness.lastUpdated,
-                              ).toLocaleString('en-EG')
-                            : 'not yet'}
-                    </span>
-                    <Button href="/monthly-review" size="sm">
-                        Review this month
-                    </Button>
-                </div>
-            </Card>
-            <div className="grid gap-4 xl:grid-cols-[1.65fr_1fr]">
-                <Card className="overflow-hidden border-0 bg-sidebar text-sidebar-foreground">
-                    <div className="relative p-6 sm:p-8">
-                        <div className="absolute -top-28 -right-20 h-72 w-72 rounded-full border-[32px] border-sidebar-primary/15" />
-                        <div className="absolute -right-4 -bottom-36 h-72 w-72 rounded-full border-[32px] border-sidebar-primary/10" />
-                        <div className="relative">
-                            <div className="flex items-center justify-between">
-                                <p className="text-xs font-semibold tracking-[0.16em] text-sidebar-foreground/70 uppercase">
-                                    Net worth
-                                </p>
-                                <Badge className="rounded-full border-0 bg-sidebar-primary/15 px-3 py-1 text-xs text-sidebar-primary">
-                                    As of {asOf}
-                                </Badge>
-                            </div>
-                            <button
-                                type="button"
-                                className="mt-4 text-left text-4xl font-semibold tracking-tight sm:text-5xl"
-                                onClick={() =>
-                                    setDetail({
-                                        title: 'Net worth',
-                                        description:
-                                            'Total assets minus active liabilities.',
-                                        formula: `${formatEGP(summary.totalAssets ?? 0)} − ${formatEGP(summary.liabilities ?? 0)} = ${formatEGP(summary.netWorth)}`,
-                                        source: 'assets and liabilities',
-                                    })
+
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="outline">
+                    {sourceLabel(dataFreshness?.cashFlowSource)}
+                </Badge>
+                {dataFreshness?.demoDataWarning && (
+                    <Badge variant="secondary">
+                        Demo data is still present
+                    </Badge>
+                )}
+                <span>
+                    Updated{' '}
+                    {dataFreshness?.lastUpdated
+                        ? new Date(dataFreshness.lastUpdated).toLocaleString(
+                              'en-EG',
+                          )
+                        : 'not yet'}
+                </span>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1.45fr_0.85fr]">
+                <Card className="bg-primary text-primary-foreground [--card-spacing:--spacing(6)]">
+                    <CardHeader>
+                        <CardTitle className="text-primary-foreground/70">
+                            Total net worth
+                        </CardTitle>
+                        <CardDescription className="text-primary-foreground/60">
+                            Everything you own, minus active liabilities
+                        </CardDescription>
+                        <CardAction>
+                            <Badge variant="secondary">As of {asOf}</Badge>
+                        </CardAction>
+                    </CardHeader>
+                    <CardContent>
+                        <button
+                            type="button"
+                            className="text-left text-4xl font-semibold tracking-tight sm:text-5xl"
+                            onClick={() => setShowNetWorthDetail(true)}
+                        >
+                            {formatEGP(summary.netWorth)}
+                        </button>
+                        <div className="mt-8 flex h-3 overflow-hidden rounded-full bg-primary-foreground/10">
+                            {wealthGroups.map((group, index) => (
+                                <span
+                                    key={group.label}
+                                    style={{
+                                        width: `${group.percent}%`,
+                                        backgroundColor:
+                                            chartColors[
+                                                index % chartColors.length
+                                            ],
+                                    }}
+                                />
+                            ))}
+                        </div>
+                        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            {wealthGroups.map((group, index) => (
+                                <div key={group.label}>
+                                    <div className="flex items-center gap-2 text-xs text-primary-foreground/60">
+                                        <span
+                                            className="size-2 rounded-full"
+                                            style={{
+                                                backgroundColor:
+                                                    chartColors[
+                                                        index %
+                                                            chartColors.length
+                                                    ],
+                                            }}
+                                        />
+                                        {group.label}
+                                    </div>
+                                    <p className="mt-1 text-sm font-semibold">
+                                        {formatCompactEGP(group.value)}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                    <CardFooter className="grid gap-4 border-primary-foreground/10 bg-primary-foreground/5 sm:grid-cols-3">
+                        <HeroMetric
+                            label="Total assets"
+                            value={formatCompactEGP(summary.totalAssets ?? 0)}
+                        />
+                        <HeroMetric
+                            label="Reserved for goals"
+                            value={formatCompactEGP(summary.reservedForGoals)}
+                        />
+                        <HeroMetric
+                            label="Liabilities"
+                            value={formatCompactEGP(summary.liabilities ?? 0)}
+                        />
+                    </CardFooter>
+                </Card>
+
+                <Card className="[--card-spacing:--spacing(6)]">
+                    <CardHeader>
+                        <CardTitle>This month's breathing room</CardTitle>
+                        <CardDescription>
+                            What remains after expenses and obligations
+                        </CardDescription>
+                        <CardAction>
+                            <Badge
+                                variant={
+                                    hasPositiveSurplus
+                                        ? 'secondary'
+                                        : 'destructive'
                                 }
                             >
-                                {formatEGP(summary.netWorth)}
-                            </button>
-                            <div className="mt-8 grid grid-cols-2 gap-5 border-t border-white/10 pt-5 sm:grid-cols-5">
-                                <Metric
-                                    label="Investable"
-                                    value={formatCompactEGP(
-                                        summary.investableNetWorth,
-                                    )}
-                                />
-                                <Metric
-                                    label="Available ≤3d"
-                                    value={formatCompactEGP(
-                                        summary.availableWithinThreeDays ??
-                                            summary.liquidAssets,
-                                    )}
-                                />
-                                <Metric
-                                    label="Reserved"
-                                    value={formatCompactEGP(
-                                        summary.reservedForGoals,
-                                    )}
-                                />
-                                <Metric
-                                    label="Liabilities"
-                                    value={formatCompactEGP(
-                                        summary.liabilities ?? 0,
-                                    )}
-                                />
-                                <Metric
-                                    label="Free cash flow"
-                                    value={formatCompactEGP(
-                                        summary.freeCashFlow,
-                                    )}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </Card>
-                <Card className="p-6">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                                Emergency fund
-                            </p>
-                            <p className="mt-3 text-3xl font-semibold text-foreground">
-                                {summary.emergencyCoverageMonths}{' '}
-                                <span className="text-base font-medium text-muted-foreground">
-                                    months
-                                </span>
-                            </p>
-                        </div>
-                        <Badge
-                            className={`rounded-full border-0 px-2.5 py-1 text-xs font-semibold ${summary.emergencyCoverageMonths >= (summary.emergencyReserveMonths ?? 6) ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'}`}
+                                {hasPositiveSurplus
+                                    ? 'Available'
+                                    : 'Over budget'}
+                            </Badge>
+                        </CardAction>
+                    </CardHeader>
+                    <CardContent>
+                        <p
+                            className={cn(
+                                'text-4xl font-semibold tracking-tight',
+                                !hasPositiveSurplus && 'text-destructive',
+                            )}
                         >
-                            {summary.emergencyCoverageMonths >=
-                            (summary.emergencyReserveMonths ?? 6)
-                                ? 'On baseline'
-                                : 'Needs attention'}
-                        </Badge>
-                    </div>
-                    <Progress
-                        value={
-                            (summary.emergencyCoverageMonths /
-                                Math.max(
-                                    1,
-                                    summary.emergencyReserveMonths ?? 6,
-                                )) *
-                            100
-                        }
-                        color="var(--chart-2)"
-                    />
-                    <div className="mt-3 flex justify-between text-xs text-muted-foreground">
-                        <span>{formatEGP(summary.emergencyFund)} saved</span>
-                        <span>
-                            {summary.emergencyReserveMonths ?? 6} months target
-                        </span>
-                    </div>
-                    <div className="mt-7 grid grid-cols-2 gap-3">
-                        <MiniMetric
-                            label="Monthly income"
-                            value={formatCompactEGP(summary.income)}
-                            positive
-                        />
-                        <MiniMetric
-                            label="Monthly expenses"
-                            value={formatCompactEGP(summary.expenses)}
-                        />
-                    </div>
+                            {formatEGP(summary.freeCashFlow)}
+                        </p>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            {summary.income > 0
+                                ? `${Math.max(0, summary.savingsRate ?? (summary.freeCashFlow / summary.income) * 100).toFixed(1)}% of income is still yours to direct.`
+                                : 'Add an income source to start planning this month.'}
+                        </p>
+                        <div className="mt-7 grid grid-cols-2 gap-3">
+                            <SmallMetric
+                                icon={CircleDollarSign}
+                                label="Income"
+                                value={formatCompactEGP(summary.income)}
+                            />
+                            <SmallMetric
+                                icon={ReceiptText}
+                                label="Expenses"
+                                value={formatCompactEGP(summary.expenses)}
+                            />
+                        </div>
+                    </CardContent>
+                    <CardFooter>
+                        <Button href="/monthly-review" variant="ghost">
+                            Review the month
+                            <ArrowRight data-icon="inline-end" />
+                        </Button>
+                    </CardFooter>
                 </Card>
             </div>
-            <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+
+            <section className="mt-6">
+                <SectionHeading
+                    eyebrow="Monthly money flow"
+                    title="From income to a deliberate surplus"
+                    description="Multiple sources and currencies are converted to EGP once, then expenses and allocations use the same base."
+                />
                 <Card>
-                    <CardHeader
-                        title="Wealth rhythm"
-                        meta="The signals that matter more than daily spending"
-                        action={
-                            <Button href="/monthly-review" variant="ghost">
-                                Open monthly review
-                            </Button>
-                        }
-                    />
-                    <div className="grid gap-3 p-5 sm:grid-cols-5">
-                        <MiniMetric
-                            label="Invested this month"
-                            value={formatCompactEGP(
-                                wealthMetrics.monthlyWealthContribution,
+                    <CardContent className="grid gap-3 pt-1 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] lg:items-stretch">
+                        <FlowStep
+                            icon={CircleDollarSign}
+                            label="Income"
+                            value={monthlyPlan?.income ?? summary.income}
+                            items={(monthlyPlan?.incomeSources ?? []).map(
+                                (source) => ({
+                                    label: source.label,
+                                    value: formatSourceAmount(source),
+                                }),
                             )}
-                            positive
+                            empty="Add salary, freelance work, or another source"
                         />
-                        <MiniMetric
-                            label="Savings rate"
-                            value={`${wealthMetrics.savingsRate}%`}
-                            positive
+                        <FlowArrow />
+                        <FlowStep
+                            icon={ReceiptText}
+                            label="Monthly expenses"
+                            value={monthlyPlan?.expenses ?? summary.expenses}
+                            items={(monthlyPlan?.expenseCategories ?? []).map(
+                                (expense) => ({
+                                    label: expense.label,
+                                    value: formatCompactEGP(expense.amount),
+                                }),
+                            )}
+                            empty="Add your recurring and flexible expenses"
                         />
-                        <MiniMetric
-                            label="Investment rate"
-                            value={`${wealthMetrics.investmentRate ?? summary.investmentRate ?? 0}%`}
+                        <FlowArrow />
+                        <FlowStep
+                            icon={ShieldCheck}
+                            label="Emergency contribution"
+                            value={
+                                monthlyPlan?.allocationItems.find(
+                                    (item) => item.kind === 'emergency',
+                                )?.amount ?? 0
+                            }
+                            items={[
+                                {
+                                    label: 'Remaining gap',
+                                    value: formatCompactEGP(
+                                        monthlyPlan?.emergencyGap ?? 0,
+                                    ),
+                                },
+                            ]}
+                            empty="Your reserve is already covered"
                         />
-                        <MiniMetric
-                            label="Income committed"
-                            value={`${wealthMetrics.committedIncomeRate}%`}
+                        <FlowArrow />
+                        <FlowStep
+                            icon={TrendingUp}
+                            label="Ready to allocate"
+                            value={Math.max(
+                                0,
+                                (monthlyPlan?.freeCashFlow ??
+                                    summary.freeCashFlow) -
+                                    (monthlyPlan?.allocationItems.find(
+                                        (item) => item.kind === 'emergency',
+                                    )?.amount ?? 0),
+                            )}
+                            items={[
+                                {
+                                    label: 'Goals + investments',
+                                    value: 'Give every pound a job',
+                                },
+                            ]}
+                            empty="Income is fully used this month"
                         />
-                        <MiniMetric
-                            label="Debt / net worth"
-                            value={`${wealthMetrics.debtToNetWorth}%`}
-                        />
-                    </div>
-                    <div className="border-t border-border px-5 py-4">
-                        <div className="flex items-end gap-2">
-                            {wealthTrend.slice(-8).map((point) => {
-                                const max = Math.max(
-                                    ...wealthTrend.map((item) => item.netWorth),
-                                    1,
-                                );
+                    </CardContent>
+                </Card>
+            </section>
+
+            <div className="mt-6 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Emergency fund</CardTitle>
+                        <CardDescription>
+                            Your first protection before longer-term investing
+                        </CardDescription>
+                        <CardAction>
+                            <Badge
+                                variant={
+                                    emergencyPercent >= 100
+                                        ? 'secondary'
+                                        : 'outline'
+                                }
+                            >
+                                {summary.emergencyCoverageMonths} of{' '}
+                                {summary.emergencyReserveMonths ?? 6} months
+                            </Badge>
+                        </CardAction>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-end justify-between gap-4">
+                            <div>
+                                <p className="text-3xl font-semibold">
+                                    {formatEGP(summary.emergencyFund)}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    of {formatCompactEGP(emergencyTarget)}{' '}
+                                    target
+                                </p>
+                            </div>
+                            <ShieldCheck className="size-9 text-muted-foreground" />
+                        </div>
+                        <div className="mt-5">
+                            <Progress value={emergencyPercent} />
+                        </div>
+                        <div className="mt-3 flex justify-between gap-3 text-xs text-muted-foreground">
+                            <span>
+                                {Math.min(100, emergencyPercent).toFixed(0)}%
+                                covered
+                            </span>
+                            <span>
+                                {formatCompactEGP(
+                                    monthlyPlan?.emergencyGap ?? 0,
+                                )}{' '}
+                                gap
+                            </span>
+                        </div>
+                    </CardContent>
+                    <CardFooter>
+                        <Button href="/buckets" variant="ghost">
+                            Manage emergency reserve
+                            <ArrowRight data-icon="inline-end" />
+                        </Button>
+                    </CardFooter>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Where the surplus goes</CardTitle>
+                        <CardDescription>
+                            {monthlyPlan?.source === 'saved_plan'
+                                ? 'Your saved plan for this month'
+                                : 'A starter split until you save your own plan'}
+                        </CardDescription>
+                        <CardAction>
+                            <Badge variant="outline">
+                                {monthlyPlan?.source === 'saved_plan'
+                                    ? 'Saved plan'
+                                    : 'Flexible template'}
+                            </Badge>
+                        </CardAction>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-5">
+                        {(monthlyPlan?.allocationItems ?? []).map(
+                            (item, index) => {
+                                const percent =
+                                    monthlyPlan.plannedTotal > 0
+                                        ? (item.amount /
+                                              monthlyPlan.plannedTotal) *
+                                          100
+                                        : 0;
 
                                 return (
-                                    <div
-                                        key={point.asOf}
-                                        className="flex flex-1 flex-col items-center gap-1"
-                                    >
-                                        <div
-                                            className="w-full rounded-t-md bg-primary"
-                                            style={{
-                                                height: `${Math.max(8, (point.netWorth / max) * 72)}px`,
-                                            }}
-                                            title={`${point.asOf}: ${formatEGP(point.netWorth)}`}
+                                    <div key={`${item.kind}-${item.label}`}>
+                                        <div className="mb-2 flex items-start justify-between gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <span
+                                                    className="size-2.5 rounded-full"
+                                                    style={{
+                                                        backgroundColor:
+                                                            chartColors[
+                                                                index %
+                                                                    chartColors.length
+                                                            ],
+                                                    }}
+                                                />
+                                                <div>
+                                                    <p className="text-sm font-medium">
+                                                        {item.label}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {allocationKindLabel(
+                                                            item.kind,
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-semibold">
+                                                    {formatCompactEGP(
+                                                        item.amount,
+                                                    )}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {percent.toFixed(0)}%
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Progress
+                                            value={percent}
+                                            color={
+                                                chartColors[
+                                                    index % chartColors.length
+                                                ]
+                                            }
                                         />
-                                        <span className="text-[9px] text-muted-foreground">
-                                            {point.asOf.slice(5)}
-                                        </span>
                                     </div>
                                 );
-                            })}
-                        </div>
-                    </div>
-                </Card>
-                <Card>
-                    <CardHeader
-                        title="Commitments and debt"
-                        meta="What is already spoken for"
-                        action={
-                            <Button href="/commitments" variant="ghost">
-                                Manage
-                            </Button>
-                        }
-                    />
-                    <div className="flex flex-col gap-3 p-5">
-                        <div className="flex items-center justify-between rounded-xl bg-amber-100 px-3.5 py-3 dark:bg-amber-950/50">
-                            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                                Recurring commitments
-                            </span>
-                            <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                                {formatCompactEGP(
-                                    summary.recurringCommitments ?? 0,
-                                )}
-                                /mo
-                            </span>
-                        </div>
-                        <div className="flex items-center justify-between rounded-xl bg-destructive/10 px-3.5 py-3">
-                            <span className="text-xs font-semibold text-destructive">
-                                Active liabilities
-                            </span>
-                            <span className="text-sm font-semibold text-destructive">
-                                {formatCompactEGP(summary.liabilities ?? 0)}
-                            </span>
-                        </div>
-                        {recurringCommitments.slice(0, 3).map((item) => (
-                            <div
-                                key={item.id}
-                                className="flex items-center justify-between border-b border-border pb-2 text-xs"
-                            >
+                            },
+                        )}
+                        {!(monthlyPlan?.allocationItems ?? []).length && (
+                            <p className="text-sm text-muted-foreground">
+                                There is no positive surplus to allocate yet.
+                            </p>
+                        )}
+                        {(monthlyPlan?.unallocated ?? 0) > 0 && (
+                            <div className="flex items-center justify-between rounded-lg bg-muted p-3 text-xs">
                                 <span className="text-muted-foreground">
-                                    {item.name}
+                                    Still unassigned
                                 </span>
-                                <span className="font-semibold text-muted-foreground">
-                                    {formatCompactEGP(item.monthlyAmount)}
+                                <span className="font-semibold">
+                                    {formatCompactEGP(monthlyPlan.unallocated)}
                                 </span>
                             </div>
-                        ))}
-                        {liabilities.slice(0, 2).map((item) => (
-                            <div
-                                key={item.id}
-                                className="flex items-center justify-between text-xs"
-                            >
-                                <span className="text-muted-foreground">
-                                    {item.name}
-                                </span>
-                                <span className="font-semibold text-destructive">
-                                    {formatCompactEGP(item.balance)}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
+                        )}
+                    </CardContent>
+                    <CardFooter>
+                        <Button href="/allocations">
+                            <Sparkles data-icon="inline-start" />
+                            Adjust monthly split
+                        </Button>
+                    </CardFooter>
                 </Card>
             </div>
-            <div className="mt-4 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-                <Card>
-                    <CardHeader
-                        title="Attention queue"
-                        meta="At most three explainable next actions"
-                    />
-                    <div className="flex flex-col gap-3 p-5">
-                        {(attentionQueue ?? []).map((alert) => (
-                            <div
-                                key={alert.key}
-                                className="flex items-start justify-between gap-3 rounded-xl bg-muted p-3"
-                            >
-                                <div>
-                                    <p className="text-sm font-semibold text-foreground">
-                                        {alert.title}
-                                    </p>
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                        {alert.reason}
-                                    </p>
-                                    <p className="mt-1 text-[11px] text-muted-foreground">
-                                        Rule: {alert.rule}
-                                    </p>
-                                </div>
-                                <Button
-                                    href={alert.actionUrl}
-                                    size="sm"
-                                    variant="ghost"
-                                >
-                                    Fix
-                                </Button>
-                            </div>
-                        ))}
-                        {!(attentionQueue ?? []).length && (
-                            <p className="text-sm text-muted-foreground">
-                                No actionable alerts under the configured rules.
-                            </p>
-                        )}
-                    </div>
-                </Card>
-                <Card>
-                    <CardHeader
-                        title="Decision journal"
-                        meta="Recent choices and review dates"
-                        action={
-                            <Button href="/decision-journal" variant="ghost">
-                                Open journal
-                            </Button>
-                        }
-                    />
-                    <div className="flex flex-col gap-3 p-5">
-                        {(decisionJournal ?? []).slice(0, 3).map((entry) => (
-                            <div
-                                key={entry.id}
-                                className="border-b border-border pb-3 text-xs last:border-0"
-                            >
-                                <p className="font-semibold text-foreground">
-                                    {entry.decision}
-                                </p>
-                                <p className="mt-1 text-muted-foreground">
-                                    {entry.chosenAction ?? 'Action not chosen'}{' '}
-                                    · {entry.reviewDate ?? 'No review date'}
-                                </p>
-                            </div>
-                        ))}
-                        {!(decisionJournal ?? []).length && (
-                            <p className="text-sm text-muted-foreground">
-                                Record a decision when an assumption matters.
-                            </p>
-                        )}
-                    </div>
-                </Card>
-            </div>
-            <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_0.9fr]">
-                <Card>
-                    <CardHeader
-                        title="Asset allocation"
-                        meta={
-                            largestAsset
-                                ? `${largestAsset.label} is your largest position`
-                                : 'Add assets to see the mix'
-                        }
-                    />
-                    <div className="flex flex-col gap-4 p-5">
-                        {assetAllocation.map((item, index) => (
-                            <div key={item.label}>
-                                <div className="mb-1.5 flex items-center justify-between text-xs">
-                                    <span className="flex items-center gap-2 font-medium text-muted-foreground">
-                                        <span
-                                            className="h-2.5 w-2.5 rounded-full"
-                                            style={{
-                                                background:
-                                                    colors[
-                                                        index % colors.length
-                                                    ],
-                                            }}
-                                        />
-                                        {item.label}
-                                    </span>
-                                    <span className="font-semibold text-foreground">
-                                        {item.percent}%{' '}
-                                        <span className="ml-2 font-normal text-muted-foreground">
-                                            {formatCompactEGP(item.value)}
-                                        </span>
-                                    </span>
-                                </div>
-                                <Progress
-                                    value={item.percent}
-                                    color={colors[index % colors.length]}
-                                />
-                            </div>
-                        ))}
-                        {assetAllocation.length === 0 && (
-                            <p className="text-sm text-muted-foreground">
-                                No assets yet.
-                            </p>
-                        )}
-                    </div>
-                </Card>
-                <Card>
-                    <CardHeader
-                        title="Current vs target"
-                        meta="Your personal allocation policy"
-                    />
-                    <div className="flex flex-col gap-4 p-5">
-                        {(
-                            allocationPolicy ??
-                            Object.entries(targetAllocation).map(
-                                ([label, target]) => ({
-                                    label,
-                                    currentPercent:
-                                        assetAllocation.find(
-                                            (item) => item.label === label,
-                                        )?.percent ?? 0,
-                                    targetPercent: target,
-                                    minPercent: target,
-                                    maxPercent: target,
-                                    tolerancePercent: 0,
-                                    status: 'within_range',
-                                    rule: `Target ${target}%`,
-                                    source: 'financial_settings',
-                                }),
-                            )
-                        ).map((item, index) => {
-                            const {
-                                label,
-                                currentPercent: current,
-                                targetPercent: target,
-                            } = item;
 
-                            return (
-                                <div key={label}>
-                                    <div className="mb-1.5 flex items-center justify-between text-xs">
-                                        <span className="font-medium text-muted-foreground">
-                                            {label}
-                                        </span>
-                                        <span
-                                            className={
-                                                item.status !== 'within_range'
-                                                    ? 'font-semibold text-amber-700 dark:text-amber-300'
-                                                    : 'text-muted-foreground'
-                                            }
-                                        >
-                                            {current}%{' '}
-                                            <span className="text-muted-foreground/70">
-                                                / {item.minPercent}–
-                                                {item.maxPercent}%
-                                            </span>
-                                        </span>
-                                    </div>
-                                    <div className="relative h-2 rounded-full bg-muted">
-                                        <div
-                                            className="h-full rounded-full"
-                                            style={{
-                                                width: `${Math.min(100, current)}%`,
-                                                backgroundColor:
-                                                    colors[
-                                                        index % colors.length
-                                                    ],
-                                            }}
-                                        />
-                                        <span
-                                            className="absolute -top-1 h-4 w-0.5 bg-foreground"
-                                            style={{ left: `${target}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </Card>
+            <section className="mt-6">
+                <SectionHeading
+                    eyebrow="Goals"
+                    title="Goals backed by real assets"
+                    description="A goal can be funded by cash, gold, or an investment fund without pretending the money lives somewhere else."
+                    action={
+                        <Button href="/goals" variant="ghost">
+                            Manage goals
+                            <ArrowRight data-icon="inline-end" />
+                        </Button>
+                    }
+                />
+                <div className="grid gap-4 lg:grid-cols-2">
+                    {goals.slice(0, 4).map((goal) => (
+                        <GoalCard key={goal.id} goal={goal} />
+                    ))}
+                    {!goals.length && (
+                        <Card className="lg:col-span-2">
+                            <CardHeader>
+                                <CardTitle>Create your first goal</CardTitle>
+                                <CardDescription>
+                                    Add a phone, car, travel plan, or any target
+                                    you want to fund over time.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardFooter>
+                                <Button href="/goals">
+                                    <Plus data-icon="inline-start" />
+                                    Add goal
+                                </Button>
+                            </CardFooter>
+                        </Card>
+                    )}
+                </div>
+            </section>
+
+            <div className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
                 <Card>
-                    <CardHeader
-                        title="Liquidity view"
-                        meta="If you need money tomorrow"
-                    />
-                    <div className="flex flex-col gap-3 p-5">
-                        {liquidity.map((item, index) => (
-                            <div
-                                key={item.label}
-                                className="flex items-center justify-between rounded-xl bg-muted px-3.5 py-3"
-                            >
-                                <div>
-                                    <p className="text-xs font-semibold text-muted-foreground">
-                                        {item.label.replaceAll('_', ' ')}
-                                    </p>
-                                    <p className="mt-1 text-[11px] text-muted-foreground">
-                                        {index === 0
-                                            ? 'Cash and current accounts'
-                                            : index === 1
-                                              ? 'Redeemable quickly'
-                                              : index === 2
-                                                ? 'May take longer to sell'
-                                                : 'Not readily accessible'}
-                                    </p>
-                                </div>
-                                <span className="text-sm font-semibold text-foreground">
-                                    {formatCompactEGP(item.value)}
+                    <CardHeader>
+                        <CardTitle>Portfolio mix</CardTitle>
+                        <CardDescription>
+                            A simple view of the assets building your wealth
+                        </CardDescription>
+                        <CardAction>
+                            <Button href="/assets" variant="ghost" size="sm">
+                                View assets
+                            </Button>
+                        </CardAction>
+                    </CardHeader>
+                    <CardContent className="grid gap-6 md:grid-cols-2">
+                        <AllocationList
+                            title="By asset type"
+                            items={assetAllocation}
+                        />
+                        <AllocationList
+                            title="By currency"
+                            items={currencyExposure}
+                        />
+                    </CardContent>
+                    {!!wealthTrend.length && (
+                        <CardFooter className="flex-col items-stretch gap-3">
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                                <span className="font-medium">
+                                    Net worth history
+                                </span>
+                                <span className="text-muted-foreground">
+                                    {wealthTrend.length} recorded point
+                                    {wealthTrend.length === 1 ? '' : 's'}
                                 </span>
                             </div>
-                        ))}
-                        {largestCurrency && (
-                            <div className="border-t border-border pt-4">
-                                <p className="text-[11px] tracking-wider text-muted-foreground uppercase">
-                                    Largest currency exposure
-                                </p>
-                                <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                                    {largestCurrency.label} ·{' '}
-                                    {largestCurrency.percent}%
-                                </p>
-                            </div>
-                        )}
-                    </div>
+                            <TrendBars points={wealthTrend} />
+                        </CardFooter>
+                    )}
                 </Card>
-            </div>
-            <div className="mt-4 grid gap-4 xl:grid-cols-[1.35fr_0.9fr]">
+
                 <Card>
-                    <CardHeader
-                        title="Goals that matter next"
-                        meta="Reserved money is not investable money"
-                        action={
-                            <Button href="/goals" variant="ghost">
-                                View goals
-                            </Button>
-                        }
-                    />
-                    <div className="divide-y divide-border">
-                        {goals.slice(0, 3).map((goal) => (
-                            <div key={goal.id} className="p-5">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-foreground">
-                                            {goal.name}
-                                        </h3>
-                                        <p className="mt-1 text-xs text-muted-foreground">
-                                            {goal.deadline
-                                                ? `Due ${new Date(goal.deadline).toLocaleDateString('en-EG', { month: 'short', year: 'numeric' })}`
-                                                : 'No deadline set'}{' '}
-                                            · {goal.monthsRemaining ?? '—'}{' '}
-                                            months left
-                                        </p>
-                                    </div>
-                                    <Badge
-                                        className={`rounded-full border-0 px-2.5 py-1 text-[11px] font-semibold ${goal.onTrack ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'}`}
-                                    >
-                                        {goal.onTrack
-                                            ? 'On track'
-                                            : 'Off track'}
-                                    </Badge>
-                                </div>
-                                <div className="mt-4 flex items-center gap-4">
-                                    <div className="flex-1">
-                                        <Progress
-                                            value={goal.fundingPercent}
-                                            color={
-                                                goal.onTrack
-                                                    ? 'var(--chart-2)'
-                                                    : 'var(--chart-3)'
-                                            }
-                                        />
-                                    </div>
-                                    <span className="text-xs font-semibold text-muted-foreground">
-                                        {goal.fundingPercent}%
-                                    </span>
-                                </div>
-                                <div className="mt-3 flex flex-wrap justify-between gap-2 text-xs">
-                                    <span className="text-muted-foreground">
-                                        {formatEGP(goal.allocatedAmount)}{' '}
-                                        allocated
-                                    </span>
-                                    <span className="font-semibold text-muted-foreground">
-                                        {formatCompactEGP(
-                                            goal.requiredMonthlyContribution,
-                                        )}
-                                        /month needed
-                                    </span>
-                                </div>
-                                {!goal.onTrack && (
-                                    <p className="mt-3 rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-                                        Off track by{' '}
-                                        {formatCompactEGP(goal.gapPerMonth)}
-                                        /month against current free cash flow.
-                                    </p>
-                                )}
-                            </div>
-                        ))}
-                        {goals.length === 0 && (
-                            <p className="p-5 text-sm text-muted-foreground">
-                                Create your first goal to start planning.
-                            </p>
-                        )}
-                    </div>
-                </Card>
-                <Card>
-                    <CardHeader
-                        title="Rules-based signals"
-                        meta="Observations from your data"
-                    />
-                    <div className="flex flex-col gap-3 p-5">
-                        {insights.length ? (
-                            insights.map((insight, index) => (
-                                <div
-                                    key={insight}
-                                    className="flex gap-3 rounded-xl bg-muted p-3.5"
-                                >
-                                    <span
-                                        className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs ${index === 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' : 'bg-secondary text-secondary-foreground'}`}
-                                    >
-                                        {index === 0 ? '!' : 'i'}
-                                    </span>
-                                    <p className="text-xs leading-5 text-muted-foreground">
-                                        {insight}
-                                    </p>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="text-sm text-muted-foreground">
-                                No signals yet. Keep your data current.
-                            </p>
-                        )}
-                        <div className="mt-5 rounded-xl border border-dashed border-border p-4">
-                            <p className="text-xs font-semibold text-muted-foreground">
-                                What this dashboard is for
-                            </p>
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                Clarity before action: allocation, liquidity,
-                                goals, and trade-offs. It does not make trades
-                                or pretend to be a financial advisor.
-                            </p>
-                        </div>
-                    </div>
-                </Card>
-            </div>
-            <div className="mt-4">
-                <Card>
-                    <CardHeader
-                        title="Purpose of your money"
-                        meta="Buckets keep ownership separate from intent"
-                        action={
-                            <Button href="/assets" variant="ghost">
-                                Manage assets
-                            </Button>
-                        }
-                    />
-                    <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
-                        {buckets.map((bucket) => (
-                            <div
-                                key={bucket.id}
-                                className="rounded-xl border border-border p-3.5"
+                    <CardHeader>
+                        <CardTitle>Next best actions</CardTitle>
+                        <CardDescription>
+                            Only the things that need attention now
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3">
+                        {attentionQueue.slice(0, 3).map((item, index) => (
+                            <a
+                                key={item.key}
+                                href={item.actionUrl}
+                                className="group flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted"
                             >
-                                <span
-                                    className="mb-3 block h-1.5 w-8 rounded-full"
-                                    style={{ backgroundColor: bucket.color }}
-                                />
-                                <p className="text-xs font-semibold text-muted-foreground">
-                                    {bucket.name}
-                                </p>
-                                <p className="mt-2 text-lg font-semibold text-foreground">
-                                    {formatCompactEGP(bucket.currentAmount)}
-                                </p>
-                                <p className="mt-1 text-[11px] text-muted-foreground">
-                                    {bucket.goalName ??
-                                        bucket.purpose ??
-                                        'Flexible allocation'}
+                                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground group-hover:bg-background">
+                                    {index + 1}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                    <span className="block text-sm font-medium">
+                                        {item.title}
+                                    </span>
+                                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                                        {item.reason}
+                                    </span>
+                                </span>
+                                <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                            </a>
+                        ))}
+                        {!attentionQueue.length && (
+                            <div className="flex items-center gap-3 rounded-lg bg-muted p-4">
+                                <ShieldCheck className="size-5 text-muted-foreground" />
+                                <p className="text-sm text-muted-foreground">
+                                    Nothing urgent. Keep this month's data up to
+                                    date.
                                 </p>
                             </div>
-                        ))}
-                    </div>
+                        )}
+                    </CardContent>
+                    <CardFooter>
+                        <Button href="/cash-flow" variant="ghost">
+                            Open money activity
+                            <ArrowRight data-icon="inline-end" />
+                        </Button>
+                    </CardFooter>
                 </Card>
             </div>
+
             <Sheet
-                open={detail !== null}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setDetail(null);
-                    }
-                }}
+                open={showNetWorthDetail}
+                onOpenChange={setShowNetWorthDetail}
             >
                 <SheetContent side="right">
                     <SheetHeader>
-                        <SheetTitle>
-                            {detail?.title ?? 'Calculation detail'}
-                        </SheetTitle>
+                        <SheetTitle>How net worth is calculated</SheetTitle>
                         <SheetDescription>
-                            {detail?.description}
+                            Assets minus active liabilities, all converted to
+                            EGP.
                         </SheetDescription>
                     </SheetHeader>
-                    <div className="flex flex-col gap-4 px-4 text-sm">
-                        <div className="rounded-xl bg-muted p-4">
-                            <p className="text-xs text-muted-foreground">
-                                Formula
-                            </p>
-                            <p className="mt-2 font-semibold text-foreground">
-                                {detail?.formula}
-                            </p>
-                        </div>
-                        <div className="rounded-xl border border-border p-4">
-                            <p className="text-xs text-muted-foreground">
-                                Source
-                            </p>
-                            <p className="mt-2 text-foreground">
-                                {detail?.source}
-                            </p>
-                            <p className="mt-2 text-xs text-muted-foreground">
-                                Values are planning projections and retain the
-                                source status shown in the dashboard strip.
-                            </p>
-                        </div>
+                    <div className="flex flex-col gap-4 px-4">
+                        <CalculationRow
+                            label="Total assets"
+                            value={summary.totalAssets ?? 0}
+                        />
+                        <CalculationRow
+                            label="Active liabilities"
+                            value={-(summary.liabilities ?? 0)}
+                        />
+                        <CalculationRow
+                            label="Net worth"
+                            value={summary.netWorth}
+                            total
+                        />
+                        <p className="text-xs leading-5 text-muted-foreground">
+                            Goal reservations change what is available to
+                            invest, but they do not reduce net worth because you
+                            still own the underlying asset.
+                        </p>
                     </div>
                 </SheetContent>
             </Sheet>
@@ -870,31 +685,361 @@ export default function Dashboard({
     );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function buildWealthGroups(assets: Asset[]) {
+    const total = Math.max(
+        1,
+        assets.reduce((sum, asset) => sum + asset.currentValue, 0),
+    );
+    const cashEgp = assets
+        .filter(
+            (asset) =>
+                asset.currency === 'EGP' &&
+                asset.type.toLowerCase().includes('cash'),
+        )
+        .reduce((sum, asset) => sum + asset.currentValue, 0);
+    const usd = assets
+        .filter((asset) => asset.currency === 'USD')
+        .reduce((sum, asset) => sum + asset.currentValue, 0);
+    const gold = assets
+        .filter(
+            (asset) =>
+                asset.currency.toLowerCase() === 'gold' ||
+                asset.type.toLowerCase().includes('gold'),
+        )
+        .reduce((sum, asset) => sum + asset.currentValue, 0);
+    const investments = Math.max(0, total - cashEgp - usd - gold);
+
+    return [
+        { label: 'EGP cash', value: cashEgp },
+        { label: 'US dollars', value: usd },
+        { label: 'Gold', value: gold },
+        { label: 'Investments', value: investments },
+    ]
+        .filter((group) => group.value > 0)
+        .map((group) => ({
+            ...group,
+            percent: (group.value / total) * 100,
+        }));
+}
+
+function sourceLabel(source?: string) {
+    if (!source || source === 'ledger_incomplete') {
+        return 'Cash flow needs setup';
+    }
+
+    return source === 'confirmed_ledger'
+        ? 'Using confirmed transactions'
+        : `Using ${source.replaceAll('_', ' ')}`;
+}
+
+function formatSourceAmount(source: MonthlyPlan['incomeSources'][number]) {
+    if (source.currency === 'USD') {
+        return `${source.nativeAmount.toLocaleString('en-EG')} USD · ${formatCompactEGP(source.amount)}`;
+    }
+
+    return formatCompactEGP(source.amount);
+}
+
+function allocationKindLabel(
+    kind: MonthlyPlan['allocationItems'][number]['kind'],
+) {
+    return {
+        emergency: 'Safety first',
+        goal: 'Near-term goal',
+        investment: 'Long-term growth',
+    }[kind];
+}
+
+function HeroMetric({ label, value }: { label: string; value: string }) {
     return (
         <div>
-            <p className="text-[11px] text-sidebar-foreground/70">{label}</p>
+            <p className="text-xs text-primary-foreground/60">{label}</p>
+            <p className="mt-1 text-sm font-semibold text-primary-foreground">
+                {value}
+            </p>
+        </div>
+    );
+}
+
+function SmallMetric({
+    icon: Icon,
+    label,
+    value,
+}: {
+    icon: LucideIcon;
+    label: string;
+    value: string;
+}) {
+    return (
+        <div className="rounded-lg bg-muted p-3">
+            <Icon className="size-4 text-muted-foreground" />
+            <p className="mt-3 text-xs text-muted-foreground">{label}</p>
             <p className="mt-1 text-sm font-semibold">{value}</p>
         </div>
     );
 }
-function MiniMetric({
-    label,
-    value,
-    positive,
+
+function SectionHeading({
+    eyebrow,
+    title,
+    description,
+    action,
 }: {
-    label: string;
-    value: string;
-    positive?: boolean;
+    eyebrow: string;
+    title: string;
+    description: string;
+    action?: ReactNode;
 }) {
     return (
-        <div className="rounded-xl bg-muted p-3">
-            <p className="text-[11px] text-muted-foreground">{label}</p>
-            <p
-                className={`mt-1 text-sm font-semibold ${positive ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}
-            >
-                {value}
+        <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-end">
+            <div>
+                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                    {eyebrow}
+                </p>
+                <h2 className="mt-1 text-xl font-semibold tracking-tight">
+                    {title}
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                    {description}
+                </p>
+            </div>
+            {action}
+        </div>
+    );
+}
+
+function FlowStep({
+    icon: Icon,
+    label,
+    value,
+    items,
+    empty,
+}: {
+    icon: LucideIcon;
+    label: string;
+    value: number;
+    items: { label: string; value: string }[];
+    empty: string;
+}) {
+    return (
+        <div className="flex min-w-0 flex-col rounded-lg bg-muted p-4">
+            <div className="flex items-center gap-2 text-muted-foreground">
+                <span className="grid size-8 place-items-center rounded-lg bg-background">
+                    <Icon className="size-4" />
+                </span>
+                <p className="text-xs font-medium">{label}</p>
+            </div>
+            <p className="mt-4 text-xl font-semibold">
+                {formatCompactEGP(value)}
             </p>
+            <div className="mt-4 flex flex-col gap-2">
+                {items.slice(0, 3).map((item) => (
+                    <div
+                        key={`${item.label}-${item.value}`}
+                        className="flex items-start justify-between gap-2 text-[11px]"
+                    >
+                        <span className="truncate text-muted-foreground">
+                            {labelize(item.label)}
+                        </span>
+                        <span className="shrink-0 font-medium">
+                            {item.value}
+                        </span>
+                    </div>
+                ))}
+                {!items.length && (
+                    <p className="text-[11px] leading-4 text-muted-foreground">
+                        {empty}
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function FlowArrow() {
+    return (
+        <div className="grid place-items-center text-muted-foreground">
+            <ArrowDownRight className="size-4 lg:hidden" />
+            <ArrowRight className="hidden size-4 lg:block" />
+        </div>
+    );
+}
+
+function GoalCard({ goal }: { goal: Goal }) {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <Flag className="size-4 text-muted-foreground" />
+                    {goal.name}
+                </CardTitle>
+                <CardDescription>
+                    {goal.deadline
+                        ? `Target date ${new Date(goal.deadline).toLocaleDateString('en-EG', { month: 'short', year: 'numeric' })}`
+                        : 'No target date yet'}
+                </CardDescription>
+                <CardAction>
+                    <Badge variant={goal.onTrack ? 'secondary' : 'outline'}>
+                        {goal.onTrack ? 'On track' : 'Needs adjustment'}
+                    </Badge>
+                </CardAction>
+            </CardHeader>
+            <CardContent>
+                <div className="flex items-end justify-between gap-4">
+                    <div>
+                        <p className="text-2xl font-semibold">
+                            {formatCompactEGP(goal.allocatedAmount)}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            of {formatCompactEGP(goal.targetAmount)}
+                        </p>
+                    </div>
+                    <p className="text-sm font-semibold">
+                        {goal.fundingPercent}%
+                    </p>
+                </div>
+                <div className="mt-4">
+                    <Progress value={goal.fundingPercent} />
+                </div>
+                <div className="mt-5 flex flex-col gap-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                        Backed by
+                    </p>
+                    {(goal.fundingSources ?? []).slice(0, 3).map((source) => (
+                        <div
+                            key={source.assetId}
+                            className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2"
+                        >
+                            <div className="flex min-w-0 items-center gap-2">
+                                <AssetIcon type={source.assetType} />
+                                <div className="min-w-0">
+                                    <p className="truncate text-xs font-medium">
+                                        {source.assetName}
+                                    </p>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        {source.assetType}
+                                    </p>
+                                </div>
+                            </div>
+                            <span className="shrink-0 text-xs font-semibold">
+                                {formatCompactEGP(source.amount)}
+                            </span>
+                        </div>
+                    ))}
+                    {!(goal.fundingSources ?? []).length && (
+                        <p className="text-xs text-muted-foreground">
+                            Link an asset allocation to this goal's bucket.
+                        </p>
+                    )}
+                </div>
+            </CardContent>
+            <CardFooter className="justify-between gap-3">
+                <span className="text-xs text-muted-foreground">
+                    {formatCompactEGP(goal.requiredMonthlyContribution)}/month
+                    needed
+                </span>
+                <Button href="/goals" variant="ghost" size="sm">
+                    Adjust goal
+                </Button>
+            </CardFooter>
+        </Card>
+    );
+}
+
+function AssetIcon({ type }: { type: string }) {
+    const normalized = type.toLowerCase();
+    const Icon = normalized.includes('gold')
+        ? Coins
+        : normalized.includes('cash') || normalized.includes('usd')
+          ? Landmark
+          : TrendingUp;
+
+    return (
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-background text-muted-foreground">
+            <Icon className="size-4" />
+        </span>
+    );
+}
+
+function AllocationList({
+    title,
+    items,
+}: {
+    title: string;
+    items: Allocation[];
+}) {
+    return (
+        <div>
+            <p className="mb-4 text-xs font-medium text-muted-foreground">
+                {title}
+            </p>
+            <div className="flex flex-col gap-4">
+                {items.slice(0, 5).map((item, index) => (
+                    <div key={item.label}>
+                        <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                            <span className="truncate">{item.label}</span>
+                            <span className="shrink-0 text-muted-foreground">
+                                {item.percent}% · {formatCompactEGP(item.value)}
+                            </span>
+                        </div>
+                        <Progress
+                            value={item.percent}
+                            color={chartColors[index % chartColors.length]}
+                        />
+                    </div>
+                ))}
+                {!items.length && (
+                    <p className="text-xs text-muted-foreground">
+                        Add assets to see the mix.
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function TrendBars({
+    points,
+}: {
+    points: { asOf: string; netWorth: number }[];
+}) {
+    const visible = points.slice(-10);
+    const max = Math.max(...visible.map((point) => point.netWorth), 1);
+
+    return (
+        <div className="flex h-16 items-end gap-1.5">
+            {visible.map((point) => (
+                <span
+                    key={point.asOf}
+                    className="min-h-1 flex-1 rounded-t-sm bg-primary"
+                    style={{
+                        height: `${Math.max(6, (point.netWorth / max) * 64)}px`,
+                    }}
+                    title={`${point.asOf}: ${formatEGP(point.netWorth)}`}
+                />
+            ))}
+        </div>
+    );
+}
+
+function CalculationRow({
+    label,
+    value,
+    total = false,
+}: {
+    label: string;
+    value: number;
+    total?: boolean;
+}) {
+    return (
+        <div
+            className={cn(
+                'flex items-center justify-between gap-4 rounded-lg p-4',
+                total ? 'bg-primary text-primary-foreground' : 'bg-muted',
+            )}
+        >
+            <span className="text-sm">{label}</span>
+            <span className="text-sm font-semibold">{formatEGP(value)}</span>
         </div>
     );
 }

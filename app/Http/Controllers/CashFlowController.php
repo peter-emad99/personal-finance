@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CashFlow;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -45,10 +46,25 @@ class CashFlowController extends Controller
     /** @return array<string, mixed> */
     private function validated(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'type' => ['required', 'in:income,expense,obligation'], 'category' => ['required', 'string', 'max:80'],
-            'amount_egp' => ['required', 'numeric', 'min:0'], 'occurred_on' => ['required', 'date'], 'notes' => ['nullable', 'string'],
+            'amount' => ['required', 'numeric', 'min:0'],
+            'currency' => ['required', 'in:EGP,USD'],
+            'exchange_rate' => ['nullable', 'numeric', 'min:0.00000001'],
+            'occurred_on' => ['required', 'date'], 'notes' => ['nullable', 'string'],
         ]);
+
+        $rate = $data['currency'] === 'EGP' ? 1.0 : (float) ($data['exchange_rate'] ?? 0);
+        if ($data['currency'] === 'USD' && $rate <= 0) {
+            throw ValidationException::withMessages([
+                'exchange_rate' => 'A USD entry needs its EGP exchange rate.',
+            ]);
+        }
+
+        $data['exchange_rate'] = $rate;
+        $data['amount_egp'] = round((float) $data['amount'] * $rate, 2);
+
+        return $data;
     }
 
     public function destroy(CashFlow $cashFlow): RedirectResponse

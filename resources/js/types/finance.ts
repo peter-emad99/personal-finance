@@ -15,6 +15,7 @@ export type Summary = {
     liabilities?: number;
     investedThisMonth?: number;
     recurringCommitments?: number;
+    savingsRate?: number;
     investmentRate?: number;
 };
 
@@ -54,6 +55,14 @@ export type Goal = {
     fundingPercent: number;
     onTrack: boolean;
     gapPerMonth: number;
+    fundingSources?: {
+        assetId: number;
+        assetName: string;
+        assetType: string;
+        currency: string;
+        bucketNames: string[];
+        amount: number;
+    }[];
     status?: string;
     priority?: number;
     notes?: string | null;

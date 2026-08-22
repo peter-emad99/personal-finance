@@ -1,15 +1,19 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
-    BriefcaseBusiness,
     BookOpen,
     Calculator,
     CreditCard,
+    ChevronRight,
     Database,
     FileClock,
+    FileJson,
+    FileText,
     Flag,
     Gauge,
+    GraduationCap,
     LayoutDashboard,
     ListChecks,
+    LogOut,
     Monitor,
     Moon,
     Repeat2,
@@ -17,10 +21,20 @@ import {
     Sun,
     WalletCards,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
 
+import { ExportContextActions } from '@/components/export-context-actions';
 import { ThemeProvider, useTheme } from '@/components/theme-provider';
 import type { ThemeMode } from '@/components/theme-provider';
+import {
+    Breadcrumb,
+    BreadcrumbItem,
+    BreadcrumbLink,
+    BreadcrumbList,
+    BreadcrumbPage,
+    BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
 import { Button as UiButton } from '@/components/ui/button';
 import {
     Card as UiCard,
@@ -28,6 +42,11 @@ import {
     CardHeader as UiCardHeader,
     CardTitle as UiCardTitle,
 } from '@/components/ui/card';
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -38,6 +57,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Progress as UiProgress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
 import {
     Sidebar,
     SidebarContent,
@@ -51,47 +71,103 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
     SidebarProvider,
-    SidebarSeparator,
+    SidebarRail,
     SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
-const navigation = [
-    { href: '/', label: 'Overview', icon: LayoutDashboard },
-    { href: '/assets', label: 'Assets', icon: WalletCards },
-    { href: '/buckets', label: 'Buckets', icon: Database },
-    { href: '/goals', label: 'Goals', icon: Flag },
-    { href: '/monthly-review', label: 'Monthly review', icon: Gauge },
-    { href: '/ledger', label: 'Ledger & imports', icon: BookOpen },
+type NavigationItem = {
+    href: string;
+    label: string;
+    icon: LucideIcon;
+};
+
+type NavigationGroup = {
+    label: string;
+    items: NavigationItem[];
+};
+
+const navigationGroups: NavigationGroup[] = [
     {
-        href: '/transaction-categories',
-        label: 'Transaction categories',
-        icon: ListChecks,
+        label: 'Your money',
+        items: [
+            { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+            { href: '/learn', label: 'Learn the system', icon: GraduationCap },
+            { href: '/cash-flow', label: 'Income & expenses', icon: Gauge },
+            { href: '/allocations', label: 'Monthly plan', icon: ListChecks },
+            { href: '/goals', label: 'Goals', icon: Flag },
+            { href: '/assets', label: 'What you own', icon: WalletCards },
+        ],
     },
-    { href: '/valuations', label: 'Valuation history', icon: FileClock },
-    { href: '/fx-rates', label: 'FX rates', icon: Repeat2 },
-    { href: '/reconciliation', label: 'Reconciliation', icon: ListChecks },
-    { href: '/commitments', label: 'Commitments', icon: Repeat2 },
-    { href: '/liabilities', label: 'Liabilities', icon: CreditCard },
-    { href: '/liability-history', label: 'Liability history', icon: FileClock },
-    { href: '/allocations', label: 'Allocations', icon: ListChecks },
     {
-        href: '/allocation-reconciliation',
-        label: 'Reconcile purposes',
-        icon: ListChecks,
+        label: 'Manage',
+        items: [
+            { href: '/buckets', label: 'Purpose buckets', icon: Database },
+            { href: '/commitments', label: 'Commitments', icon: Repeat2 },
+            { href: '/liabilities', label: 'Liabilities', icon: CreditCard },
+            { href: '/monthly-review', label: 'Monthly review', icon: Gauge },
+            {
+                href: '/scenarios',
+                label: 'Purchase scenarios',
+                icon: Calculator,
+            },
+        ],
     },
-    { href: '/scenarios', label: 'Scenarios', icon: Calculator },
-    { href: '/snapshots', label: 'Snapshots', icon: FileClock },
-    { href: '/settings/financial', label: 'Financial policy', icon: Settings },
-    { href: '/decision-journal', label: 'Decision journal', icon: FileClock },
-    { href: '/operations', label: 'Operations', icon: Settings },
+    {
+        label: 'Advanced',
+        items: [
+            { href: '/ledger', label: 'Ledger & imports', icon: BookOpen },
+            {
+                href: '/transaction-categories',
+                label: 'Categories',
+                icon: ListChecks,
+            },
+            {
+                href: '/valuations',
+                label: 'Valuation history',
+                icon: FileClock,
+            },
+            { href: '/fx-rates', label: 'FX rates', icon: Repeat2 },
+            {
+                href: '/liability-history',
+                label: 'Liability history',
+                icon: FileClock,
+            },
+            {
+                href: '/reconciliation',
+                label: 'Reconciliation',
+                icon: ListChecks,
+            },
+            {
+                href: '/allocation-reconciliation',
+                label: 'Reconcile purposes',
+                icon: ListChecks,
+            },
+            { href: '/snapshots', label: 'Snapshots', icon: FileClock },
+            {
+                href: '/settings/financial',
+                label: 'Financial policy',
+                icon: Settings,
+            },
+            {
+                href: '/decision-journal',
+                label: 'Decision journal',
+                icon: FileClock,
+            },
+            { href: '/operations', label: 'Operations', icon: Settings },
+        ],
+    },
 ];
+
+function isNavigationItemActive(href: string, currentPath: string) {
+    return href === '/' ? currentPath === '/' : currentPath.startsWith(href);
+}
 
 function AppSidebar({ currentPath }: { currentPath: string }) {
     return (
-        <Sidebar collapsible="icon">
-            <SidebarHeader className="p-3 md:p-4">
+        <Sidebar variant="inset">
+            <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton
@@ -114,73 +190,94 @@ function AppSidebar({ currentPath }: { currentPath: string }) {
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarHeader>
-            <SidebarSeparator />
-            <SidebarContent className="px-2">
-                <SidebarGroup className="px-2 py-3">
-                    <SidebarGroupLabel>Workspace</SidebarGroupLabel>
-                    <SidebarGroupContent>
-                        <SidebarMenu className="gap-1.5">
-                            {navigation.map((item) => {
-                                const active =
-                                    item.href === '/'
-                                        ? currentPath === '/'
-                                        : currentPath.startsWith(item.href);
-                                const Icon = item.icon;
+            <SidebarContent className="gap-0">
+                {navigationGroups.map((group) => (
+                    <Collapsible
+                        key={group.label}
+                        defaultOpen={group.label !== 'Advanced'}
+                        className="group/collapsible"
+                    >
+                        <SidebarGroup>
+                            <SidebarGroupLabel
+                                render={<CollapsibleTrigger />}
+                                className="group/label text-xs font-semibold tracking-wide text-sidebar-foreground uppercase hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                            >
+                                {group.label}
+                                <ChevronRight className="ml-auto transition-transform group-data-open/collapsible:rotate-90" />
+                            </SidebarGroupLabel>
+                            <CollapsibleContent>
+                                <SidebarGroupContent>
+                                    <SidebarMenu>
+                                        {group.items.map((item) => {
+                                            const active =
+                                                isNavigationItemActive(
+                                                    item.href,
+                                                    currentPath,
+                                                );
+                                            const Icon = item.icon;
 
-                                return (
-                                    <SidebarMenuItem key={item.href}>
-                                        <SidebarMenuButton
-                                            render={<Link href={item.href} />}
-                                            isActive={active}
-                                            className="h-10 px-3"
-                                            tooltip={item.label}
-                                        >
-                                            <Icon />
-                                            <span>{item.label}</span>
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                );
-                            })}
-                        </SidebarMenu>
-                    </SidebarGroupContent>
-                </SidebarGroup>
+                                            return (
+                                                <SidebarMenuItem
+                                                    key={item.href}
+                                                >
+                                                    <SidebarMenuButton
+                                                        render={
+                                                            <Link
+                                                                href={item.href}
+                                                            />
+                                                        }
+                                                        isActive={active}
+                                                        tooltip={item.label}
+                                                    >
+                                                        <Icon />
+                                                        <span>
+                                                            {item.label}
+                                                        </span>
+                                                    </SidebarMenuButton>
+                                                </SidebarMenuItem>
+                                            );
+                                        })}
+                                    </SidebarMenu>
+                                </SidebarGroupContent>
+                            </CollapsibleContent>
+                        </SidebarGroup>
+                    </Collapsible>
+                ))}
             </SidebarContent>
-            <SidebarFooter className="gap-3 p-3 md:p-4">
-                <SidebarMenu className="group-data-[collapsible=icon]:hidden">
+            <SidebarFooter>
+                <SidebarMenu>
+                    <SidebarMenuItem>
+                        <ExportContextActions
+                            trigger={
+                                <SidebarMenuButton tooltip="Export context">
+                                    <FileText />
+                                    <span>Export context</span>
+                                </SidebarMenuButton>
+                            }
+                        />
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                        <ExportContextActions
+                            trigger={
+                                <SidebarMenuButton tooltip="Export JSON">
+                                    <FileJson />
+                                    <span>Export JSON</span>
+                                </SidebarMenuButton>
+                            }
+                        />
+                    </SidebarMenuItem>
                     <SidebarMenuItem>
                         <SidebarMenuButton
                             onClick={() => router.post('/logout')}
+                            tooltip="Sign out"
                         >
+                            <LogOut />
                             <span>Sign out</span>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
-                <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/40 p-3 group-data-[collapsible=icon]:hidden">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-sidebar-foreground">
-                        <BriefcaseBusiness className="size-3.5 text-sidebar-primary" />
-                        Decision context
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-sidebar-foreground/60">
-                        Export a clean snapshot before discussing your next
-                        financial decision.
-                    </p>
-                    <div className="mt-3 flex gap-2">
-                        <a
-                            href="/export/context?format=markdown"
-                            className="rounded-md bg-sidebar-primary px-2.5 py-1.5 text-[11px] font-semibold text-sidebar-primary-foreground"
-                        >
-                            Markdown
-                        </a>
-                        <a
-                            href="/export/context"
-                            className="rounded-md border border-sidebar-border px-2.5 py-1.5 text-[11px] font-semibold text-sidebar-foreground"
-                        >
-                            JSON
-                        </a>
-                    </div>
-                </div>
-                <ThemeMenu inSidebar />
             </SidebarFooter>
+            <SidebarRail />
         </Sidebar>
     );
 }
@@ -189,10 +286,11 @@ export function AppShell({
     children,
     title,
 }: PropsWithChildren<{ title: string }>) {
-    const currentPath = window.location.pathname;
-    const { flash } = usePage<{
+    const page = usePage<{
         flash?: { success?: string | null; error?: string | null };
-    }>().props;
+    }>();
+    const currentPath = page.url.split('?')[0];
+    const { flash } = page.props;
 
     return (
         <ThemeProvider>
@@ -201,21 +299,39 @@ export function AppShell({
                 <SidebarProvider>
                     <AppSidebar currentPath={currentPath} />
                     <SidebarInset>
-                        <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur-sm md:hidden">
-                            <SidebarTrigger />
-                            <span className="text-sm font-semibold text-foreground">
-                                Personal finance OS
-                            </span>
+                        <header className="sticky top-0 flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4">
+                            <SidebarTrigger className="-ml-1" />
+                            <Separator
+                                orientation="vertical"
+                                className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+                            />
+                            <Breadcrumb className="min-w-0">
+                                <BreadcrumbList className="flex-nowrap">
+                                    <BreadcrumbItem className="hidden sm:inline-flex">
+                                        <BreadcrumbLink
+                                            render={<Link href="/" />}
+                                        >
+                                            Personal finance OS
+                                        </BreadcrumbLink>
+                                    </BreadcrumbItem>
+                                    <BreadcrumbSeparator className="hidden sm:block" />
+                                    <BreadcrumbItem className="min-w-0">
+                                        <BreadcrumbPage className="truncate">
+                                            {title}
+                                        </BreadcrumbPage>
+                                    </BreadcrumbItem>
+                                </BreadcrumbList>
+                            </Breadcrumb>
                             <div className="ml-auto">
                                 <ThemeMenu />
                             </div>
                         </header>
-                        <main className="min-h-screen">
+                        <div className="flex flex-1 flex-col gap-4 p-4">
                             {(flash?.success || flash?.error) && (
                                 <div
                                     role={flash.error ? 'alert' : 'status'}
                                     className={cn(
-                                        'mx-auto max-w-[1500px] px-4 pt-4 text-sm sm:px-6 lg:px-8',
+                                        'mx-auto w-full max-w-[1500px] pt-4 text-sm',
                                         flash.error
                                             ? 'text-destructive'
                                             : 'text-muted-foreground',
@@ -224,10 +340,10 @@ export function AppShell({
                                     {flash.error ?? flash.success}
                                 </div>
                             )}
-                            <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+                            <div className="mx-auto w-full max-w-[1500px]">
                                 {children}
                             </div>
-                        </main>
+                        </div>
                     </SidebarInset>
                 </SidebarProvider>
             </TooltipProvider>
@@ -235,7 +351,7 @@ export function AppShell({
     );
 }
 
-function ThemeMenu({ inSidebar = false }: { inSidebar?: boolean }) {
+function ThemeMenu() {
     const { theme, setTheme } = useTheme();
 
     return (
@@ -246,11 +362,7 @@ function ThemeMenu({ inSidebar = false }: { inSidebar?: boolean }) {
                         variant="ghost"
                         size="icon-sm"
                         aria-label="Choose theme"
-                        className={cn(
-                            inSidebar
-                                ? 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                        )}
+                        className="text-muted-foreground hover:bg-muted hover:text-foreground"
                     />
                 }
             >
@@ -376,6 +488,7 @@ export function Button({
     href,
     variant = 'primary',
     className,
+    nativeButton,
     ...props
 }: PropsWithChildren<AppButtonProps>) {
     const mappedVariant =
@@ -392,6 +505,7 @@ export function Button({
             variant={mappedVariant}
             className={cn('h-9 rounded-lg', className)}
             render={href ? <a href={href} /> : undefined}
+            nativeButton={href ? false : nativeButton}
             {...props}
         >
             {children}

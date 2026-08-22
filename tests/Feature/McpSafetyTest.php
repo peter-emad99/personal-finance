@@ -3,9 +3,13 @@
 namespace Tests\Feature;
 
 use App\Mcp\FinancialMcpServer;
+use App\Models\Account;
+use App\Models\AllocationPlan;
 use App\Models\Asset;
 use App\Models\AuditLog;
 use App\Models\Bucket;
+use App\Models\LedgerTransaction;
+use App\Models\MonthlyFinancialReview;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -30,10 +34,19 @@ class McpSafetyTest extends TestCase
         $this->assertTrue($tools->contains('name', 'get_redacted_context'));
         $this->assertTrue($tools->contains('name', 'get_allocation_reconciliation'));
         $this->assertTrue($tools->contains('name', 'reallocate_asset_balance'));
+        $this->assertTrue($tools->contains('name', 'get_bucket_allocations'));
+        $this->assertTrue($tools->contains('name', 'set_bucket_allocations'));
+        $this->assertTrue($tools->contains('name', 'import_csv'));
+        $this->assertTrue($tools->contains('name', 'prepare_next_month'));
+        $this->assertTrue($tools->contains('name', 'sync_allocation_plan_actuals'));
         $this->assertFalse($tools->firstWhere('name', 'create_asset')['annotations']['readOnlyHint']);
         $createAsset = $tools->firstWhere('name', 'create_asset');
         $this->assertArrayNotHasKey('id', $createAsset['inputSchema']['properties']);
         $this->assertContains('name', $createAsset['inputSchema']['required']);
+        $transaction = $tools->firstWhere('name', 'create_transaction');
+        $this->assertArrayHasKey('purpose_bucket_id', $transaction['inputSchema']['properties']);
+        $allocationPlan = $tools->firstWhere('name', 'create_allocation_plan');
+        $this->assertArrayHasKey('source_review_id', $allocationPlan['inputSchema']['properties']);
     }
 
     public function test_mcp_create_returns_audit_and_reflected_dashboard_delta(): void
@@ -102,6 +115,78 @@ class McpSafetyTest extends TestCase
 
         $malformed = $this->callToolWithRawArguments($server, 'get_dashboard', 'not-an-object');
         $this->assertTrue($malformed['result']['isError'] ?? false);
+    }
+
+    public function test_mcp_import_queues_rows_without_silent_posting(): void
+    {
+        $response = $this->callTool(app(FinancialMcpServer::class), 'import_csv', [
+            'file_name' => 'statement.csv',
+            'source' => 'bank',
+            'csv' => "date,description,amount,currency,type\n2026-08-01,Salary,10000,EGP,income\n",
+        ]);
+
+        $this->assertFalse($response['result']['isError'] ?? false);
+        $data = $response['result']['structuredContent']['data'];
+        $this->assertSame('review', $data['entity']['status']);
+        $this->assertDatabaseCount('transactions', 0);
+        $this->assertDatabaseCount('import_rows', 1);
+        $this->assertDatabaseHas('import_batches', ['file_name' => 'statement.csv', 'status' => 'review']);
+    }
+
+    public function test_mcp_manages_bucket_allocations_and_ledger_actuals(): void
+    {
+        $account = Account::create(['name' => 'MCP account', 'type' => 'bank', 'currency' => 'EGP']);
+        $asset = Asset::create(['name' => 'MCP asset', 'type' => 'Cash', 'currency' => 'EGP', 'current_value_egp' => 5000, 'liquidity' => 'immediate']);
+        $bucket = Bucket::create(['name' => 'MCP purpose', 'color' => '#123456']);
+
+        $allocation = $this->callTool(app(FinancialMcpServer::class), 'set_bucket_allocations', [
+            'bucket_id' => $bucket->id,
+            'allocations' => [['asset_id' => $asset->id, 'amount_egp' => 2500]],
+        ]);
+        $this->assertFalse($allocation['result']['isError'] ?? false);
+        $this->assertDatabaseHas('asset_bucket_allocations', ['asset_id' => $asset->id, 'bucket_id' => $bucket->id, 'amount_egp' => 2500]);
+
+        $plan = AllocationPlan::create(['month' => now()->startOfMonth(), 'planned_income_egp' => 10000, 'planned_expenses_egp' => 0]);
+        $plan->items()->create(['bucket_id' => $bucket->id, 'planned_amount_egp' => 1000]);
+        LedgerTransaction::create([
+            'account_id' => $account->id,
+            'purpose_bucket_id' => $bucket->id,
+            'transaction_type' => 'contribution',
+            'occurred_on' => now()->startOfMonth(),
+            'description' => 'MCP actual',
+            'amount' => 800,
+            'currency' => 'EGP',
+            'amount_egp' => 800,
+            'review_state' => 'confirmed',
+            'source' => 'mcp-test',
+        ]);
+
+        $sync = $this->callTool(app(FinancialMcpServer::class), 'sync_allocation_plan_actuals', ['allocation_plan_id' => $plan->id]);
+        $this->assertFalse($sync['result']['isError'] ?? false);
+        $this->assertTrue($sync['result']['structuredContent']['data']['sync']['synced']);
+        $this->assertDatabaseHas('allocation_plan_items', ['allocation_plan_id' => $plan->id, 'actual_amount_egp' => 800, 'actual_source' => 'confirmed_ledger']);
+    }
+
+    public function test_mcp_prepares_next_month_from_a_closed_review_with_provenance(): void
+    {
+        $bucket = Bucket::create(['name' => 'Long-Term Investing', 'color' => '#123456']);
+        $review = MonthlyFinancialReview::create([
+            'month' => now()->startOfMonth(),
+            'income_egp' => 10000,
+            'essential_expenses_egp' => 2000,
+            'lifestyle_expenses_egp' => 1000,
+            'status' => 'closed',
+        ]);
+
+        $response = $this->callTool(app(FinancialMcpServer::class), 'prepare_next_month', ['review_id' => $review->id, 'lesson' => 'Keep investing consistent.']);
+
+        $this->assertFalse($response['result']['isError'] ?? false);
+        $plan = AllocationPlan::whereDate('month', now()->startOfMonth()->addMonth())->firstOrFail();
+        $this->assertSame($review->id, $plan->source_review_id);
+        $this->assertSame('prepared_from_review', $plan->generation_method);
+        $this->assertSame(5600.0, (float) $plan->items()->sum('planned_amount_egp'));
+        $this->assertStringContainsString('Keep investing consistent.', (string) $plan->notes);
+        $this->assertSame($bucket->id, $plan->items()->first()?->bucket_id);
     }
 
     /** @return array<string, mixed> */

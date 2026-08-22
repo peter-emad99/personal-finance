@@ -1,7 +1,9 @@
-import type { PropsWithChildren } from 'react';
+import { useEffect, useState } from 'react';
+import type { PropsWithChildren, ReactElement } from 'react';
 
 import {
     Sheet,
+    SheetClose,
     SheetContent,
     SheetDescription,
     SheetHeader,
@@ -18,8 +20,24 @@ export function FormModal({
     description?: string;
     onClose: () => void;
 }>) {
+    const [open, setOpen] = useState(false);
+
+    useEffect(() => {
+        const frame = requestAnimationFrame(() => setOpen(true));
+
+        return () => cancelAnimationFrame(frame);
+    }, []);
+
     return (
-        <Sheet open onOpenChange={(open) => !open && onClose()}>
+        <Sheet
+            open={open}
+            onOpenChange={setOpen}
+            onOpenChangeComplete={(nextOpen) => {
+                if (!nextOpen) {
+                    onClose();
+                }
+            }}
+        >
             <SheetContent side="right" className="gap-0">
                 <SheetHeader className="border-b pr-12">
                     <SheetTitle>{title}</SheetTitle>
@@ -33,4 +51,8 @@ export function FormModal({
             </SheetContent>
         </Sheet>
     );
+}
+
+export function FormModalClose({ children }: { children: ReactElement }) {
+    return <SheetClose render={children} />;
 }

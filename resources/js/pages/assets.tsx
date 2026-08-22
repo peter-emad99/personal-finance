@@ -17,7 +17,7 @@ import {
     PageHeader,
     Progress,
 } from '@/components/app-shell';
-import { FormModal } from '@/components/form';
+import { FormModal, FormModalClose } from '@/components/form';
 import {
     Card,
     CardAction,
@@ -369,36 +369,63 @@ export default function Assets({
                                             </TableCell>
                                             <TableCell className="py-4">
                                                 <Button
-                                                    variant="ghost"
-                                                    className="h-auto max-w-72 justify-start p-0 text-left whitespace-normal"
+                                                    variant="outline"
+                                                    className="h-auto w-full max-w-[22rem] justify-start p-3 text-left whitespace-normal"
                                                     onClick={() =>
                                                         openAllocations(asset)
                                                     }
                                                 >
-                                                    <div className="flex w-full flex-col gap-1">
-                                                        <span className="font-medium text-primary">
+                                                    <div className="flex w-full min-w-0 flex-col gap-1.5">
+                                                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                                                            <span className="font-medium text-primary">
+                                                                {asset
+                                                                    .bucketAllocations
+                                                                    ?.length
+                                                                    ? `${asset.bucketAllocations.length} ${asset.bucketAllocations.length === 1 ? 'purpose' : 'purposes'}`
+                                                                    : 'Assign a purpose'}
+                                                            </span>
                                                             {asset
                                                                 .bucketAllocations
-                                                                ?.length
-                                                                ? `${asset.bucketAllocations.length} purposes · ${formatEGP(allocated)} assigned`
-                                                                : 'Assign a purpose'}
-                                                        </span>
-                                                        <span className="truncate text-xs text-muted-foreground">
-                                                            {asset
-                                                                .bucketAllocations
-                                                                ?.length
-                                                                ? asset.bucketAllocations
-                                                                      .map(
-                                                                          (
-                                                                              bucket,
-                                                                          ) =>
-                                                                              `${bucket.bucketName} ${formatEGP(bucket.amount)}`,
-                                                                      )
-                                                                      .join(
-                                                                          ' · ',
-                                                                      )
-                                                                : `${formatEGP(remaining)} is unassigned`}
-                                                        </span>
+                                                                ?.length ? (
+                                                                <span className="text-xs font-medium text-muted-foreground tabular-nums">
+                                                                    {formatEGP(
+                                                                        allocated,
+                                                                    )}{' '}
+                                                                    assigned
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                        {asset.bucketAllocations
+                                                            ?.length ? (
+                                                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                                                {asset.bucketAllocations.map(
+                                                                    (
+                                                                        bucket,
+                                                                    ) => (
+                                                                        <span
+                                                                            key={`${bucket.bucketId}-${bucket.amount}`}
+                                                                            className="whitespace-nowrap"
+                                                                        >
+                                                                            {
+                                                                                bucket.bucketName
+                                                                            }{' '}
+                                                                            <span className="font-medium text-foreground tabular-nums">
+                                                                                {formatEGP(
+                                                                                    bucket.amount,
+                                                                                )}
+                                                                            </span>
+                                                                        </span>
+                                                                    ),
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {formatEGP(
+                                                                    remaining,
+                                                                )}{' '}
+                                                                unassigned
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </Button>
                                             </TableCell>
@@ -765,13 +792,11 @@ export default function Assets({
                             </FieldGroup>
                         </FieldSet>
                         <div className="flex justify-end gap-2">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setOpen(false)}
-                            >
-                                Cancel
-                            </Button>
+                            <FormModalClose>
+                                <Button type="button" variant="outline">
+                                    Cancel
+                                </Button>
+                            </FormModalClose>
                             <Button type="submit">Save asset</Button>
                         </div>
                     </form>
@@ -872,13 +897,11 @@ export default function Assets({
                             </FieldGroup>
                         )}
                         <div className="flex justify-end gap-2">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setAllocationAsset(null)}
-                            >
-                                Cancel
-                            </Button>
+                            <FormModalClose>
+                                <Button type="button" variant="outline">
+                                    Cancel
+                                </Button>
+                            </FormModalClose>
                             <Button
                                 type="submit"
                                 disabled={

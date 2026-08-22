@@ -39,6 +39,7 @@ export default function AllocationReconciliation({
     dataFreshness: { source: string; status: string };
 }) {
     const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+    const [sheetOpen, setSheetOpen] = useState(false);
     const [allocations, setAllocations] = useState<Record<number, string>>({});
     const allocatedTotal = useMemo(
         () =>
@@ -50,6 +51,7 @@ export default function AllocationReconciliation({
     );
     const openAsset = (asset: Asset) => {
         setSelectedAsset(asset);
+        setSheetOpen(true);
         setAllocations(
             Object.fromEntries(
                 buckets.map((bucket) => [
@@ -83,7 +85,7 @@ export default function AllocationReconciliation({
                     }),
                 ),
             },
-            { onSuccess: () => setSelectedAsset(null) },
+            { onSuccess: () => setSheetOpen(false) },
         );
     };
 
@@ -164,8 +166,9 @@ export default function AllocationReconciliation({
                 </div>
             </Card>
             <Sheet
-                open={selectedAsset !== null}
-                onOpenChange={(open) => {
+                open={sheetOpen}
+                onOpenChange={setSheetOpen}
+                onOpenChangeComplete={(open) => {
                     if (!open) {
                         setSelectedAsset(null);
                     }
@@ -234,7 +237,7 @@ export default function AllocationReconciliation({
                                 <Button
                                     type="button"
                                     variant="ghost"
-                                    onClick={() => setSelectedAsset(null)}
+                                    onClick={() => setSheetOpen(false)}
                                 >
                                     Cancel
                                 </Button>

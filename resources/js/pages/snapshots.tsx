@@ -9,7 +9,7 @@ import {
     PageHeader,
 } from '@/components/app-shell';
 import { DatePicker } from '@/components/date-picker';
-import { FormModal } from '@/components/form';
+import { FormModal, FormModalClose } from '@/components/form';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
@@ -158,12 +158,11 @@ export default function Snapshots({ snapshots }: { snapshots: Snapshot[] }) {
                             />
                         </Field>
                         <div className="flex justify-end gap-2">
-                            <Button
-                                variant="ghost"
-                                onClick={() => setOpen(false)}
-                            >
-                                Cancel
-                            </Button>
+                            <FormModalClose>
+                                <Button type="button" variant="ghost">
+                                    Cancel
+                                </Button>
+                            </FormModalClose>
                             <Button type="submit">Save checkpoint</Button>
                         </div>
                     </form>

@@ -16,7 +16,7 @@ import {
     PageHeader,
     Progress,
 } from '@/components/app-shell';
-import { FormModal } from '@/components/form';
+import { FormModal, FormModalClose } from '@/components/form';
 import {
     Card,
     CardAction,
@@ -565,13 +565,11 @@ export default function Buckets({
                             </Field>
                         </FieldGroup>
                         <div className="flex justify-end gap-2">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setOpen(false)}
-                            >
-                                Cancel
-                            </Button>
+                            <FormModalClose>
+                                <Button type="button" variant="outline">
+                                    Cancel
+                                </Button>
+                            </FormModalClose>
                             <Button type="submit">
                                 {editing ? 'Save changes' : 'Create purpose'}
                             </Button>
@@ -840,13 +838,11 @@ export default function Buckets({
                             })}
                         </FieldGroup>
                         <div className="flex justify-end gap-2">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setFundingBucket(null)}
-                            >
-                                Cancel
-                            </Button>
+                            <FormModalClose>
+                                <Button type="button" variant="outline">
+                                    Cancel
+                                </Button>
+                            </FormModalClose>
                             <Button
                                 type="submit"
                                 disabled={

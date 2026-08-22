@@ -949,25 +949,40 @@ export default function Assets({
                             </div>
                             {detailAsset.bucketAllocations?.length ? (
                                 detailAsset.bucketAllocations.map((bucket) => (
-                                    <Button
-                                        key={bucket.bucketId}
-                                        variant="outline"
-                                        className="h-auto justify-between whitespace-normal"
-                                        onClick={() => router.visit('/buckets')}
-                                    >
-                                        <span className="text-left">
-                                            {bucket.bucketName}
-                                            <span className="block text-xs font-normal text-muted-foreground">
+                                    <Card key={bucket.bucketId} size="sm">
+                                        <CardHeader>
+                                            <CardTitle>
+                                                {bucket.bucketName}
+                                            </CardTitle>
+                                            <CardDescription>
                                                 {bucket.goalName
                                                     ? `Goal: ${bucket.goalName}`
                                                     : (bucket.purpose ??
                                                       'Flexible purpose')}
+                                            </CardDescription>
+                                            <CardAction>
+                                                <span className="font-medium tabular-nums">
+                                                    {formatEGP(bucket.amount)}
+                                                </span>
+                                            </CardAction>
+                                        </CardHeader>
+                                        <CardFooter className="justify-between gap-2 text-xs text-muted-foreground">
+                                            <span>
+                                                {bucket.targetAmount
+                                                    ? `${formatEGP(Math.max(0, bucket.targetAmount - (bucket.currentAmount ?? 0)))} until target`
+                                                    : 'No target limit'}
                                             </span>
-                                        </span>
-                                        <span className="shrink-0 tabular-nums">
-                                            {formatEGP(bucket.amount)}
-                                        </span>
-                                    </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                    router.visit('/buckets')
+                                                }
+                                            >
+                                                Open bucket
+                                            </Button>
+                                        </CardFooter>
+                                    </Card>
                                 ))
                             ) : (
                                 <p className="text-sm text-muted-foreground">

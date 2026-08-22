@@ -301,22 +301,58 @@ export default function Buckets({
                                 <Separator />
                                 {bucket.assetAllocations.length ? (
                                     <div className="flex flex-col gap-2">
-                                        {bucket.assetAllocations.map((item) => (
-                                            <div
-                                                key={item.assetId}
-                                                className="flex items-center justify-between gap-3 text-sm"
-                                            >
-                                                <span className="min-w-0 truncate">
-                                                    {item.assetName}{' '}
-                                                    <span className="text-muted-foreground">
-                                                        · {item.assetType}
-                                                    </span>
-                                                </span>
-                                                <span className="shrink-0 font-medium tabular-nums">
-                                                    {formatEGP(item.amount)}
-                                                </span>
-                                            </div>
-                                        ))}
+                                        {bucket.assetAllocations.map((item) => {
+                                            const asset = assets.find(
+                                                (candidate) =>
+                                                    candidate.id ===
+                                                    item.assetId,
+                                            );
+
+                                            return (
+                                                <Card
+                                                    key={item.assetId}
+                                                    size="sm"
+                                                >
+                                                    <CardHeader>
+                                                        <CardTitle>
+                                                            {item.assetName}
+                                                        </CardTitle>
+                                                        <CardDescription>
+                                                            {item.assetType} ·
+                                                            Real holding funding
+                                                            this purpose
+                                                        </CardDescription>
+                                                        <CardAction>
+                                                            <span className="font-medium tabular-nums">
+                                                                {formatEGP(
+                                                                    item.amount,
+                                                                )}
+                                                            </span>
+                                                        </CardAction>
+                                                    </CardHeader>
+                                                    <CardFooter className="justify-between gap-2 text-xs text-muted-foreground">
+                                                        <span>
+                                                            {asset
+                                                                ? `${formatEGP(Math.max(0, asset.currentValue - asset.allocated))} still unassigned`
+                                                                : 'Allocation recorded'}
+                                                        </span>
+                                                        {asset && (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    setDetailAsset(
+                                                                        asset,
+                                                                    )
+                                                                }
+                                                            >
+                                                                Open asset
+                                                            </Button>
+                                                        )}
+                                                    </CardFooter>
+                                                </Card>
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <p className="text-sm text-muted-foreground">
@@ -799,37 +835,46 @@ export default function Buckets({
                             <p className="font-medium">Linked purposes</p>
                             {detailAsset.bucketAllocations.length ? (
                                 detailAsset.bucketAllocations.map((item) => (
-                                    <Button
-                                        key={item.bucketId}
-                                        variant="outline"
-                                        className="h-auto justify-between whitespace-normal"
-                                        onClick={() => {
-                                            setDetailAsset(null);
-                                            requestAnimationFrame(() =>
-                                                document
-                                                    .getElementById(
-                                                        `bucket-${item.bucketId}`,
-                                                    )
-                                                    ?.scrollIntoView({
-                                                        behavior: 'smooth',
-                                                        block: 'center',
-                                                    }),
-                                            );
-                                        }}
-                                    >
-                                        <span className="text-left">
-                                            {item.bucketName}
-                                            <span className="block text-xs font-normal text-muted-foreground">
+                                    <Card key={item.bucketId} size="sm">
+                                        <CardHeader>
+                                            <CardTitle>
+                                                {item.bucketName}
+                                            </CardTitle>
+                                            <CardDescription>
                                                 {item.goalName
-                                                    ? `Goal: ${item.goalName}`
+                                                    ? `Goal bucket · ${item.goalName}`
                                                     : (item.purpose ??
                                                       'Flexible purpose')}
-                                            </span>
-                                        </span>
-                                        <span className="shrink-0 tabular-nums">
-                                            {formatEGP(item.amount)}
-                                        </span>
-                                    </Button>
+                                            </CardDescription>
+                                            <CardAction>
+                                                <span className="font-medium tabular-nums">
+                                                    {formatEGP(item.amount)}
+                                                </span>
+                                            </CardAction>
+                                        </CardHeader>
+                                        <CardFooter>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    setDetailAsset(null);
+                                                    requestAnimationFrame(() =>
+                                                        document
+                                                            .getElementById(
+                                                                `bucket-${item.bucketId}`,
+                                                            )
+                                                            ?.scrollIntoView({
+                                                                behavior:
+                                                                    'smooth',
+                                                                block: 'center',
+                                                            }),
+                                                    );
+                                                }}
+                                            >
+                                                Open bucket
+                                            </Button>
+                                        </CardFooter>
+                                    </Card>
                                 ))
                             ) : (
                                 <p className="text-sm text-muted-foreground">

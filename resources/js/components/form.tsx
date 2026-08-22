@@ -20,10 +20,7 @@ export function FormModal({
 }>) {
     return (
         <Sheet open onOpenChange={(open) => !open && onClose()}>
-            <SheetContent
-                side="right"
-                className="w-full gap-0 sm:max-w-none lg:w-[min(82vw,88rem)]"
-            >
+            <SheetContent side="right" className="gap-0">
                 <SheetHeader className="border-b pr-12">
                     <SheetTitle>{title}</SheetTitle>
                     {description && (

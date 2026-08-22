@@ -72,6 +72,13 @@ type AssetOption = {
     type: string;
     currentValue: number;
     allocated: number;
+    bucketAllocations: {
+        bucketId: number;
+        bucketName: string;
+        purpose: string | null;
+        goalName: string | null;
+        amount: number;
+    }[];
 };
 
 const blank = {
@@ -92,6 +99,7 @@ export default function Buckets({
     const [editing, setEditing] = useState<Bucket | null>(null);
     const [open, setOpen] = useState(false);
     const [fundingBucket, setFundingBucket] = useState<Bucket | null>(null);
+    const [detailAsset, setDetailAsset] = useState<AssetOption | null>(null);
     const [allocations, setAllocations] = useState<Record<number, string>>({});
     const [form, setForm] = useState(blank);
     const activeBuckets = buckets.filter((bucket) => !bucket.archived);
@@ -215,7 +223,7 @@ export default function Buckets({
                     );
 
                     return (
-                        <Card key={bucket.id}>
+                        <Card key={bucket.id} id={`bucket-${bucket.id}`}>
                             <CardHeader>
                                 <div className="flex items-start gap-3">
                                     <div
@@ -613,6 +621,15 @@ export default function Buckets({
                                     asset.currentValue - alreadyElsewhere,
                                 );
                                 const invalid = existing > available + 0.005;
+                                const otherAllocations =
+                                    asset.bucketAllocations.filter(
+                                        (item) =>
+                                            item.bucketId !== fundingBucket.id,
+                                    );
+                                const unassigned = Math.max(
+                                    0,
+                                    asset.currentValue - asset.allocated,
+                                );
 
                                 return (
                                     <Field
@@ -622,13 +639,86 @@ export default function Buckets({
                                         <FieldLabel
                                             htmlFor={`bucket-asset-${asset.id}`}
                                         >
-                                            <span>{asset.name}</span>
+                                            <span className="flex items-center gap-2">
+                                                {asset.name}
+                                                <Button
+                                                    type="button"
+                                                    variant="link"
+                                                    size="sm"
+                                                    className="h-auto p-0"
+                                                    onClick={() =>
+                                                        setDetailAsset(asset)
+                                                    }
+                                                >
+                                                    View asset details
+                                                </Button>
+                                            </span>
                                             <span className="font-normal text-muted-foreground">
                                                 {asset.type} ·{' '}
-                                                {formatEGP(available)} available
-                                                for this bucket
+                                                {formatEGP(asset.currentValue)}{' '}
+                                                total value
                                             </span>
                                         </FieldLabel>
+                                        <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                                            <p>
+                                                <span className="font-medium text-foreground">
+                                                    {formatEGP(existing)}
+                                                </span>{' '}
+                                                assigned here
+                                            </p>
+                                            <p>
+                                                <span className="font-medium text-foreground">
+                                                    {formatEGP(
+                                                        alreadyElsewhere,
+                                                    )}
+                                                </span>{' '}
+                                                assigned elsewhere
+                                            </p>
+                                            <p>
+                                                <span className="font-medium text-foreground">
+                                                    {formatEGP(unassigned)}
+                                                </span>{' '}
+                                                not assigned
+                                            </p>
+                                        </div>
+                                        {otherAllocations.length > 0 && (
+                                            <div className="flex flex-wrap gap-2">
+                                                {otherAllocations.map(
+                                                    (item) => (
+                                                        <Button
+                                                            key={item.bucketId}
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                setFundingBucket(
+                                                                    null,
+                                                                );
+                                                                requestAnimationFrame(
+                                                                    () =>
+                                                                        document
+                                                                            .getElementById(
+                                                                                `bucket-${item.bucketId}`,
+                                                                            )
+                                                                            ?.scrollIntoView(
+                                                                                {
+                                                                                    behavior:
+                                                                                        'smooth',
+                                                                                    block: 'center',
+                                                                                },
+                                                                            ),
+                                                                );
+                                                            }}
+                                                        >
+                                                            {item.bucketName} ·{' '}
+                                                            {formatEGP(
+                                                                item.amount,
+                                                            )}
+                                                        </Button>
+                                                    ),
+                                                )}
+                                            </div>
+                                        )}
                                         <Input
                                             id={`bucket-asset-${asset.id}`}
                                             type="number"
@@ -675,6 +765,79 @@ export default function Buckets({
                             </Button>
                         </div>
                     </form>
+                </FormModal>
+            )}
+            {detailAsset && (
+                <FormModal
+                    title={detailAsset.name}
+                    description="This is the real asset. Purpose assignments reserve parts of its value; they do not create separate holdings."
+                    onClose={() => setDetailAsset(null)}
+                >
+                    <div className="flex flex-col gap-5">
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            <FundingStat
+                                label="Asset value"
+                                value={formatEGP(detailAsset.currentValue)}
+                            />
+                            <FundingStat
+                                label="Assigned to purposes"
+                                value={formatEGP(detailAsset.allocated)}
+                            />
+                            <FundingStat
+                                label="Not assigned"
+                                value={formatEGP(
+                                    Math.max(
+                                        0,
+                                        detailAsset.currentValue -
+                                            detailAsset.allocated,
+                                    ),
+                                )}
+                            />
+                        </div>
+                        <Separator />
+                        <div className="flex flex-col gap-2">
+                            <p className="font-medium">Linked purposes</p>
+                            {detailAsset.bucketAllocations.length ? (
+                                detailAsset.bucketAllocations.map((item) => (
+                                    <Button
+                                        key={item.bucketId}
+                                        variant="outline"
+                                        className="h-auto justify-between whitespace-normal"
+                                        onClick={() => {
+                                            setDetailAsset(null);
+                                            requestAnimationFrame(() =>
+                                                document
+                                                    .getElementById(
+                                                        `bucket-${item.bucketId}`,
+                                                    )
+                                                    ?.scrollIntoView({
+                                                        behavior: 'smooth',
+                                                        block: 'center',
+                                                    }),
+                                            );
+                                        }}
+                                    >
+                                        <span className="text-left">
+                                            {item.bucketName}
+                                            <span className="block text-xs font-normal text-muted-foreground">
+                                                {item.goalName
+                                                    ? `Goal: ${item.goalName}`
+                                                    : (item.purpose ??
+                                                      'Flexible purpose')}
+                                            </span>
+                                        </span>
+                                        <span className="shrink-0 tabular-nums">
+                                            {formatEGP(item.amount)}
+                                        </span>
+                                    </Button>
+                                ))
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    No purpose is linked to this asset yet.
+                                </p>
+                            )}
+                        </div>
+                    </div>
                 </FormModal>
             )}
         </AppShell>

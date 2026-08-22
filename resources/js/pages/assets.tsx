@@ -46,6 +46,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 import {
     Table,
     TableBody,
@@ -129,6 +130,7 @@ export default function Assets({
     const [editing, setEditing] = useState<Asset | null>(null);
     const [open, setOpen] = useState(false);
     const [allocationAsset, setAllocationAsset] = useState<Asset | null>(null);
+    const [detailAsset, setDetailAsset] = useState<Asset | null>(null);
     const [allocations, setAllocations] = useState<Record<number, string>>({});
     const [form, setForm] = useState(blank);
     const selectedType = assetTypes.find(([value]) => value === form.type);
@@ -304,9 +306,17 @@ export default function Assets({
                                         >
                                             <TableCell className="py-4 pl-5">
                                                 <div className="flex flex-col gap-1">
-                                                    <p className="font-medium">
+                                                    <Button
+                                                        variant="link"
+                                                        className="h-auto justify-start p-0 font-medium"
+                                                        onClick={() =>
+                                                            setDetailAsset(
+                                                                asset,
+                                                            )
+                                                        }
+                                                    >
                                                         {asset.name}
-                                                    </p>
+                                                    </Button>
                                                     <p className="text-xs text-muted-foreground">
                                                         {asset.type} ·{' '}
                                                         {asset.accountName ??
@@ -879,6 +889,125 @@ export default function Assets({
                             </Button>
                         </div>
                     </form>
+                </FormModal>
+            )}
+            {detailAsset && (
+                <FormModal
+                    title={detailAsset.name}
+                    description="See the full holding first, then follow each linked purpose or adjust the split."
+                    onClose={() => setDetailAsset(null)}
+                >
+                    <div className="flex flex-col gap-5">
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            <AllocationStat
+                                label="Current value"
+                                value={formatEGP(detailAsset.currentValue)}
+                            />
+                            <AllocationStat
+                                label="Assigned to purposes"
+                                value={formatEGP(
+                                    (
+                                        detailAsset.bucketAllocations ?? []
+                                    ).reduce(
+                                        (total, item) => total + item.amount,
+                                        0,
+                                    ),
+                                )}
+                            />
+                            <AllocationStat
+                                label="Not assigned"
+                                value={formatEGP(
+                                    Math.max(
+                                        0,
+                                        detailAsset.currentValue -
+                                            (
+                                                detailAsset.bucketAllocations ??
+                                                []
+                                            ).reduce(
+                                                (total, item) =>
+                                                    total + item.amount,
+                                                0,
+                                            ),
+                                    ),
+                                )}
+                            />
+                        </div>
+                        <Separator />
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="font-medium">Linked buckets</p>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                        setDetailAsset(null);
+                                        openAllocations(detailAsset);
+                                    }}
+                                >
+                                    Edit purpose split
+                                </Button>
+                            </div>
+                            {detailAsset.bucketAllocations?.length ? (
+                                detailAsset.bucketAllocations.map((bucket) => (
+                                    <Button
+                                        key={bucket.bucketId}
+                                        variant="outline"
+                                        className="h-auto justify-between whitespace-normal"
+                                        onClick={() => router.visit('/buckets')}
+                                    >
+                                        <span className="text-left">
+                                            {bucket.bucketName}
+                                            <span className="block text-xs font-normal text-muted-foreground">
+                                                {bucket.goalName
+                                                    ? `Goal: ${bucket.goalName}`
+                                                    : (bucket.purpose ??
+                                                      'Flexible purpose')}
+                                            </span>
+                                        </span>
+                                        <span className="shrink-0 tabular-nums">
+                                            {formatEGP(bucket.amount)}
+                                        </span>
+                                    </Button>
+                                ))
+                            ) : (
+                                <p className="text-sm text-muted-foreground">
+                                    This asset is not assigned to any bucket
+                                    yet.
+                                </p>
+                            )}
+                        </div>
+                        <Separator />
+                        <div className="grid gap-2 text-sm sm:grid-cols-2">
+                            <p>
+                                <span className="text-muted-foreground">
+                                    Type
+                                </span>
+                                <br />
+                                {detailAsset.type}
+                            </p>
+                            <p>
+                                <span className="text-muted-foreground">
+                                    Access
+                                </span>
+                                <br />
+                                {liquidityLabel(detailAsset.liquidity)}
+                            </p>
+                            <p>
+                                <span className="text-muted-foreground">
+                                    Location
+                                </span>
+                                <br />
+                                {detailAsset.accountName ?? 'Not specified'}
+                            </p>
+                            <p>
+                                <span className="text-muted-foreground">
+                                    Native currency
+                                </span>
+                                <br />
+                                {detailAsset.currency}
+                            </p>
+                        </div>
+                    </div>
                 </FormModal>
             )}
         </AppShell>

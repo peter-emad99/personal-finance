@@ -38,6 +38,10 @@ export type Asset = {
     bucketAllocations?: {
         bucketId: number;
         bucketName: string;
+        purpose?: string | null;
+        goalName?: string | null;
+        targetAmount?: number;
+        currentAmount?: number;
         amount: number;
     }[];
 };

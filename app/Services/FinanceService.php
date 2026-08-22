@@ -806,6 +806,10 @@ class FinanceService
             'bucketAllocations' => $asset->buckets->map(fn (Bucket $bucket) => [
                 'bucketId' => $bucket->id,
                 'bucketName' => $bucket->name,
+                'purpose' => $bucket->purpose,
+                'goalName' => $bucket->relationLoaded('goal') ? $bucket->goal?->name : null,
+                'targetAmount' => (float) $bucket->target_amount_egp,
+                'currentAmount' => $this->bucketValue($bucket),
                 'amount' => (float) data_get($bucket, 'pivot.amount_egp', 0),
             ])->values(),
         ];

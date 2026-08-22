@@ -16,7 +16,7 @@ class BucketController extends Controller
 {
     public function index(FinanceService $finance): Response
     {
-        return Inertia::render('buckets', ['buckets' => Bucket::withTrashed()->with(['goal', 'assets.buckets'])->orderBy('name')->get()->map(fn (Bucket $bucket) => [
+        return Inertia::render('buckets', ['buckets' => Bucket::withTrashed()->with(['goal', 'assets.buckets.goal'])->orderBy('name')->get()->map(fn (Bucket $bucket) => [
             'id' => $bucket->id, 'name' => $bucket->name, 'purpose' => $bucket->purpose, 'color' => $bucket->color,
             'goalName' => $bucket->goal?->name, 'targetAmount' => (float) $bucket->target_amount_egp, 'currentAmount' => $finance->bucketValue($bucket),
             'assetCount' => $bucket->assets->count(), 'archived' => $bucket->trashed(), 'goalId' => $bucket->goal_id,
@@ -24,9 +24,13 @@ class BucketController extends Controller
                 'assetId' => $asset->id, 'assetName' => $asset->name, 'assetType' => $asset->type,
                 'amount' => (float) data_get($asset, 'pivot.amount_egp', 0),
             ])->values(),
-        ]), 'assets' => Asset::with('buckets')->orderByDesc('current_value_egp')->get()->map(fn (Asset $asset): array => [
+        ]), 'assets' => Asset::with(['buckets.goal'])->orderByDesc('current_value_egp')->get()->map(fn (Asset $asset): array => [
             'id' => $asset->id, 'name' => $asset->name, 'type' => $asset->type, 'currentValue' => (float) $asset->current_value_egp,
             'allocated' => (float) $asset->buckets->sum(fn (Bucket $bucket): float => (float) data_get($bucket, 'pivot.amount_egp', 0)),
+            'bucketAllocations' => $asset->buckets->map(fn (Bucket $bucket): array => [
+                'bucketId' => $bucket->id, 'bucketName' => $bucket->name, 'purpose' => $bucket->purpose,
+                'goalName' => $bucket->goal?->name, 'amount' => (float) data_get($bucket, 'pivot.amount_egp', 0),
+            ])->values(),
         ])->values()]);
     }
 

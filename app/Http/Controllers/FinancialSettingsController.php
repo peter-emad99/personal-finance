@@ -62,6 +62,16 @@ class FinancialSettingsController extends Controller
             'emergency_reserve_months' => ['required', 'integer', 'between:1,36'],
             'emergency_eligible_liquidity' => ['required', 'in:immediate,within_3_days'],
             'policy' => ['nullable', 'array'],
+            'policy.monthly_allocation_targets' => ['nullable', 'array'],
+            'policy.monthly_allocation_targets.*' => ['required', 'numeric', 'between:0,100'],
+            'policy.financial_freedom' => ['nullable', 'array'],
+            'policy.financial_freedom.withdrawal_rate_percent' => ['nullable', 'numeric', 'between:1,10'],
+            'policy.financial_freedom.annual_spending_override_egp' => ['nullable', 'numeric', 'min:0'],
+            'policy.variance_thresholds' => ['nullable', 'array'],
+            'policy.variance_thresholds.income_percent' => ['nullable', 'numeric', 'between:0,100'],
+            'policy.variance_thresholds.expenses_percent' => ['nullable', 'numeric', 'between:0,100'],
+            'policy.variance_thresholds.investment_minimum_percent' => ['nullable', 'numeric', 'between:0,100'],
+            'policy.auto_prepare_next_month' => ['nullable', 'boolean'],
             'asset_class_targets' => ['nullable', 'array'],
             'asset_class_targets.*.min' => ['required', 'numeric', 'between:0,100'],
             'asset_class_targets.*.max' => ['required', 'numeric', 'between:0,100'],
@@ -88,6 +98,31 @@ class FinancialSettingsController extends Controller
         }
 
         $data['asset_class_targets'] = $targets;
+
+        if (isset($data['policy']['monthly_allocation_targets'])) {
+            $allocationTargets = array_map('floatval', $data['policy']['monthly_allocation_targets']);
+            if (abs(array_sum($allocationTargets) - 100) > 0.01) {
+                throw ValidationException::withMessages(['policy.monthly_allocation_targets' => 'Monthly allocation targets must add up to 100%.']);
+            }
+            $data['policy']['monthly_allocation_targets'] = $allocationTargets;
+        }
+
+        if (isset($data['policy']['financial_freedom']['withdrawal_rate_percent'])) {
+            $data['policy']['financial_freedom']['withdrawal_rate_percent'] = (float) $data['policy']['financial_freedom']['withdrawal_rate_percent'];
+        }
+        if (array_key_exists('annual_spending_override_egp', $data['policy']['financial_freedom'] ?? [])) {
+            $data['policy']['financial_freedom']['annual_spending_override_egp'] = $data['policy']['financial_freedom']['annual_spending_override_egp'] !== null
+                ? (float) $data['policy']['financial_freedom']['annual_spending_override_egp']
+                : null;
+        }
+
+        if (isset($data['policy']['variance_thresholds'])) {
+            $data['policy']['variance_thresholds'] = array_merge([
+                'income_percent' => 10,
+                'expenses_percent' => 10,
+                'investment_minimum_percent' => 80,
+            ], array_map('floatval', $data['policy']['variance_thresholds']));
+        }
 
         return $data;
     }

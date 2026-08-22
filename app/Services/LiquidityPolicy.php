@@ -83,6 +83,7 @@ class LiquidityPolicy
     {
         $settings = $this->settings();
         $targets = $settings->asset_class_targets ?: FinancialSetting::defaultAssetClassTargets();
+        $customPolicy = is_array($settings->policy) ? $settings->policy : [];
 
         return [
             'baseCurrency' => $settings->base_currency ?? 'EGP',
@@ -96,6 +97,14 @@ class LiquidityPolicy
             'maximumMonthlyPayment' => $settings->maximum_monthly_payment_egp !== null ? (float) $settings->maximum_monthly_payment_egp : null,
             'maximumDebtBurdenPercent' => $settings->maximum_debt_burden_percent !== null ? (float) $settings->maximum_debt_burden_percent : null,
             'valuationFreshnessDays' => (int) ($settings->valuation_freshness_days ?? 30),
+            'monthlyAllocationTargets' => $customPolicy['monthly_allocation_targets'] ?? FinancialSetting::defaultMonthlyAllocationTargets(),
+            'financialFreedom' => array_merge(FinancialSetting::defaultFinancialFreedom(), is_array($customPolicy['financial_freedom'] ?? null) ? $customPolicy['financial_freedom'] : []),
+            'varianceThresholds' => array_merge([
+                'income_percent' => 10,
+                'expenses_percent' => 10,
+                'investment_minimum_percent' => 80,
+            ], is_array($customPolicy['variance_thresholds'] ?? null) ? $customPolicy['variance_thresholds'] : []),
+            'autoPrepareNextMonth' => (bool) ($customPolicy['auto_prepare_next_month'] ?? false),
             'source' => 'financial_settings',
         ];
     }

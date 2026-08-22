@@ -14,7 +14,11 @@ class AllocationPlanItem extends Model
 
     protected function casts(): array
     {
-        return ['planned_amount_egp' => 'decimal:2', 'actual_amount_egp' => 'decimal:2'];
+        return [
+            'planned_amount_egp' => 'decimal:2',
+            'actual_amount_egp' => 'decimal:2',
+            'actual_synced_at' => 'datetime',
+        ];
     }
 
     /** @return BelongsTo<Bucket, $this> */

@@ -17,7 +17,15 @@ class AuthController extends Controller
 {
     public function login(): Response
     {
-        return Inertia::render('auth/login');
+        return Inertia::render('auth/login', [
+            'demoAccount' => config('finance.demo_enabled') && ! app()->isProduction()
+                ? [
+                    'name' => config('finance.demo_name'),
+                    'email' => config('finance.demo_email'),
+                    'password' => config('finance.demo_password'),
+                ]
+                : null,
+        ]);
     }
 
     public function authenticate(Request $request): RedirectResponse

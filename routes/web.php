@@ -9,6 +9,7 @@ use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\CommitmentController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DecisionJournalController;
+use App\Http\Controllers\DemoWorkspaceController;
 use App\Http\Controllers\ExportContextController;
 use App\Http\Controllers\FinancialSettingsController;
 use App\Http\Controllers\FxRateController;
@@ -17,6 +18,8 @@ use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\LiabilityBalanceHistoryController;
 use App\Http\Controllers\LiabilityController;
+use App\Http\Controllers\LiabilityPaymentController;
+use App\Http\Controllers\MarketRateController;
 use App\Http\Controllers\MonthlyReviewController;
 use App\Http\Controllers\OperationsController;
 use App\Http\Controllers\PasswordController;
@@ -39,6 +42,8 @@ Route::put('/password', [PasswordController::class, 'update'])->middleware(['aut
 
 Route::middleware('auth')->group(function (): void {
     Route::get('/', DashboardController::class)->name('dashboard');
+    Route::get('/api/market-rates', [MarketRateController::class, 'index'])->name('api.market-rates');
+    Route::post('/demo/reset', [DemoWorkspaceController::class, 'reset'])->name('demo.reset');
     Route::get('/learn', fn () => Inertia\Inertia::render('learn'))->name('learn.index');
     Route::get('/assets', [AssetController::class, 'index'])->name('assets.index');
     Route::post('/assets', [AssetController::class, 'store'])->name('assets.store');
@@ -63,7 +68,9 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/monthly-review/{review}', [MonthlyReviewController::class, 'destroy'])->name('monthly-review.destroy');
     Route::post('/monthly-review/{review}/restore', [MonthlyReviewController::class, 'restore'])->name('monthly-review.restore');
     Route::post('/monthly-review/{review}/close', [MonthlyReviewController::class, 'close'])->name('monthly-review.close');
+    Route::post('/monthly-review/{review}/prepare-next', [MonthlyReviewController::class, 'prepareNext'])->name('monthly-review.prepare-next');
     Route::post('/monthly-review/{review}/reopen', [MonthlyReviewController::class, 'reopen'])->name('monthly-review.reopen');
+    Route::post('/allocations/{allocationPlan}/sync-actuals', [AllocationController::class, 'syncActuals'])->name('allocations.sync-actuals');
     Route::get('/cash-flow', [CashFlowController::class, 'index'])->name('cash-flow.index');
     Route::post('/cash-flow', [CashFlowController::class, 'store'])->name('cash-flow.store');
     Route::put('/cash-flow/{cashFlow}', [CashFlowController::class, 'update'])->name('cash-flow.update');
@@ -79,6 +86,8 @@ Route::middleware('auth')->group(function (): void {
     Route::put('/liabilities/{liability}', [LiabilityController::class, 'update'])->name('liabilities.update');
     Route::delete('/liabilities/{liability}', [LiabilityController::class, 'destroy'])->name('liabilities.destroy');
     Route::post('/liabilities/{liability}/restore', [LiabilityController::class, 'restore'])->name('liabilities.restore');
+    Route::post('/liabilities/{liability}/payments', [LiabilityPaymentController::class, 'store'])->name('liabilities.payments.store');
+    Route::delete('/liability-payments/{payment}', [LiabilityPaymentController::class, 'destroy'])->name('liability-payments.destroy');
     Route::get('/liability-history', [LiabilityBalanceHistoryController::class, 'index'])->name('liability-history.index');
     Route::post('/liability-history', [LiabilityBalanceHistoryController::class, 'store'])->name('liability-history.store');
     Route::put('/liability-history/{history}', [LiabilityBalanceHistoryController::class, 'update'])->name('liability-history.update');

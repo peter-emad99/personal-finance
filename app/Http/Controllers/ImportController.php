@@ -7,6 +7,8 @@ use App\Models\ImportRow;
 use App\Models\LedgerTransaction;
 use App\Models\TransactionCategory;
 use App\Services\LedgerService;
+use App\Services\AllocationActualService;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,10 +50,11 @@ class ImportController extends Controller
         return back()->with('success', 'CSV rows queued for review. Nothing was posted automatically.');
     }
 
-    public function accept(Request $request, ImportRow $row, LedgerService $ledger): RedirectResponse
+    public function accept(Request $request, ImportRow $row, LedgerService $ledger, AllocationActualService $actuals): RedirectResponse
     {
         $data = $request->validate(['account_id' => ['nullable', 'exists:accounts,id'], 'category_id' => ['nullable', 'exists:transaction_categories,id'], 'transaction_type' => ['nullable', 'in:income,expense,transfer,contribution,withdrawal,dividend,interest,fee,tax,debt_payment,obligation,correction'], 'occurred_on' => ['nullable', 'date'], 'description' => ['nullable', 'string', 'max:240'], 'amount' => ['nullable', 'numeric', 'gt:0'], 'currency' => ['nullable', 'string', 'size:3']]);
-        $ledger->acceptImportRow($row, array_filter($data, fn ($value): bool => $value !== null));
+        $transaction = $ledger->acceptImportRow($row, array_filter($data, fn ($value): bool => $value !== null));
+        $actuals->syncMonth(Carbon::parse($transaction->occurred_on));
 
         return back()->with('success', 'Import row accepted and posted as a confirmed transaction.');
     }

@@ -31,4 +31,10 @@ class Liability extends Model
     {
         return $this->hasMany(LiabilityBalanceHistory::class);
     }
+
+    /** @return HasMany<LiabilityPaymentRecord, $this> */
+    public function paymentRecords(): HasMany
+    {
+        return $this->hasMany(LiabilityPaymentRecord::class);
+    }
 }

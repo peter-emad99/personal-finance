@@ -1,7 +1,115 @@
 # Personal Finance OS — Trust, Dashboard, and Product Improvement Plan
 
-**Status:** proposed implementation plan  
+**Status:** living plan — core monthly planning and learning loop complete; broader product roadmap remains below
 **Scope:** private, single-user Laravel MVP first; hosted/multi-user product second
+
+## Living progress tracker — monthly planning and wealth-building loop
+
+**Last reviewed:** 2026-08-22
+**Purpose:** keep the original dashboard plan, implementation decisions, and remaining work in one place. Update this section after each meaningful change so progress is not lost between sessions.
+
+### Current product loop
+
+The intended experience is:
+
+> Close month → compare plan vs actual → explain differences → generate next month’s plan → adjust allocations and continue.
+
+The current implementation supports this loop with an explicit **Prepare next month** confirmation by default. An optional policy can auto-prepare on close, but only when the next month has no plan; an existing plan is never overwritten.
+
+### Original roadmap to preserve
+
+1. **Next-month workflow**
+   Closing a review should automatically create the next month’s plan using the latest income, commitments, liabilities, and spending lessons.
+2. **Automatic emergency-fund redirection**
+   When the reserve reaches six months, the system should automatically suggest moving that contribution to goals or investments instead of only showing a warning.
+3. **Plan variance warnings**
+   The dashboard displays planned vs actual differences, but it should also alert when planned income or expenses differ significantly.
+4. **True actual tracking**
+   Investments and allocations are still partly manual. Confirmed ledger transactions should automatically update actual spending, debt payments, and investment contributions.
+5. **Debt payoff detail**
+   Add principal paid, interest paid, remaining months, and payoff projection. Currently the system mainly tracks balance and monthly payment.
+6. **Commitment change detection**
+   If a subscription or liability changes after a review is saved, the dashboard should show exactly what changed and how it affects free cash flow.
+7. **Monthly plan connection**
+   Plans and reviews are connected by month, but not by an explicit relationship. Adding provenance such as “created from August review” would make the history clearer.
+8. **Better monthly history**
+   Add charts for income, expenses, free cash flow, investment rate, and debt payments across twelve months.
+
+The most valuable step remains:
+
+**Close month → compare plan vs actual → explain differences → generate next month’s plan automatically.**
+
+### Status of the eight roadmap items
+
+| Item | Status | What exists now | Remaining work / acceptance condition |
+|---|---|---|---|
+| 1. Next-month workflow | **DONE** | Closing a review records the latest obligation snapshot. **Prepare next month** opens a confirmation proposal with the closed review, current active commitments/liabilities, emergency-fund gap, active goal contributions, remaining investment capacity, and a carried-forward lesson. Existing plans are not overwritten. An optional policy toggle can safely auto-create only when no next-month plan exists. See [MonthlyReviewController.php](../app/Http/Controllers/MonthlyReviewController.php) and [monthly-review.tsx](../resources/js/pages/monthly-review.tsx). | — |
+| 2. Emergency-fund redirection | **DONE for the current flow** | When the reserve is complete, the confirmation shows the released reserve-sized amount and provides one click to redirect it to goals or investments. The configured reserve-month policy remains the source of truth. | Add more destination rules if users need separate goal priorities or multiple investment buckets. |
+| 3. Plan variance warnings | **DONE for current plan/review flow** | The monthly flow calculates planned income, planned expenses, actual income/outflow, free-cash-flow variance, over-allocation, unassigned money, obligation mismatch, and investment-below-target warnings. Income/outflow materiality and investment minimums are configurable in Financial policy, and the dashboard shows exact percentages. See [FinanceService.php](../app/Services/FinanceService.php) and [dashboard.tsx](../resources/js/pages/dashboard.tsx). | — |
+| 4. True actual tracking | **DONE for the current flow** | Confirmed ledger rows drive monthly income, spending, debt-payment, and investment totals. [AllocationActualService.php](../app/Services/AllocationActualService.php) derives plan actuals from explicit purpose buckets or safe goal/emergency/investment fallbacks, and repeated syncs replace values rather than double-counting. | Continue improving category/purpose review and correction history for unusual transactions; direct expense-to-spending-bucket tracking can be added if the product needs that level of detail. |
+| 5. Debt payoff detail | **DONE** | Liabilities support lender-style payment records with date, total, principal, interest, fees, balance after payment, source, and notes. The UI shows recorded totals plus estimated monthly/total interest, principal, remaining months, projected payoff date, and +1,000/+3,000/+5,000 EGP extra-payment scenarios. | Add lender-specific fees, variable-rate schedules, and one-time lump-sum scenarios only if needed later. |
+| 6. Commitment change detection | **DONE for the current review flow** | The closed-review snapshot is compared item by item. Dashboard and review UI show added, removed, renamed/amount-changed records, old vs new monthly capacity, balance deltas, and free-cash-flow impact. | Add a richer audit trail for archived records and historical edits if correction history becomes a product requirement. |
+| 7. Monthly plan connection | **DONE** | Plans have `source_review_id`, `generation_method`, and `generated_at`; the monthly review now displays readable provenance such as “Prepared from August 2026 review.” The model exposes `sourceReview()`. | — |
+| 8. Better monthly history | **DONE for twelve months** | The dashboard now shows twelve months of income, outflow, free cash flow, investing, and savings-rate bars with source-aware data; the monthly review keeps the table fallback. The demo seeds twelve months so the view is teachable immediately. | — |
+
+### Recommended implementation order and progress
+
+This is the original implementation order, retained as a checklist:
+
+1. **Add automatic commitment and liability totals to the monthly review page — DONE.** The review receives linked totals and displays them beside the manually recorded values.
+2. **Add “Use active records” buttons to fill commitment and debt payment fields — DONE.** The review can copy current active-record totals into its fields before saving.
+3. **Add planned / actual / difference columns — DONE for the current flow.** The dashboard, monthly review, and allocation page show planned, actual, variance, and whether actuals came from confirmed ledger rows.
+4. **Add a single dynamic cash-flow waterfall to the dashboard — DONE.** The monthly money-flow section explains income → outflows → free cash flow → emergency/goals/investments/unassigned.
+5. **Add warnings — DONE for current rules.** Implemented: over-allocation, obligation mismatch, item-level obligation changes, complete emergency fund, configurable plan income/expense variance, configurable investment-below-target warnings, and unassigned money.
+6. **Make the next month’s plan start from the previous review automatically — DONE.** The explicit **Prepare next month** confirmation is implemented, creates provenance, uses current obligations, carries a spending lesson into the plan, offers one-click emergency redirection, and does not overwrite an existing plan. An optional policy toggle can safely auto-create it on close only when the next month has no plan.
+
+### What is complete in the current implementation
+
+- The dashboard shows the signed-in user name, monthly ratios, financial-freedom estimate, wealth-building stage, dynamic monthly flow, linked obligations, allocation health, and actionable warnings.
+- The Learn page now explains the full system loop, the three wealth-building stages, free-cash-flow/emergency-fund/financial-freedom formulas, the 4% rule limitations, all ten Japanese habits with Arabic summaries, and practical FAQs.
+- The shared app shell provides a concise contextual hint on every main page so the user knows what the page means, what to enter, and where the result flows next.
+- The monthly review connects active commitments and liabilities, supports “Use active records,” records closed-review obligation snapshots, and can derive a review from confirmed ledger transactions.
+- Confirmed ledger transactions automatically update monthly actual summaries and allocation-plan actuals. Each transaction may optionally name a purpose bucket; otherwise investment flows use the matching goal/emergency bucket or the long-term investment fallback. See [2026_08_22_000003_add_ledger_allocation_tracking.php](../database/migrations/2026_08_22_000003_add_ledger_allocation_tracking.php).
+- The next-month generator uses the previous review’s income and spending baseline, current active obligations, the configured emergency-reserve policy, active goal contribution settings, and the remaining amount for investments.
+- The dashboard and monthly review compare item-level obligation snapshots and show the resulting monthly capacity impact.
+- Debt cards show a transparent payoff estimate (interest, principal, remaining months, and projected date) from the current balance/rate/payment assumptions.
+- Liabilities support statement-backed payment records and explain the difference between estimated payoff math and recorded lender facts. Extra monthly payment scenarios show time and interest trade-offs without mutating the real liability.
+- The dashboard contains a twelve-month cash-flow history view; the demo’s twelve months provide data for every bar and source label.
+- Financial policy stores configurable warning thresholds for plan income, plan outflow, and the minimum acceptable share of the configured investment target.
+- The next-month confirmation shows the proposed cash-flow allocation, reserve completion/released amount, destination choice, and one spending lesson before saving.
+- Financial policy includes an optional safe auto-prepare-on-close mode; the default remains manual confirmation.
+- Goal contributions are assigned to each goal’s own bucket when available, reducing manual bucket linking.
+- Plan provenance is stored in the database and exposed by the allocation-plan model.
+- The demo user now contains a realistic twelve-month story: a 50,000 EGP base salary, approximately 20,000 EGP current-month spending, a bonus month, an 8,000 EGP one-time repair, temporary investment reduction and recovery, three goals including a 1,500,000 EGP family-car stretch goal, 121 confirmed ledger transactions, 72 dated asset valuations, 12 FX rates, 12 liability balance histories, lender-style payment records, and a reviewable import example.
+- The dashboard includes a guided demo learning path, a current-lesson callout, and a demo-only reset action that cannot affect other users. The login copy describes the twelve-month workspace accurately.
+
+### Remaining work for this dashboard plan
+
+None. The eight monthly-planning items and the three follow-up enhancements are complete for the current MVP.
+
+The larger trust, CRUD, privacy, operations, and historical-attribution roadmap below remains active and is intentionally separate from this dashboard-plan completion.
+
+### Minimal-manual-linking design rules
+
+- Prefer relationships that can be inferred from the selected month, active records, confirmed ledger transactions, and each goal’s dedicated bucket.
+- Never ask the user to retype a total that can be calculated from active commitments or liabilities; provide an override only when the user is recording a real exception.
+- Never overwrite an existing plan automatically. Generate a proposed plan, explain its source, and require confirmation when there is any chance of replacing user-entered allocations.
+- Keep planned, actual, and difference values separate. A manual adjustment must be visible as an adjustment, not silently mixed into an actual transaction total.
+- Every warning should state the rule, amount, source records, and next action.
+
+### Verification snapshot
+
+Last verified after the demo-enhancement changes:
+
+- `php artisan migrate --force` — migration applied successfully.
+- `php artisan db:seed --class=DemoWorkspaceSeeder --force` — demo remains seeded; three goals, twelve reviews, 121 confirmed demo ledger transactions, one reviewable import batch, 72 dated asset valuations, 12 FX rates, 12 liability histories, and 12 lender payment records are present.
+- `php artisan test` — passed: 48 tests, 219 assertions.
+- `npm run types:check` — passed.
+- `npm run lint:check` — passed.
+- `npm run build` — passed.
+- `git diff --check` — passed.
+
+This tracker covers the current dashboard/monthly-planning work. The larger trust, CRUD, privacy, backup, audit, and data-history roadmap below remains active; its phases must not be marked complete merely because the monthly loop is working.
 
 ## Executive decision
 
@@ -9,7 +117,7 @@ The product direction is strong: it is a purpose-first financial workspace, not 
 
 > A private, explainable workspace that shows what you own, what it is reserved for, and whether a decision fits your rules.
 
-It is suitable to begin entering real data **only after the Phase 0 corrections below are released and the demo records are removed**. Until then, use it for exploration, not for a purchase, debt, or investment decision. The largest risk is false confidence: several cards use numbers that look precise but are either too broad, duplicated, or not historical.
+It is suitable to begin entering real data **only after the Phase 0 corrections below are released**. The dedicated demo account should remain available for learning and must stay isolated from the owner’s real data. Until the corrections are released, use the app for exploration, not for a purchase, debt, or investment decision. The largest risk is false confidence: several cards use numbers that look precise but are either too broad, duplicated, or not historical.
 
 The immediate goal is not more dashboard widgets. It is a dashboard whose figures can be explained, traced to a source, and safely acted on.
 

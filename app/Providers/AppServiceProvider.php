@@ -34,7 +34,7 @@ class AppServiceProvider extends ServiceProvider
             'CashFlow', 'DecisionJournalEntry', 'FinancialSetting', 'FxRate', 'Goal', 'ImportBatch',
             'ImportRow', 'IntegrityCheck', 'LedgerTransaction', 'Liability', 'LiabilityBalanceHistory',
             'MonthlyFinancialReview', 'RecurringCommitment', 'Snapshot', 'TransactionCategory',
-            'TransactionSplit', 'AllocationPlan', 'AllocationPlanItem',
+            'TransactionSplit', 'AllocationPlan', 'AllocationPlanItem', 'GoldPrice',
         ] as $model) {
             Gate::policy('App\\Models\\'.$model, OwnerPolicy::class);
         }

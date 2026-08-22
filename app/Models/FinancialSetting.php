@@ -56,4 +56,26 @@ class FinancialSetting extends Model
             'Cash' => ['min' => 5, 'max' => 15, 'target' => 10],
         ];
     }
+
+    /** @return array<string, int> */
+    public static function defaultMonthlyAllocationTargets(): array
+    {
+        return [
+            'essentials' => 35,
+            'lifestyle' => 15,
+            'debt' => 10,
+            'emergency' => 10,
+            'goals' => 15,
+            'investing' => 15,
+        ];
+    }
+
+    /** @return array{withdrawal_rate_percent: float, annual_spending_override_egp: float|null} */
+    public static function defaultFinancialFreedom(): array
+    {
+        return [
+            'withdrawal_rate_percent' => 4,
+            'annual_spending_override_egp' => null,
+        ];
+    }
 }

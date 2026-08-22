@@ -28,4 +28,10 @@ class TransactionSplit extends Model
     {
         return $this->belongsTo(TransactionCategory::class);
     }
+
+    /** @return BelongsTo<Bucket, $this> */
+    public function purposeBucket(): BelongsTo
+    {
+        return $this->belongsTo(Bucket::class, 'purpose_bucket_id');
+    }
 }

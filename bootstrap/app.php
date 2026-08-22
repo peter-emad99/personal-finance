@@ -3,6 +3,7 @@
 use App\Console\Commands\BootstrapOwnerCommand;
 use App\Console\Commands\McpServeCommand;
 use App\Console\Commands\PurgeExpiredBackupsCommand;
+use App\Console\Commands\UpdateMarketRatesCommand;
 use App\Console\Commands\VerifyOperationsCommand;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequestContext;
@@ -20,9 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
-    ->withCommands([McpServeCommand::class, BootstrapOwnerCommand::class, VerifyOperationsCommand::class, PurgeExpiredBackupsCommand::class])
+    ->withCommands([McpServeCommand::class, BootstrapOwnerCommand::class, VerifyOperationsCommand::class, PurgeExpiredBackupsCommand::class, UpdateMarketRatesCommand::class])
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command('finance:verify-operations')->dailyAt('03:30')->withoutOverlapping();
+        $schedule->command('finance:update-market-rates')->dailyAt('04:00')->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [

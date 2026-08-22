@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FxRate;
+use App\Models\GoldPrice;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,7 +13,10 @@ class FxRateController extends Controller
 {
     public function index(): Response
     {
-        return Inertia::render('fx-rates', ['rates' => FxRate::latest('rate_date')->get()]);
+        return Inertia::render('fx-rates', [
+            'rates' => FxRate::latest('rate_date')->get(),
+            'goldPrices' => GoldPrice::latest('price_date')->get(),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse

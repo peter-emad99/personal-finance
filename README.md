@@ -15,6 +15,7 @@ A local, single-user personal finance workspace built with Laravel 13, Inertia, 
 - Monthly financial reviews: editable month totals, history, planned direction, and invested amount.
 - Recurring commitments: subscriptions, renewals, utilities, insurance, and other predictable obligations with monthly and annual equivalents.
 - Liabilities: balances, rates, payments, payoff dates, and true net worth after debt.
+- Daily market sync: USD/EGP and 24K gold spot estimate per gram in EGP, with automatic marking of USD/gold assets that have a quantity.
 - Agent-ready local MCP owner control plane for financial context, calculations, and validated CRUD/archive/restore mutations with audit and dashboard reflection.
 
 ## UI system
@@ -60,6 +61,21 @@ With Herd, open the project through its local site. For a temporary server:
 php artisan serve
 ```
 
+The scheduler updates market rates daily at 04:00 Africa/Cairo time. Keep the
+Laravel scheduler running in development or configure the standard scheduler
+cron in production:
+
+```bash
+php artisan schedule:work
+php artisan finance:update-market-rates
+```
+
+The USD/EGP feed uses ExchangeRate-API's open daily endpoint and the gold feed
+uses Gold API's public XAU spot endpoint. The dashboard stores the latest
+successful values locally and marks them stale after 48 hours. Gold is a 24K
+spot estimate per gram; Egyptian dealer premiums, workmanship, and taxes are
+not included.
+
 ## Guided personal-finance setup order
 
 Use this checklist in order. Complete one step, verify the dashboard, then move
@@ -90,6 +106,15 @@ any HTTPS deployment and never override it to `false` in production.
 
 The seed contains clearly labeled demo figures based on the product brief. Replace them with your actual data from Assets, Buckets, Goals, and Cash flow before relying on the outputs.
 
+### Demo workspace
+
+Local and testing seeds also create a separate demo account with six months of salary, expenses, emergency savings, a goal, investments, a liability, monthly plans, reviews, snapshots, and decision-journal context:
+
+- Email: `demo@finance.local`
+- Password: `demo-finance-2026`
+
+The demo account is controlled by `FINANCE_SEED_DEMO`, `FINANCE_DEMO_EMAIL`, `FINANCE_DEMO_NAME`, and `FINANCE_DEMO_PASSWORD`. Disable demo seeding before any public or production deployment; these credentials are intentionally for local learning only.
+
 ## Verification
 
 ```bash
@@ -101,11 +126,11 @@ npm run types:check
 npm run build
 ```
 
-The app intentionally does not connect to banks, fetch live market prices, execute trades, or give investment advice in this MVP.
+The app intentionally does not connect to banks, execute trades, or give investment advice in this MVP. Market data is fetched only by the scheduled server-side sync and is used as an informational reference.
 
 ## Agent access through MCP
 
-The project includes a local Model Context Protocol server over stdio. MCP clients launch it as a local subprocess and can inspect or manage the same financial records used by the dashboard. Mutations are explicit, validated, transactional, soft-archived by default, and return an audit id plus a reflected dashboard delta.
+The project includes a local Model Context Protocol server over stdio. MCP clients launch it as a local subprocess and can inspect or manage the same owner-scoped financial records used by the dashboard. Mutations are explicit, validated, transactional, soft-archived by default, and return an audit id plus a reflected dashboard delta.
 
 Run it manually to verify the server:
 
@@ -113,7 +138,9 @@ Run it manually to verify the server:
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"local-test","version":"1"}}}' '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | php artisan mcp:serve
 ```
 
-Example client configuration is in `.mcp.example.json`. The server includes dashboard/context tools, explicit CRUD/archive/restore tools for current entities, allocation reconciliation, purchase analysis, redacted context, and audit-log inspection. Historical `as_of` inputs are intentionally unsupported until dated valuation and ledger records exist.
+Example client configuration is in `.mcp.example.json`. The server includes dashboard/context tools, explicit CRUD/archive/restore tools for current entities, CSV review-queue ingestion, asset and bucket allocation management, ledger-derived allocation actuals, monthly review close/reopen and next-month planning, historical snapshots, backups, integrity checks, purchase analysis, redacted context, and audit-log inspection. Historical `as_of` inputs are intentionally supported only when dated valuation, liability-history, and ledger sources are complete.
+
+The MCP control plane is intentionally bounded to this local finance domain. It does not log users in, change application passwords, connect to banks, execute trades, or expose an unauthenticated network endpoint. Those boundaries are product and security constraints, not missing MCP tools.
 
 MCP is intentionally local-only: `php artisan mcp:serve` resolves the
 bootstrapped owner and refuses to start when it is missing. No unauthenticated

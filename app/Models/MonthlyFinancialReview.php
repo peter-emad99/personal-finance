@@ -24,6 +24,8 @@ class MonthlyFinancialReview extends Model
             'debt_payments_egp' => 'decimal:2',
             'invested_egp' => 'decimal:2',
             'manual_adjustment_egp' => 'decimal:2',
+            'obligation_snapshot' => 'array',
+            'reconciled_at' => 'datetime',
         ];
     }
 }

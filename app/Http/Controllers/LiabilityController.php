@@ -14,7 +14,7 @@ class LiabilityController extends Controller
     public function index(FinanceService $finance): Response
     {
         return Inertia::render('liabilities', [
-            'liabilities' => Liability::orderByDesc('is_active')->orderByDesc('balance_egp')->get()->map(fn (Liability $liability) => $finance->liabilityPayloadForAgent($liability))->values(),
+            'liabilities' => Liability::with('paymentRecords')->orderByDesc('is_active')->orderByDesc('balance_egp')->get()->map(fn (Liability $liability) => $finance->liabilityPayloadForAgent($liability))->values(),
         ]);
     }
 

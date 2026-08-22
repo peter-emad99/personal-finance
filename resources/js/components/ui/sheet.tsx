@@ -51,7 +51,7 @@ function SheetContent({
         data-slot="sheet-content"
         data-side={side}
         className={cn(
-          "fixed z-50 flex flex-col gap-4 bg-popover bg-clip-padding text-sm text-popover-foreground shadow-lg data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm",
+          "fixed z-50 flex flex-col gap-4 rounded-xl border bg-popover bg-clip-padding text-sm text-popover-foreground shadow-lg data-[side=bottom]:inset-x-3 data-[side=bottom]:bottom-3 data-[side=bottom]:h-auto data-[side=left]:inset-y-3 data-[side=left]:left-3 data-[side=left]:h-[calc(100dvh-1.5rem)] data-[side=left]:w-[calc(100vw-1.5rem)] data-[side=right]:inset-y-3 data-[side=right]:right-3 data-[side=right]:h-[calc(100dvh-1.5rem)] data-[side=right]:w-[calc(100vw-1.5rem)] data-[side=top]:inset-x-3 data-[side=top]:top-3 data-[side=top]:h-auto data-[side=left]:sm:w-[min(56vw,56rem)] data-[side=left]:sm:max-w-none data-[side=right]:sm:w-[min(56vw,56rem)] data-[side=right]:sm:max-w-none",
           className
         )}
         {...props}

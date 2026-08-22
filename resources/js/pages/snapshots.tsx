@@ -11,7 +11,6 @@ import {
 import { DatePicker } from '@/components/date-picker';
 import { FormModal, FormModalClose } from '@/components/form';
 import { Field, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import {
     Table,
     TableBody,
@@ -20,6 +19,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import { formatEGP } from '@/types/finance';
 
 type Snapshot = {
@@ -148,8 +148,9 @@ export default function Snapshots({ snapshots }: { snapshots: Snapshot[] }) {
                             <FieldLabel htmlFor="snapshot-notes">
                                 Notes
                             </FieldLabel>
-                            <Input
+                            <Textarea
                                 id="snapshot-notes"
+                                rows={3}
                                 value={form.notes}
                                 onChange={(e) =>
                                     setForm({ ...form, notes: e.target.value })

@@ -15,7 +15,23 @@ type Rate = {
     source: string;
     method: string;
 };
-export default function FxRates({ rates }: { rates: Rate[] }) {
+type GoldPrice = {
+    id: number;
+    karat: number;
+    unit: string;
+    currency: string;
+    price_date: string;
+    price: number;
+    source: string;
+    method: string;
+};
+export default function FxRates({
+    rates,
+    goldPrices,
+}: {
+    rates: Rate[];
+    goldPrices: GoldPrice[];
+}) {
     return (
         <AppShell title="FX rates">
             <PageHeader
@@ -31,7 +47,7 @@ export default function FxRates({ rates }: { rates: Rate[] }) {
             <Card>
                 <CardHeader
                     title="Recorded rates"
-                    meta="Rates are historical records; no external integration is enabled in Phase 2."
+                    meta="Daily USD/EGP rates are fetched automatically; manual records remain supported."
                 />
                 <div className="divide-y divide-border">
                     {rates.map((rate) => (
@@ -56,6 +72,38 @@ export default function FxRates({ rates }: { rates: Rate[] }) {
                     {!rates.length && (
                         <p className="p-5 text-sm text-muted-foreground">
                             No FX rates recorded.
+                        </p>
+                    )}
+                </div>
+            </Card>
+            <Card className="mt-6">
+                <CardHeader
+                    title="24K gold reference prices"
+                    meta="Spot estimate per gram in EGP. Egyptian dealer premiums, workmanship, and taxes are not included."
+                />
+                <div className="divide-y divide-border">
+                    {goldPrices.map((goldPrice) => (
+                        <div
+                            key={goldPrice.id}
+                            className="flex items-center justify-between gap-3 p-4"
+                        >
+                            <div>
+                                <p className="text-sm font-semibold">
+                                    {goldPrice.karat}K gold / {goldPrice.unit}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    {goldPrice.price_date} · {goldPrice.source} ·{' '}
+                                    {goldPrice.method}
+                                </p>
+                            </div>
+                            <p className="text-sm font-semibold">
+                                {formatEGP(Number(goldPrice.price))}
+                            </p>
+                        </div>
+                    ))}
+                    {!goldPrices.length && (
+                        <p className="p-5 text-sm text-muted-foreground">
+                            No gold prices recorded yet.
                         </p>
                     )}
                 </div>

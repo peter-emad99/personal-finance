@@ -16,7 +16,11 @@ import {
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 
-export default function Login() {
+export default function Login({
+    demoAccount,
+}: {
+    demoAccount?: { name: string; email: string; password: string } | null;
+}) {
     const form = useForm({ email: '', password: '', remember: false });
 
     return (
@@ -93,6 +97,34 @@ export default function Login() {
                             {form.processing ? 'Signing in…' : 'Sign in'}
                         </Button>
                     </form>
+                    {demoAccount && (
+                        <div className="mt-5 rounded-lg border border-dashed bg-muted/40 p-3 text-sm">
+                            <p className="font-medium">
+                                Try the demo workspace
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                Twelve months of salary, spending, goals,
+                                emergency savings, investing, debt, and goal-tradeoff examples.
+                            </p>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="mt-3 w-full"
+                                onClick={() => {
+                                    form.setData('email', demoAccount.email);
+                                    form.setData(
+                                        'password',
+                                        demoAccount.password,
+                                    );
+                                }}
+                            >
+                                Use demo account
+                            </Button>
+                            <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                                {demoAccount.email}
+                            </p>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </main>

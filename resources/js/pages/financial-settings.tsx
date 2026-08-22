@@ -7,6 +7,7 @@ import {
     CardHeader,
     PageHeader,
 } from '@/components/app-shell';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,6 +20,16 @@ import {
 } from '@/components/ui/select';
 
 type Target = { min: number; max: number; target: number };
+type MonthlyAllocationTargets = Record<string, number>;
+type FinancialFreedom = {
+    withdrawal_rate_percent?: number | string;
+    annual_spending_override_egp?: number | string | null;
+};
+type VarianceThresholds = {
+    income_percent?: number | string;
+    expenses_percent?: number | string;
+    investment_minimum_percent?: number | string;
+};
 type Setting = {
     id: number;
     name: string;
@@ -32,6 +43,30 @@ type Setting = {
     maximum_monthly_payment_egp?: number | string | null;
     maximum_debt_burden_percent?: number | string | null;
     valuation_freshness_days?: number;
+    policy?: {
+        monthly_allocation_targets?: MonthlyAllocationTargets;
+        financial_freedom?: FinancialFreedom;
+        variance_thresholds?: VarianceThresholds;
+        auto_prepare_next_month?: boolean;
+    } | null;
+};
+
+const defaultMonthlyAllocationTargets: MonthlyAllocationTargets = {
+    essentials: 35,
+    lifestyle: 15,
+    debt: 10,
+    emergency: 10,
+    goals: 15,
+    investing: 15,
+};
+
+const monthlyAllocationLabels: Record<string, string> = {
+    essentials: 'Essentials & commitments',
+    lifestyle: 'Lifestyle & one-time',
+    debt: 'Debt payments',
+    emergency: 'Emergency fund',
+    goals: 'Goals',
+    investing: 'Investments',
 };
 
 export default function FinancialSettings({
@@ -43,6 +78,7 @@ export default function FinancialSettings({
 }) {
     const active = settings[0];
     const targets = active?.asset_class_targets ?? defaults;
+    const configuredPolicy = active?.policy ?? {};
     const [form, setForm] = useState({
         name: active?.name ?? 'Default policy',
         base_currency: active?.base_currency ?? 'EGP',
@@ -66,6 +102,30 @@ export default function FinancialSettings({
             active?.valuation_freshness_days ?? 30,
         ),
         asset_class_targets: targets,
+        policy: {
+            monthly_allocation_targets: {
+                ...defaultMonthlyAllocationTargets,
+                ...(configuredPolicy.monthly_allocation_targets ?? {}),
+            },
+            financial_freedom: {
+                withdrawal_rate_percent:
+                    configuredPolicy.financial_freedom
+                        ?.withdrawal_rate_percent ?? 4,
+                annual_spending_override_egp:
+                    configuredPolicy.financial_freedom
+                        ?.annual_spending_override_egp ?? '',
+            },
+            variance_thresholds: {
+                income_percent:
+                    configuredPolicy.variance_thresholds?.income_percent ?? 10,
+                expenses_percent:
+                    configuredPolicy.variance_thresholds?.expenses_percent ?? 10,
+                investment_minimum_percent:
+                    configuredPolicy.variance_thresholds?.investment_minimum_percent ?? 80,
+            },
+            auto_prepare_next_month:
+                configuredPolicy.auto_prepare_next_month ?? false,
+        },
     });
     const [feedback, setFeedback] = useState<string | null>(null);
     const update = (key: string, value: string) =>
@@ -78,6 +138,47 @@ export default function FinancialSettings({
                 [name]: {
                     ...current.asset_class_targets[name],
                     [key]: Number(value || 0),
+                },
+            },
+        }));
+    const updateAutoPrepare = (checked: boolean) =>
+        setForm((current) => ({
+            ...current,
+            policy: { ...current.policy, auto_prepare_next_month: checked },
+        }));
+    const updateMonthlyTarget = (key: string, value: string) =>
+        setForm((current) => ({
+            ...current,
+            policy: {
+                ...current.policy,
+                monthly_allocation_targets: {
+                    ...current.policy.monthly_allocation_targets,
+                    [key]: Number(value || 0),
+                },
+            },
+        }));
+    const updateFreedom = (key: keyof FinancialFreedom, value: string) =>
+        setForm((current) => ({
+            ...current,
+            policy: {
+                ...current.policy,
+                financial_freedom: {
+                    ...current.policy.financial_freedom,
+                    [key]: value,
+                },
+            },
+        }));
+    const updateVarianceThreshold = (
+        key: keyof VarianceThresholds,
+        value: string,
+    ) =>
+        setForm((current) => ({
+            ...current,
+            policy: {
+                ...current.policy,
+                variance_thresholds: {
+                    ...current.policy.variance_thresholds,
+                    [key]: value,
                 },
             },
         }));
@@ -99,6 +200,38 @@ export default function FinancialSettings({
                 ? Number(form.maximum_debt_burden_percent)
                 : null,
             valuation_freshness_days: Number(form.valuation_freshness_days),
+            policy: {
+                monthly_allocation_targets:
+                    form.policy.monthly_allocation_targets,
+                financial_freedom: {
+                    withdrawal_rate_percent: Number(
+                        form.policy.financial_freedom
+                            .withdrawal_rate_percent || 4,
+                    ),
+                    annual_spending_override_egp:
+                        form.policy.financial_freedom
+                            .annual_spending_override_egp
+                            ? Number(
+                                  form.policy.financial_freedom
+                                      .annual_spending_override_egp,
+                              )
+                            : null,
+                },
+                variance_thresholds: {
+                    income_percent: Number(
+                        form.policy.variance_thresholds.income_percent || 10,
+                    ),
+                    expenses_percent: Number(
+                        form.policy.variance_thresholds.expenses_percent || 10,
+                    ),
+                    investment_minimum_percent: Number(
+                        form.policy.variance_thresholds
+                        .investment_minimum_percent || 80,
+                    ),
+                },
+                auto_prepare_next_month:
+                    form.policy.auto_prepare_next_month,
+            },
         };
         const url = active
             ? `/settings/financial/${active.id}`
@@ -205,6 +338,196 @@ export default function FinancialSettings({
                                 </Select>
                             </Field>
                         </FieldGroup>
+                    </div>
+                </Card>
+                <Card>
+                    <CardHeader
+                        title="Monthly close automation"
+                        meta="Optional safe shortcut"
+                    />
+                    <div className="p-5">
+                        <FieldGroup>
+                            <Field orientation="horizontal">
+                                <Checkbox
+                                    id="auto-prepare-next-month"
+                                    checked={form.policy.auto_prepare_next_month}
+                                    onCheckedChange={(checked) =>
+                                        updateAutoPrepare(checked === true)
+                                    }
+                                />
+                                <FieldLabel htmlFor="auto-prepare-next-month">
+                                    Prepare the next month automatically when I close a review
+                                </FieldLabel>
+                            </Field>
+                        </FieldGroup>
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            This only creates a plan when the next month has no plan. It never replaces an existing plan. Keep it off if you prefer to review the proposal first.
+                        </p>
+                    </div>
+                </Card>
+                <Card>
+                    <CardHeader
+                        title="Dashboard warning thresholds"
+                        meta="Personal prompts, not universal financial rules"
+                    />
+                    <div className="p-5">
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel htmlFor="income-variance-threshold">
+                                    Warn when income differs by at least (%)
+                                </FieldLabel>
+                                <Input
+                                    id="income-variance-threshold"
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step="0.1"
+                                    value={form.policy.variance_thresholds.income_percent}
+                                    onChange={(event) =>
+                                        updateVarianceThreshold(
+                                            'income_percent',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="expense-variance-threshold">
+                                    Warn when outflow differs by at least (%)
+                                </FieldLabel>
+                                <Input
+                                    id="expense-variance-threshold"
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step="0.1"
+                                    value={form.policy.variance_thresholds.expenses_percent}
+                                    onChange={(event) =>
+                                        updateVarianceThreshold(
+                                            'expenses_percent',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="investment-minimum-threshold">
+                                    Warn below this share of target (%)
+                                </FieldLabel>
+                                <Input
+                                    id="investment-minimum-threshold"
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step="0.1"
+                                    value={form.policy.variance_thresholds.investment_minimum_percent}
+                                    onChange={(event) =>
+                                        updateVarianceThreshold(
+                                            'investment_minimum_percent',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                        </FieldGroup>
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            Example: 80% means the dashboard warns when your actual investment pace is below 80% of the configured monthly investing target.
+                        </p>
+                    </div>
+                </Card>
+                <Card>
+                    <CardHeader
+                        title="Monthly allocation rules"
+                        meta="Your starting targets for every 100 EGP of income"
+                    />
+                    <div className="p-5">
+                        <FieldGroup>
+                            {Object.entries(
+                                form.policy.monthly_allocation_targets,
+                            ).map(([key, value]) => (
+                                <Field key={key}>
+                                    <FieldLabel htmlFor={`monthly-${key}`}>
+                                        {monthlyAllocationLabels[key] ?? key}
+                                    </FieldLabel>
+                                    <Input
+                                        id={`monthly-${key}`}
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        step="0.1"
+                                        value={value}
+                                        onChange={(event) =>
+                                            updateMonthlyTarget(
+                                                key,
+                                                event.target.value,
+                                            )
+                                        }
+                                    />
+                                </Field>
+                            ))}
+                        </FieldGroup>
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            These are personal rules, not universal advice. The
+                            six values must add up to 100%.
+                        </p>
+                    </div>
+                </Card>
+                <Card>
+                    <CardHeader
+                        title="Financial freedom assumptions"
+                        meta="Used for the planning estimate on the dashboard"
+                    />
+                    <div className="p-5">
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel htmlFor="withdrawal-rate">
+                                    Withdrawal-rate assumption (%)
+                                </FieldLabel>
+                                <Input
+                                    id="withdrawal-rate"
+                                    type="number"
+                                    min={1}
+                                    max={10}
+                                    step="0.1"
+                                    value={
+                                        form.policy.financial_freedom
+                                            .withdrawal_rate_percent
+                                    }
+                                    onChange={(event) =>
+                                        updateFreedom(
+                                            'withdrawal_rate_percent',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="annual-spending">
+                                    Annual spending override (EGP)
+                                </FieldLabel>
+                                <Input
+                                    id="annual-spending"
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={
+                                        form.policy.financial_freedom
+                                            .annual_spending_override_egp ?? ''
+                                    }
+                                    onChange={(event) =>
+                                        updateFreedom(
+                                            'annual_spending_override_egp',
+                                            event.target.value,
+                                        )
+                                    }
+                                    placeholder="Use current monthly spending"
+                                />
+                            </Field>
+                        </FieldGroup>
+                        <p className="mt-3 text-xs text-muted-foreground">
+                            The dashboard uses annual spending divided by this
+                            assumption. It is a scenario, not a guarantee.
+                        </p>
                     </div>
                 </Card>
                 <Card>

@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import {
     AppShell,
     Button,
@@ -10,7 +10,7 @@ import {
 } from '@/components/app-shell';
 import { DatePicker } from '@/components/date-picker';
 import { FormModal, FormModalClose } from '@/components/form';
-import { Field, FieldLabel } from '@/components/ui/field';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
     Select,
@@ -28,6 +28,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import { formatEGP } from '@/types/finance';
 
 type Liability = {
@@ -42,6 +43,41 @@ type Liability = {
     payoffOn: string | null;
     isActive: boolean;
     notes: string | null;
+    payoffProjection: {
+        monthlyPayment: number;
+        estimatedMonthlyInterest: number;
+        estimatedMonthlyPrincipal: number;
+        estimatedTotalInterest: number;
+        estimatedRemainingMonths: number | null;
+        estimatedPayoffOn: string | null;
+        extraPaymentScenarios: {
+            extraMonthlyPayment: number;
+            estimatedTotalInterest: number;
+            estimatedRemainingMonths: number | null;
+            estimatedPayoffOn: string | null;
+        }[];
+    };
+    recordedPaymentSummary: {
+        count: number;
+        totalPayments: number;
+        principalPaid: number;
+        interestPaid: number;
+        feesPaid: number;
+        lastPaidOn: string | null;
+    };
+    paymentRecords: PaymentRecord[];
+};
+
+type PaymentRecord = {
+    id: number;
+    paidOn: string | null;
+    payment: number;
+    principal: number;
+    interest: number;
+    fees: number;
+    balanceAfter: number | null;
+    source: string;
+    notes: string | null;
 };
 
 export default function Liabilities({
@@ -52,6 +88,12 @@ export default function Liabilities({
     const [editing, setEditing] = useState<Liability | null>(null);
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState(emptyForm());
+    const [paymentLiability, setPaymentLiability] = useState<Liability | null>(
+        null,
+    );
+    const [paymentOpen, setPaymentOpen] = useState(false);
+    const [paymentForm, setPaymentForm] = useState(emptyPaymentForm());
+    const [expandedId, setExpandedId] = useState<number | null>(null);
     const total = liabilities
         .filter((item) => item.isActive)
         .reduce((sum, item) => sum + item.balance, 0);
@@ -86,6 +128,13 @@ export default function Liabilities({
     };
     const update = (key: string, value: string) =>
         setForm((current) => ({ ...current, [key]: value }));
+    const updatePayment = (key: string, value: string) =>
+        setPaymentForm((current) => ({ ...current, [key]: value }));
+    const beginPayment = (item: Liability) => {
+        setPaymentLiability(item);
+        setPaymentForm(emptyPaymentForm());
+        setPaymentOpen(true);
+    };
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
         const url = editing ? `/liabilities/${editing.id}` : '/liabilities';
@@ -95,13 +144,26 @@ export default function Liabilities({
             { onSuccess: () => setOpen(false) },
         );
     };
+    const submitPayment = (event: React.FormEvent) => {
+        event.preventDefault();
+
+        if (!paymentLiability) {
+            return;
+        }
+
+        router.post(
+            `/liabilities/${paymentLiability.id}/payments`,
+            paymentForm,
+            { onSuccess: () => setPaymentOpen(false) },
+        );
+    };
 
     return (
         <AppShell title="Liabilities">
             <PageHeader
                 eyebrow="See the whole picture"
                 title="Liabilities"
-                description="Track balances and monthly payments so net worth, purchase decisions, and free cash flow reflect reality."
+                description="Track balances and monthly payments, record lender statements, and compare extra-payment scenarios so net worth and free cash flow reflect reality."
                 action={
                     <Button onClick={() => begin()}>+ Add liability</Button>
                 }
@@ -151,65 +213,112 @@ export default function Liabilities({
                                 <TableHead className="px-5 py-3">
                                     Payoff
                                 </TableHead>
-                                <TableHead />
+                                <TableHead>Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody className="divide-y divide-border">
                             {liabilities.map((item) => (
-                                <TableRow
-                                    key={item.id}
-                                    className={
-                                        !item.isActive ? 'opacity-50' : ''
-                                    }
-                                >
-                                    <TableCell className="px-5 py-4">
-                                        <p className="font-semibold text-foreground">
-                                            {item.name}
-                                        </p>
-                                        <p className="mt-1 text-xs text-muted-foreground">
-                                            {item.isActive
-                                                ? 'Active'
-                                                : 'Inactive'}
-                                        </p>
-                                    </TableCell>
-                                    <TableCell className="px-5 py-4 text-muted-foreground">
-                                        {item.type}
-                                    </TableCell>
-                                    <TableCell className="px-5 py-4 font-semibold text-destructive">
-                                        {formatEGP(item.balance)}
-                                    </TableCell>
-                                    <TableCell className="px-5 py-4 text-muted-foreground">
-                                        {formatEGP(item.monthlyPayment)}
-                                    </TableCell>
-                                    <TableCell className="px-5 py-4 text-muted-foreground">
-                                        {item.interestRate === null
-                                            ? '—'
-                                            : `${item.interestRate}%`}
-                                    </TableCell>
-                                    <TableCell className="px-5 py-4 text-xs text-muted-foreground">
-                                        {item.payoffOn ?? '—'}
-                                    </TableCell>
-                                    <TableCell className="px-5 py-4 text-right">
-                                        <Button
-                                            variant="ghost"
-                                            className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
-                                            onClick={() => begin(item)}
-                                        >
-                                            Edit
-                                        </Button>
-                                        <Button
-                                            variant="danger"
-                                            className="h-7 border-0 bg-transparent px-2 text-xs text-destructive hover:bg-transparent"
-                                            onClick={() =>
-                                                router.delete(
-                                                    `/liabilities/${item.id}`,
-                                                )
-                                            }
-                                        >
-                                            Remove
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
+                                <Fragment key={item.id}>
+                                    <TableRow
+                                        className={
+                                            !item.isActive ? 'opacity-50' : ''
+                                        }
+                                    >
+                                        <TableCell className="px-5 py-4">
+                                            <p className="font-semibold text-foreground">
+                                                {item.name}
+                                            </p>
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                {item.isActive
+                                                    ? 'Active'
+                                                    : 'Inactive'}
+                                            </p>
+                                        </TableCell>
+                                        <TableCell className="px-5 py-4 text-muted-foreground">
+                                            {item.type}
+                                        </TableCell>
+                                        <TableCell className="px-5 py-4 font-semibold text-destructive">
+                                            {formatEGP(item.balance)}
+                                        </TableCell>
+                                        <TableCell className="px-5 py-4 text-muted-foreground">
+                                            {formatEGP(item.monthlyPayment)}
+                                        </TableCell>
+                                        <TableCell className="px-5 py-4 text-muted-foreground">
+                                            {item.interestRate === null
+                                                ? '—'
+                                                : `${item.interestRate}%`}
+                                        </TableCell>
+                                        <TableCell className="px-5 py-4 text-xs text-muted-foreground">
+                                            <p>
+                                                {item.payoffProjection
+                                                    .estimatedPayoffOn ??
+                                                    item.payoffOn ??
+                                                    '—'}
+                                            </p>
+                                            <p className="mt-1">
+                                                {item.payoffProjection
+                                                    .estimatedRemainingMonths ===
+                                                null
+                                                    ? 'Needs payment detail'
+                                                    : `${item.payoffProjection.estimatedRemainingMonths} months estimated`}
+                                            </p>
+                                        </TableCell>
+                                        <TableCell className="px-5 py-4 text-right">
+                                            <Button
+                                                variant="ghost"
+                                                className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
+                                                onClick={() =>
+                                                    setExpandedId(
+                                                        expandedId === item.id
+                                                            ? null
+                                                            : item.id,
+                                                    )
+                                                }
+                                            >
+                                                {expandedId === item.id
+                                                    ? 'Hide details'
+                                                    : 'Details'}
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
+                                                onClick={() =>
+                                                    beginPayment(item)
+                                                }
+                                            >
+                                                Record payment
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                className="mr-1 h-7 border-0 bg-transparent px-2 text-xs text-primary hover:bg-transparent"
+                                                onClick={() => begin(item)}
+                                            >
+                                                Edit
+                                            </Button>
+                                            <Button
+                                                variant="danger"
+                                                className="h-7 border-0 bg-transparent px-2 text-xs text-destructive hover:bg-transparent"
+                                                onClick={() =>
+                                                    router.delete(
+                                                        `/liabilities/${item.id}`,
+                                                    )
+                                                }
+                                            >
+                                                Remove
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                    {expandedId === item.id && (
+                                        <TableRow key={`${item.id}-details`}>
+                                            <TableCell
+                                                colSpan={8}
+                                                className="bg-muted/30 px-5 py-5"
+                                            >
+                                                <DebtDetails liability={item} />
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </Fragment>
                             ))}
                         </TableBody>
                     </Table>
@@ -382,8 +491,9 @@ export default function Liabilities({
                                 <FieldLabel htmlFor="liability-notes">
                                     Notes
                                 </FieldLabel>
-                                <Input
+                                <Textarea
                                     id="liability-notes"
+                                    rows={3}
                                     value={form.notes}
                                     onChange={(e) =>
                                         update('notes', e.target.value)
@@ -398,6 +508,167 @@ export default function Liabilities({
                                 </Button>
                             </FormModalClose>
                             <Button type="submit">Save liability</Button>
+                        </div>
+                    </form>
+                </FormModal>
+            )}
+            {paymentOpen && paymentLiability && (
+                <FormModal
+                    title={`Record payment · ${paymentLiability.name}`}
+                    description="Use the lender statement when possible. Principal and interest stay separate so the payoff picture improves over time."
+                    onClose={() => setPaymentOpen(false)}
+                >
+                    <form
+                        onSubmit={submitPayment}
+                        className="flex flex-col gap-4"
+                    >
+                        <FieldGroup>
+                            <Field>
+                                <FieldLabel htmlFor="payment-paid-on">
+                                    Payment date
+                                </FieldLabel>
+                                <DatePicker
+                                    id="payment-paid-on"
+                                    value={paymentForm.paid_on}
+                                    onChange={(value) =>
+                                        updatePayment('paid_on', value)
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="payment-total">
+                                    Total payment (EGP)
+                                </FieldLabel>
+                                <Input
+                                    id="payment-total"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                    value={paymentForm.payment_egp}
+                                    onChange={(event) =>
+                                        updatePayment(
+                                            'payment_egp',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="payment-principal">
+                                    Principal paid (EGP)
+                                </FieldLabel>
+                                <Input
+                                    id="payment-principal"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                    value={paymentForm.principal_egp}
+                                    onChange={(event) =>
+                                        updatePayment(
+                                            'principal_egp',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="payment-interest">
+                                    Interest paid (EGP)
+                                </FieldLabel>
+                                <Input
+                                    id="payment-interest"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    required
+                                    value={paymentForm.interest_egp}
+                                    onChange={(event) =>
+                                        updatePayment(
+                                            'interest_egp',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="payment-fees">
+                                    Fees (EGP)
+                                </FieldLabel>
+                                <Input
+                                    id="payment-fees"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={paymentForm.fees_egp}
+                                    onChange={(event) =>
+                                        updatePayment(
+                                            'fees_egp',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="payment-balance">
+                                    Balance after payment (EGP)
+                                </FieldLabel>
+                                <Input
+                                    id="payment-balance"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={paymentForm.balance_after_egp}
+                                    onChange={(event) =>
+                                        updatePayment(
+                                            'balance_after_egp',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="payment-source">
+                                    Source
+                                </FieldLabel>
+                                <Input
+                                    id="payment-source"
+                                    required
+                                    value={paymentForm.source}
+                                    onChange={(event) =>
+                                        updatePayment(
+                                            'source',
+                                            event.target.value,
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="payment-notes">
+                                    Notes
+                                </FieldLabel>
+                                <Textarea
+                                    id="payment-notes"
+                                    rows={3}
+                                    value={paymentForm.notes}
+                                    onChange={(event) =>
+                                        updatePayment(
+                                            'notes',
+                                            event.target.value,
+                                        )
+                                    }
+                                    placeholder="Statement reference or correction note"
+                                />
+                            </Field>
+                        </FieldGroup>
+                        <div className="flex justify-end gap-2">
+                            <FormModalClose>
+                                <Button type="button" variant="ghost">
+                                    Cancel
+                                </Button>
+                            </FormModalClose>
+                            <Button type="submit">Save payment record</Button>
                         </div>
                     </form>
                 </FormModal>
@@ -419,4 +690,118 @@ function emptyForm() {
         is_active: '1',
         notes: '',
     };
+}
+
+function emptyPaymentForm() {
+    return {
+        paid_on: new Date().toISOString().slice(0, 10),
+        payment_egp: '',
+        principal_egp: '',
+        interest_egp: '',
+        fees_egp: '',
+        balance_after_egp: '',
+        source: 'statement',
+        notes: '',
+    };
+}
+
+function DebtDetails({ liability }: { liability: Liability }) {
+    const summary = liability.recordedPaymentSummary;
+    const baseInterest = liability.payoffProjection.estimatedTotalInterest;
+
+    return (
+        <div className="flex flex-col gap-4">
+            <div className="grid gap-3 sm:grid-cols-4">
+                <DebtMetric
+                    label="Recorded principal"
+                    value={summary.principalPaid}
+                />
+                <DebtMetric
+                    label="Recorded interest"
+                    value={summary.interestPaid}
+                />
+                <DebtMetric
+                    label="Monthly interest estimate"
+                    value={liability.payoffProjection.estimatedMonthlyInterest}
+                />
+                <DebtMetric
+                    label="Monthly principal estimate"
+                    value={liability.payoffProjection.estimatedMonthlyPrincipal}
+                />
+            </div>
+            <div>
+                <p className="text-sm font-semibold">
+                    Extra monthly payment scenarios
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                    These are planning scenarios. They do not change the
+                    liability until you update the actual payment or record a
+                    statement.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {liability.payoffProjection.extraPaymentScenarios.map(
+                        (scenario) => (
+                            <div
+                                key={scenario.extraMonthlyPayment}
+                                className="rounded-lg border bg-background p-3 text-xs"
+                            >
+                                <p className="font-semibold">
+                                    +{formatEGP(scenario.extraMonthlyPayment)} /
+                                    month
+                                </p>
+                                <p className="mt-1 text-muted-foreground">
+                                    Payoff:{' '}
+                                    {scenario.estimatedPayoffOn ??
+                                        'not projected'}
+                                </p>
+                                <p className="mt-1 text-muted-foreground">
+                                    Interest saved:{' '}
+                                    {formatEGP(
+                                        Math.max(
+                                            0,
+                                            baseInterest -
+                                                scenario.estimatedTotalInterest,
+                                        ),
+                                    )}
+                                </p>
+                            </div>
+                        ),
+                    )}
+                </div>
+            </div>
+            {liability.paymentRecords.length > 0 && (
+                <div>
+                    <p className="text-sm font-semibold">
+                        Recent lender records
+                    </p>
+                    <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
+                        {liability.paymentRecords.map((record) => (
+                            <div
+                                key={record.id}
+                                className="flex flex-wrap justify-between gap-2"
+                            >
+                                <span>
+                                    {record.paidOn} · {record.source}
+                                </span>
+                                <span>
+                                    {formatEGP(record.payment)} · principal{' '}
+                                    {formatEGP(record.principal)} · interest{' '}
+                                    {formatEGP(record.interest)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function DebtMetric({ label, value }: { label: string; value: number }) {
+    return (
+        <div className="rounded-lg bg-background p-3">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="mt-1 font-semibold">{formatEGP(value)}</p>
+        </div>
+    );
 }

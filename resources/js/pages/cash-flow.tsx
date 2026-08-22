@@ -29,6 +29,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import { formatEGP } from '@/types/finance';
 
 type Flow = {
@@ -336,8 +337,9 @@ export default function CashFlow({
                                 <FieldLabel htmlFor="cash-flow-notes">
                                     Notes
                                 </FieldLabel>
-                                <Input
+                                <Textarea
                                     id="cash-flow-notes"
+                                    rows={3}
                                     value={form.notes}
                                     onChange={(e) =>
                                         update('notes', e.target.value)

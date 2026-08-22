@@ -12,6 +12,14 @@ import {
 import { FormModal } from '@/components/form';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { formatEGP } from '@/types/finance';
 
@@ -33,7 +41,10 @@ type Transaction = {
     review_state: string;
     account?: Account | null;
     category?: { name: string } | null;
+    purpose_bucket_id?: number | null;
+    purpose_bucket?: { name: string } | null;
 };
+type PurposeBucket = { id: number; name: string; goal_id?: number | null };
 type ImportRow = {
     id: number;
     row_number: number;
@@ -64,12 +75,14 @@ export default function Ledger({
     transactions,
     imports,
     reconciliation,
+    buckets,
 }: {
     accounts: Account[];
     transactions: Transaction[];
     categories: unknown[];
     imports: ImportBatch[];
     reconciliation: Reconciliation;
+    buckets: PurposeBucket[];
 }) {
     const [accountOpen, setAccountOpen] = useState(false);
     const [transactionOpen, setTransactionOpen] = useState(false);
@@ -91,6 +104,7 @@ export default function Ledger({
         amount: '',
         currency: 'EGP',
         amount_egp: '',
+        purpose_bucket_id: '',
         notes: '',
     });
     const [csv, setCsv] = useState(
@@ -212,6 +226,9 @@ export default function Ledger({
                                         {item.occurred_on} ·{' '}
                                         {item.transaction_type} ·{' '}
                                         {item.account?.name ?? 'Unassigned'}
+                                        {item.purpose_bucket?.name
+                                            ? ` · ${item.purpose_bucket.name}`
+                                            : ''}
                                     </p>
                                 </div>
                                 <p className="text-sm font-semibold">
@@ -483,6 +500,39 @@ export default function Ledger({
                                         )
                                     }
                                 />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="transaction-purpose">
+                                    Purpose bucket (optional)
+                                </FieldLabel>
+                                <Select
+                                    value={transaction.purpose_bucket_id || 'auto'}
+                                    onValueChange={(value) =>
+                                        updateTransactionForm(
+                                            'purpose_bucket_id',
+                                            value === 'auto' ? '' : String(value ?? ''),
+                                        )
+                                    }
+                                >
+                                    <SelectTrigger id="transaction-purpose">
+                                        <SelectValue placeholder="Auto-classify when possible" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            <SelectItem value="auto">
+                                                Auto-classify when possible
+                                            </SelectItem>
+                                            {buckets.map((bucket) => (
+                                                <SelectItem
+                                                    key={bucket.id}
+                                                    value={String(bucket.id)}
+                                                >
+                                                    {bucket.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
                             </Field>
                         </FieldGroup>
                         <Button type="submit">Record transaction</Button>

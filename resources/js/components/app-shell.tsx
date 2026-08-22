@@ -2,6 +2,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     BookOpen,
     Calculator,
+    CircleHelp,
     CreditCard,
     ChevronRight,
     Database,
@@ -27,6 +28,7 @@ import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
 import { ExportContextActions } from '@/components/export-context-actions';
 import { ThemeProvider, useTheme } from '@/components/theme-provider';
 import type { ThemeMode } from '@/components/theme-provider';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
     Breadcrumb,
     BreadcrumbItem,
@@ -86,6 +88,119 @@ type NavigationItem = {
 type NavigationGroup = {
     label: string;
     items: NavigationItem[];
+};
+
+const pageHints: Record<string, { title: string; description: string }> = {
+    'Learn the system': {
+        title: 'How to learn and apply the system',
+        description:
+            'Use the basic workflow first: record what you own, measure this month, protect the reserve, assign the surplus, then review the result. Each guide card opens the page where you can act.',
+    },
+    Dashboard: {
+        title: 'How to use this page',
+        description:
+            'Start here. Read the cash-flow status and attention queue first, then open the one action that improves your position this month.',
+    },
+    'Cash flow': {
+        title: 'What to record here',
+        description:
+            'Enter income and real outflows for the selected month. Free cash flow is the amount left after expenses and becomes the ceiling for your monthly plan.',
+    },
+    Allocations: {
+        title: 'What this plan means',
+        description:
+            'Planned is what you intend to direct. Actual is what confirmed ledger transactions show happened. Keep the plan within available cash flow.',
+    },
+    Goals: {
+        title: 'How goals work',
+        description:
+            'A goal is a target plus a deadline and monthly pace. Its bucket explains the purpose; its asset allocations show where the money is held.',
+    },
+    'What you own': {
+        title: 'Asset versus purpose',
+        description:
+            'Assets are what you own. Buckets are what the money is for. One asset can support several purposes, so allocating a purpose does not create new money.',
+    },
+    'Purpose buckets': {
+        title: 'Why buckets matter',
+        description:
+            'Buckets prevent one balance from being counted for several jobs. Use them for emergency savings, goals, spending reserves, or long-term investing.',
+    },
+    Commitments: {
+        title: 'What commitments do',
+        description:
+            'Commitments are recurring costs already spoken for. Active monthly equivalents are linked into reviews and reduce the cash available for goals and investing.',
+    },
+    Liabilities: {
+        title: 'What liabilities do',
+        description:
+            'Liabilities reduce net worth and their required payments reduce monthly free cash flow. Record the balance, rate, payment, lender statements, and any extra-payment scenario as accurately as possible.',
+    },
+    'Monthly review': {
+        title: 'Your monthly feedback loop',
+        description:
+            'Compare the plan with what happened, synchronise active commitments and debts, inspect item-level changes and payoff estimates, write the lesson, close the month, then review and confirm the next plan. If the reserve is complete, redirect the released amount to goals or investments.',
+    },
+    Scenarios: {
+        title: 'Use scenarios before buying',
+        description:
+            'A scenario is a rule-based estimate, not a guarantee. Check the price, cash left, payment, emergency reserve, and debt burden before making a decision.',
+    },
+    'Ledger and imports': {
+        title: 'The precise source',
+        description:
+            'Confirmed ledger rows become the preferred source for monthly actuals. Imports stay pending until you review and accept them; transfers are not spending.',
+    },
+    'Transaction categories': {
+        title: 'Why categories matter',
+        description:
+            'Categories explain what a ledger row represents. Consistent names improve essential, lifestyle, recurring, debt, and investment summaries.',
+    },
+    'Asset valuations': {
+        title: 'Keep values dated',
+        description:
+            'A valuation is a dated estimate of what an asset is worth. Add a new valuation when the value changes so history can separate contributions from market movement.',
+    },
+    'FX rates': {
+        title: 'Mixed currencies',
+        description:
+            'The app reports totals in EGP. Keep the original currency and use a dated exchange rate so conversions remain explainable.',
+    },
+    'Liability history': {
+        title: 'Track debt progress',
+        description:
+            'Record dated balances from statements. This lets the system show whether debt is falling and prevents current balances from being mistaken for historical facts.',
+    },
+    Reconciliation: {
+        title: 'What reconciliation checks',
+        description:
+            'Compare confirmed ledger balances with reported account balances and compare expected commitments with actual activity. Differences are review tasks, not automatic errors.',
+    },
+    'Allocation reconciliation': {
+        title: 'Purpose reconciliation',
+        description:
+            'Make sure assets are not allocated beyond their value and that every allocation has one clear purpose. A purpose is not a second account balance.',
+    },
+    Snapshots: {
+        title: 'Use snapshots as checkpoints',
+        description:
+            'A snapshot records your position at a date. Use current-date checkpoints for progress; historical accuracy requires dated valuations, liability histories, and ledger rows.',
+    },
+    'Financial policy': {
+        title: 'Your rules drive the advice',
+        description:
+            'Set your base currency, emergency months, liquidity rule, allocation targets, warning thresholds, and decision guardrails. The dashboard uses these settings instead of pretending one rule fits everyone.',
+    },
+    'Decision journal': {
+        title: 'Turn choices into learning',
+        description:
+            'Write the decision, assumptions, alternatives, and result. The goal is not perfect prediction; it is better decisions with a visible record of what you learned.',
+    },
+    Operations: {
+        title: 'Protect the workspace',
+        description:
+            'Use backups and integrity checks before relying on the system for important decisions. Keep exported financial context private and deliberate.',
+    },
 };
 
 const navigationGroups: NavigationGroup[] = [
@@ -288,9 +403,12 @@ export function AppShell({
 }: PropsWithChildren<{ title: string }>) {
     const page = usePage<{
         flash?: { success?: string | null; error?: string | null };
+        auth?: { user?: { name?: string | null } | null };
     }>();
     const currentPath = page.url.split('?')[0];
     const { flash } = page.props;
+    const userName = page.props.auth?.user?.name ?? 'Local owner';
+    const hint = pageHints[title];
 
     return (
         <ThemeProvider>
@@ -322,7 +440,10 @@ export function AppShell({
                                     </BreadcrumbItem>
                                 </BreadcrumbList>
                             </Breadcrumb>
-                            <div className="ml-auto">
+                            <div className="ml-auto flex items-center gap-3">
+                                <span className="hidden max-w-48 truncate text-xs text-muted-foreground sm:inline">
+                                    {userName}
+                                </span>
                                 <ThemeMenu />
                             </div>
                         </header>
@@ -341,6 +462,15 @@ export function AppShell({
                                 </div>
                             )}
                             <div className="mx-auto w-full max-w-[1500px]">
+                                {hint && (
+                                    <Alert className="mb-5">
+                                        <CircleHelp />
+                                        <AlertTitle>{hint.title}</AlertTitle>
+                                        <AlertDescription>
+                                            {hint.description}
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
                                 {children}
                             </div>
                         </div>
@@ -458,7 +588,7 @@ export function CardHeader({
     action?: ReactNode;
 }) {
     return (
-        <UiCardHeader className="border-b px-5 py-4">
+        <UiCardHeader className="rounded-t-2xl border-b border-border bg-muted/60 px-5 py-4">
             <div>
                 <UiCardTitle className="text-sm font-semibold">
                     {title}

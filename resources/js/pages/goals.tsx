@@ -14,6 +14,7 @@ import { DatePicker } from '@/components/date-picker';
 import { FormModal, FormModalClose } from '@/components/form';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { formatCompactEGP, formatEGP } from '@/types/finance';
 import type { Bucket, Goal } from '@/types/finance';
 
@@ -430,6 +431,18 @@ export default function Goals({
                                 onChange={(e) =>
                                     update('priority', e.target.value)
                                 }
+                            />
+                        </Field>
+                        <Field className="sm:col-span-2">
+                            <FieldLabel htmlFor="goal-notes">Notes</FieldLabel>
+                            <Textarea
+                                id="goal-notes"
+                                rows={3}
+                                value={form.notes}
+                                onChange={(event) =>
+                                    update('notes', event.target.value)
+                                }
+                                placeholder="What is this goal for, and what should you remember?"
                             />
                         </Field>
                         <div className="flex justify-end gap-2 sm:col-span-2">

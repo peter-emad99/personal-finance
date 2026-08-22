@@ -1,4 +1,5 @@
 import { router } from '@inertiajs/react';
+import { RefreshCw } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
     AppShell,
@@ -9,6 +10,7 @@ import {
     PageHeader,
     Progress,
 } from '@/components/app-shell';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { formatCompactEGP, formatEGP } from '@/types/finance';
@@ -19,6 +21,8 @@ type Item = {
     bucketName: string;
     planned: number;
     actual: number;
+    actualSource?: string;
+    actualSyncedAt?: string | null;
 };
 type Plan = {
     id: number;
@@ -37,24 +41,41 @@ type Defaults = {
         actual: number;
     }[];
 };
+type ActualTracking = {
+    source: string;
+    transactionCount: number;
+    actuals: Record<string, number>;
+    summary: {
+        income: number;
+        essentialExpenses: number;
+        lifestyleExpenses: number;
+        commitments: number;
+        otherExpenses: number;
+        debtPayments: number;
+        invested: number;
+    };
+    unmappedPurposeAmount: number;
+} | null;
 
 export default function Allocations({
     month,
     plan,
     buckets,
     defaults,
+    actualTracking,
 }: {
     month: string;
     plan: Plan;
     buckets: Bucket[];
     defaults: Defaults;
+    actualTracking: ActualTracking;
 }) {
     const suggestedByBucket = new Map(
         defaults.items
             .filter((item) => item.bucketId)
             .map((item) => [item.bucketId, item]),
     );
-    const initialItems =
+    const initialItems: Item[] =
         plan?.items ??
         buckets.map((bucket) => {
             const suggestion = suggestedByBucket.get(bucket.id);
@@ -186,7 +207,36 @@ export default function Allocations({
                         <CardHeader
                             title="Planned vs actual"
                             meta="Use buckets instead of vague savings categories"
+                            action={
+                                plan && actualTracking?.source === 'confirmed_ledger' ? (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                            router.post(
+                                                `/allocations/${plan.id}/sync-actuals`,
+                                            )
+                                        }
+                                    >
+                                        <RefreshCw data-icon="inline-start" />
+                                        Sync actuals
+                                    </Button>
+                                ) : undefined
+                            }
                         />
+                        {actualTracking?.source === 'confirmed_ledger' && (
+                            <Alert className="mx-5 mb-4">
+                                <RefreshCw />
+                                <AlertTitle>
+                                    Actuals linked to confirmed ledger
+                                </AlertTitle>
+                                <AlertDescription>
+                                    {actualTracking.transactionCount} confirmed transactions update this month’s spending, debt payments, and investments. Bucket actuals use an explicit purpose or a safe investment fallback.
+                                    {actualTracking.unmappedPurposeAmount > 0 && ` ${formatCompactEGP(actualTracking.unmappedPurposeAmount)} of purpose-directed money still needs a bucket.`}
+                                </AlertDescription>
+                            </Alert>
+                        )}
                         {!plan && (
                             <div className="px-5">
                                 <Badge variant="secondary">
@@ -208,8 +258,13 @@ export default function Allocations({
                                         <p className="mt-1 text-xs text-muted-foreground">
                                             {item.actual
                                                 ? `${Math.round((item.actual / Math.max(1, item.planned)) * 100)}% of plan moved`
-                                                : `${available > 0 ? Math.round((item.planned / available) * 100) : 0}% of available cash · no actual entered yet`}
+                                                : `${available > 0 ? Math.round((item.planned / available) * 100) : 0}% of available cash · no actual recorded yet`}
                                         </p>
+                                        {item.actualSource === 'confirmed_ledger' && (
+                                            <Badge className="mt-2" variant="outline">
+                                                From confirmed ledger
+                                            </Badge>
+                                        )}
                                     </div>
                                     <Field>
                                         <FieldLabel

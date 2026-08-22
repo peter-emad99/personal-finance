@@ -10,6 +10,7 @@ import {
 import { FormModal } from '@/components/form';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { formatEGP } from '@/types/finance';
 
 type Asset = { id: number; name: string };
@@ -154,6 +155,20 @@ export default function Valuations({
                                     onChange={(event) =>
                                         update('source', event.target.value)
                                     }
+                                />
+                            </Field>
+                            <Field className="sm:col-span-2">
+                                <FieldLabel htmlFor="valuation-notes">
+                                    Notes
+                                </FieldLabel>
+                                <Textarea
+                                    id="valuation-notes"
+                                    rows={3}
+                                    value={form.notes}
+                                    onChange={(event) =>
+                                        update('notes', event.target.value)
+                                    }
+                                    placeholder="Price source, valuation context, or anything to verify later"
                                 />
                             </Field>
                         </FieldGroup>

@@ -105,7 +105,7 @@ Remove or relabel any card that still presents the old starter split as if it we
 
 ### Plan templates
 
-Templates are reusable, owner-scoped blueprints. Multiple templates are allowed, for example Normal month, Kia K4 priority, or Investment-heavy. Each template contains income rules, expense categories/rules, and remaining savings rules: percentage -> asset target -> purpose bucket -> optional goal through the bucket.
+Templates are reusable, owner-scoped blueprints. Multiple templates are allowed, for example Normal month, Family car priority, or Investment-heavy. Each template contains income rules, expense categories/rules, and remaining savings rules: percentage -> asset target -> purpose bucket -> optional goal through the bucket.
 
 Selecting a template for a month creates a separate monthly snapshot. Editing that snapshot never edits the template. A closed snapshot is protected from later template or commitment changes, while changes remain available through the audit/history layer.
 

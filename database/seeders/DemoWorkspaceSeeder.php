@@ -34,6 +34,10 @@ use Illuminate\Support\Facades\Hash;
 
 class DemoWorkspaceSeeder extends Seeder
 {
+    private const DEMO_MONTHLY_SALARY = 40000;
+
+    private const DEMO_PLANNED_EXPENSES = 20000;
+
     public function reset(): void
     {
         if (! config('finance.demo_enabled')) {
@@ -346,20 +350,41 @@ class DemoWorkspaceSeeder extends Seeder
     private function seedPlanTemplates(): array
     {
         $rules = app(BudgetRuleService::class);
-        $normal = $rules->ensureDefaultTemplate(50000);
+        $normal = $rules->ensureDefaultTemplate(self::DEMO_MONTHLY_SALARY);
         $normal->update(['description' => 'Standard month: protect the reserve, cover life, and invest the remaining cash.']);
-        $normal->allocationRules()->delete();
+        $normal->budgetRules()->where('direction', 'income')->withTrashed()->forceDelete();
+        $normal->budgetRules()->create([
+            'name' => 'Primary monthly income',
+            'direction' => 'income',
+            'amount_egp' => self::DEMO_MONTHLY_SALARY,
+            'frequency' => 'monthly',
+            'is_active' => true,
+        ]);
+        $normal->allocationRules()->withTrashed()->forceDelete();
         $assets = Asset::query()->get()->keyBy('name');
         $buckets = Bucket::query()->get()->keyBy('name');
         foreach ([
             ['asset' => 'Money market fund', 'bucket' => 'Emergency Reserve', 'percent' => 30],
-            ['asset' => 'USD reserve', 'bucket' => 'Long-Term Investing', 'percent' => 40],
-            ['asset' => 'Gold holdings', 'bucket' => 'Home Office', 'percent' => 30],
+            ['asset' => 'Gold holdings', 'bucket' => 'Home Office', 'percent' => 20],
+            ['asset' => 'Long-term fixed income', 'bucket' => 'Family Car', 'percent' => 10],
+            ['asset' => 'Long-term fixed income', 'bucket' => 'Home Renovation', 'percent' => 10],
+            ['asset' => 'USD reserve', 'bucket' => 'Long-Term Investing', 'percent' => 30],
         ] as $index => $row) {
             $normal->allocationRules()->create(['asset_id' => $assets[$row['asset']]->id, 'bucket_id' => $buckets[$row['bucket']]->id, 'asset_target' => $assets[$row['asset']]->name, 'allocation_percent' => $row['percent'], 'sort_order' => $index, 'is_active' => true]);
         }
 
-        $priority = PlanTemplate::create(['name' => 'Kia K4 priority', 'description' => 'A medium-term car-focused template that keeps the reserve and directs more surplus to the car bucket.', 'is_active' => true, 'is_default' => false]);
+        PlanTemplate::withTrashed()
+            ->where('name', 'like', '% priority')
+            ->where('description', 'like', '%car%')
+            ->where('name', '!=', 'Family car priority')
+            ->get()->each(function (PlanTemplate $legacy): void {
+                AllocationPlan::query()->where('plan_template_id', $legacy->id)->update(['plan_template_id' => null]);
+                $legacy->allocationRules()->withTrashed()->forceDelete();
+                $legacy->budgetRules()->withTrashed()->forceDelete();
+                $legacy->forceDelete();
+            });
+
+        $priority = $this->freshDemoTemplate('Family car priority', 'A medium-term family-car template that keeps the reserve intact while directing more surplus to the car bucket.');
         foreach ($normal->budgetRules()->get() as $rule) {
             $copy = $rule->replicate(['id', 'created_at', 'updated_at']);
             $copy->plan_template_id = $priority->id;
@@ -370,11 +395,11 @@ class DemoWorkspaceSeeder extends Seeder
             $copy->plan_template_id = $priority->id;
             $copy->save();
         }
-        $priority->allocationRules()->where('asset_id', $assets['USD reserve']->id)->update(['allocation_percent' => 20]);
-        $priority->allocationRules()->where('asset_id', $assets['Gold holdings']->id)->update(['allocation_percent' => 20]);
-        $priority->allocationRules()->create(['asset_id' => $assets['Long-term fixed income']->id, 'bucket_id' => $buckets['Family Car']->id, 'asset_target' => $assets['Long-term fixed income']->name, 'allocation_percent' => 30, 'sort_order' => 3, 'is_active' => true]);
+        $priority->allocationRules()->where('bucket_id', $buckets['Home Office']->id)->update(['allocation_percent' => 15]);
+        $priority->allocationRules()->where('bucket_id', $buckets['Family Car']->id)->update(['allocation_percent' => 25]);
+        $priority->allocationRules()->where('bucket_id', $buckets['Long-Term Investing']->id)->update(['allocation_percent' => 20]);
 
-        $investment = PlanTemplate::create(['name' => 'Investment-heavy', 'description' => 'A long-term investing template for months without a near-term purchase priority.', 'is_active' => true, 'is_default' => false]);
+        $investment = $this->freshDemoTemplate('Investment-heavy', 'A long-term investing template for months without a near-term purchase priority.');
         foreach ($normal->budgetRules()->get() as $rule) {
             $copy = $rule->replicate(['id', 'created_at', 'updated_at']);
             $copy->plan_template_id = $investment->id;
@@ -386,19 +411,52 @@ class DemoWorkspaceSeeder extends Seeder
         return ['normal' => $normal, 'priority' => $priority, 'investment' => $investment];
     }
 
+    private function freshDemoTemplate(string $name, string $description): PlanTemplate
+    {
+        $templates = PlanTemplate::withTrashed()->where('name', $name)->orderBy('id')->get();
+        $template = $templates->first() ?? new PlanTemplate;
+
+        foreach ($templates->skip(1) as $duplicate) {
+            AllocationPlan::query()->where('plan_template_id', $duplicate->id)->update(['plan_template_id' => $template->id]);
+            $duplicate->allocationRules()->withTrashed()->forceDelete();
+            $duplicate->budgetRules()->withTrashed()->forceDelete();
+            $duplicate->forceDelete();
+        }
+
+        $template->fill([
+            'name' => $name,
+            'description' => $description,
+            'is_active' => true,
+            'is_default' => false,
+        ])->save();
+        $template->restore();
+        $template->budgetRules()->withTrashed()->forceDelete();
+        $template->allocationRules()->withTrashed()->forceDelete();
+
+        return $template->fresh();
+    }
+
     /** @param array<string, Bucket> $buckets */
     private function seedTwelveMonths(array $buckets, Liability $educationLoan, PlanTemplate $template): void
     {
         $start = now()->startOfMonth()->subMonths(11);
-        $salaryByMonth = array_fill(0, 12, 50000);
-        $salaryByMonth[8] = 60000;
+        $salaryByMonth = array_fill(0, 12, self::DEMO_MONTHLY_SALARY);
+        $salaryByMonth[8] = 48000;
         $essentialByMonth = array_fill(0, 12, 12000);
         $essentialByMonth[3] = 20000;
         $lifestyleByMonth = array_fill(0, 12, 3000);
         $lifestyleByMonth[6] = 5000;
         $oneTimeByMonth = array_fill(0, 12, 0);
         $oneTimeByMonth[3] = 8000;
-        $investedByMonth = [7000, 7500, 8000, 4000, 15000, 9000, 9500, 10000, 10500, 11000, 11000, 11000];
+        $investedByMonth = [7000, 7500, 8000, 0, 7000, 8000, 8000, 8000, 12000, 7000, 7000, 7000];
+        $allocationByMonth = array_fill(0, 12, [
+            'emergency' => 5000,
+            'homeOffice' => 4000,
+            'familyCar' => 2000,
+            'homeRenovation' => 2000,
+        ]);
+        $allocationByMonth[3] = ['emergency' => 2000, 'homeOffice' => 1000, 'familyCar' => 500, 'homeRenovation' => 500];
+        $allocationByMonth[8] = ['emergency' => 5000, 'homeOffice' => 5000, 'familyCar' => 4000, 'homeRenovation' => 2000];
         $netWorthByMonth = array_map(fn (int $index): int => 330000 + ($index * 22000), range(0, 11));
         $valuationAssets = Asset::query()->get()->keyBy('name');
         $valuationStarts = [
@@ -416,13 +474,23 @@ class DemoWorkspaceSeeder extends Seeder
             'is_active' => true,
             'notes' => 'Demo account used to demonstrate confirmed-ledger actual tracking.',
         ]);
-        // Re-seeding must not multiply demo transactions. Only rows marked as
-        // demo_seed are replaced here; a full reset is available separately.
-        LedgerTransaction::forUser((int) $account->user_id)->withTrashed()->where('source', 'demo_seed')->forceDelete();
         $categories = [];
         foreach (['salary' => 'income', 'essential' => 'expense', 'lifestyle' => 'expense', 'recurring commitments' => 'expense', 'one_time' => 'expense', 'fees' => 'expense'] as $name => $kind) {
             $categories[$name] = TransactionCategory::updateOrCreate(['name' => $name, 'kind' => $kind], ['is_system' => true]);
         }
+        // Re-seeding replaces canonical demo rows and clears stale salary rows
+        // from earlier demo versions, which prevents the dashboard from
+        // counting an old salary alongside the current one.
+        LedgerTransaction::forUser((int) $account->user_id)->withTrashed()
+            ->whereBetween('occurred_on', [$start->toDateString(), now()->endOfMonth()->toDateString()])
+            ->where(function ($query) use ($categories): void {
+                $query->where('source', 'demo_seed')
+                    ->orWhere(function ($query) use ($categories): void {
+                        $query->where('transaction_type', 'income')->where('category_id', $categories['salary']->id);
+                    });
+            })
+            ->forceDelete();
+        CashFlow::withTrashed()->whereIn('notes', ['Demo salary income.', 'Demo monthly spending.'])->forceDelete();
 
         $loanBalance = 61370.00;
         LiabilityPaymentRecord::query()->where('liability_id', $educationLoan->id)->where('source', 'demo_statement')->forceDelete();
@@ -440,6 +508,8 @@ class DemoWorkspaceSeeder extends Seeder
             $commitmentAmount = 2000;
             $debtAmount = 3000;
             $invested = $investedByMonth[$index];
+            $allocation = $allocationByMonth[$index];
+            $actualExpenses = $essentialAmount + $lifestyleAmount + $commitmentAmount + $debtAmount + $oneTimeAmount;
 
             $salary = CashFlow::withTrashed()->where('type', 'income')->where('category', 'salary')->whereDate('occurred_on', $monthDate)->first() ?? new CashFlow;
             $salary->fill([
@@ -526,8 +596,8 @@ class DemoWorkspaceSeeder extends Seeder
             $plan->month = $monthDate;
             $plan->fill([
                 'plan_template_id' => $template->id,
-                'planned_income_egp' => 50000,
-                'planned_expenses_egp' => 20000,
+                'planned_income_egp' => self::DEMO_MONTHLY_SALARY,
+                'planned_expenses_egp' => self::DEMO_PLANNED_EXPENSES,
                 'source_review_id' => $index > 0 ? MonthlyFinancialReview::whereDate('month', $month->copy()->subMonth())->value('id') : null,
                 'generation_method' => $index > 0 ? 'prepared_from_review' : 'manual',
                 'generated_at' => $index > 0 ? $month->copy()->startOfMonth() : null,
@@ -540,15 +610,15 @@ class DemoWorkspaceSeeder extends Seeder
             $incomeRule = $template->budgetRules()->where('direction', 'income')->where('is_active', true)->first();
             $plan->incomeItems()->updateOrCreate(['name' => 'Demo salary'], [
                 'budget_rule_id' => $incomeRule?->id,
-                'planned_amount_egp' => 50000,
+                'planned_amount_egp' => self::DEMO_MONTHLY_SALARY,
                 'actual_amount_egp' => $salaryAmount,
                 'actual_source' => 'demo_seed',
             ]);
             foreach ([
-                ['bucket' => 'Emergency Reserve', 'asset' => 'Money market fund', 'amount' => 5000],
-                ['bucket' => 'Home Office', 'asset' => 'Gold holdings', 'amount' => 8000],
-                ['bucket' => 'Family Car', 'asset' => 'Long-term fixed income', 'amount' => 4000],
-                ['bucket' => 'Home Renovation', 'asset' => 'Long-term fixed income', 'amount' => 2000],
+                ['bucket' => 'Emergency Reserve', 'asset' => 'Money market fund', 'amount' => $allocation['emergency']],
+                ['bucket' => 'Home Office', 'asset' => 'Gold holdings', 'amount' => $allocation['homeOffice']],
+                ['bucket' => 'Family Car', 'asset' => 'Long-term fixed income', 'amount' => $allocation['familyCar']],
+                ['bucket' => 'Home Renovation', 'asset' => 'Long-term fixed income', 'amount' => $allocation['homeRenovation']],
                 ['bucket' => 'Long-Term Investing', 'asset' => 'USD reserve', 'amount' => $invested],
             ] as $item) {
                 $asset = Asset::query()->where('name', $item['asset'])->first();
@@ -577,10 +647,10 @@ class DemoWorkspaceSeeder extends Seeder
                 ['description' => 'Demo recurring commitments', 'type' => 'expense', 'amount' => $commitmentAmount, 'category' => 'recurring commitments'],
                 ['description' => 'Demo debt payment', 'type' => 'debt_payment', 'amount' => $debtAmount, 'category' => null],
                 ...($oneTimeAmount > 0 ? [['description' => 'Demo one-time repair', 'type' => 'expense', 'amount' => $oneTimeAmount, 'category' => 'one_time']] : []),
-                ['description' => 'Emergency reserve contribution', 'type' => 'contribution', 'amount' => 5000, 'category' => null, 'bucket' => 'Emergency Reserve'],
-                ['description' => 'Home office goal contribution', 'type' => 'contribution', 'amount' => 8000, 'category' => null, 'bucket' => 'Home Office'],
-                ['description' => 'Family car goal contribution', 'type' => 'contribution', 'amount' => 4000, 'category' => null, 'bucket' => 'Family Car'],
-                ['description' => 'Home renovation contribution', 'type' => 'contribution', 'amount' => 2000, 'category' => null, 'bucket' => 'Home Renovation'],
+                ['description' => 'Emergency reserve contribution', 'type' => 'contribution', 'amount' => $allocation['emergency'], 'category' => null, 'bucket' => 'Emergency Reserve'],
+                ['description' => 'Home office goal contribution', 'type' => 'contribution', 'amount' => $allocation['homeOffice'], 'category' => null, 'bucket' => 'Home Office'],
+                ['description' => 'Family car goal contribution', 'type' => 'contribution', 'amount' => $allocation['familyCar'], 'category' => null, 'bucket' => 'Family Car'],
+                ['description' => 'Home renovation contribution', 'type' => 'contribution', 'amount' => $allocation['homeRenovation'], 'category' => null, 'bucket' => 'Home Renovation'],
                 ['description' => 'Long-term investment contribution', 'type' => 'contribution', 'amount' => $invested, 'category' => null, 'bucket' => 'Long-Term Investing'],
             ] as $transaction) {
                 $ledgerTransaction = LedgerTransaction::updateOrCreate([
@@ -637,9 +707,9 @@ class DemoWorkspaceSeeder extends Seeder
                 'net_worth_egp' => $netWorthByMonth[$index],
                 'liquid_assets_egp' => 120000,
                 'investable_net_worth_egp' => max(0, $netWorthByMonth[$index] - 120000),
-                'income_egp' => 50000,
-                'expenses_egp' => 20000,
-                'free_cash_flow_egp' => 30000,
+                'income_egp' => $salaryAmount,
+                'expenses_egp' => $actualExpenses,
+                'free_cash_flow_egp' => $salaryAmount - $actualExpenses,
                 'emergency_coverage_months' => 6,
                 'asset_breakdown' => [],
                 'notes' => 'Demo history checkpoint for the twelve-month learning workspace.',

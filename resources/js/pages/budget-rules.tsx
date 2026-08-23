@@ -199,7 +199,7 @@ router.delete(`/monthly-rules/templates/${template.id}`);
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader><DialogTitle>Create plan template</DialogTitle><DialogDescription>Create a reusable blueprint, then add its income, expense, and allocation rules.</DialogDescription></DialogHeader>
                     <form onSubmit={createTemplate} className="flex flex-col gap-4">
-                        <FieldGroup><Field><FieldLabel>Name</FieldLabel><Input autoFocus value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="e.g. Kia K4 priority" required /></Field><Field><FieldLabel>Notes</FieldLabel><Textarea value={createDescription} onChange={(event) => setCreateDescription(event.target.value)} placeholder="When should this template be used?" /></Field></FieldGroup>
+                        <FieldGroup><Field><FieldLabel>Name</FieldLabel><Input autoFocus value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="e.g. Family car priority" required /></Field><Field><FieldLabel>Notes</FieldLabel><Textarea value={createDescription} onChange={(event) => setCreateDescription(event.target.value)} placeholder="When should this template be used?" /></Field></FieldGroup>
                         <DialogFooter><DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose><Button type="submit"><Plus data-icon="inline-start" />Create template</Button></DialogFooter>
                     </form>
                 </DialogContent>

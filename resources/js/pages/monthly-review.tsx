@@ -1,10 +1,13 @@
 import { router } from '@inertiajs/react';
 import {
+    BookOpen,
     CalendarPlus,
     CheckCircle2,
     Link2,
+    LockKeyhole,
     RefreshCw,
     TriangleAlert,
+    Unlock,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
@@ -28,14 +31,6 @@ import {
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
-    Select,
-    SelectContent,
-    SelectGroup,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import {
     Table,
     TableBody,
     TableCell,
@@ -44,6 +39,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { formatCompactEGP, formatEGP } from '@/types/finance';
 
 type Review = {
@@ -196,11 +192,15 @@ export default function MonthlyReview({
 }) {
     const [form, setForm] = useState(() => toForm(review));
     const [proposalOpen, setProposalOpen] = useState(false);
+    const [closeOpen, setCloseOpen] = useState(false);
     const [redirectTarget, setRedirectTarget] = useState<
         'goals' | 'investments'
     >('investments');
     const [lesson, setLesson] = useState(review.notes ?? '');
     const month = review.month.slice(0, 7);
+    const isClosed = review.status === 'closed';
+    const ledgerActuals = actualTracking?.source === 'confirmed_ledger';
+    const actualsLocked = isClosed || ledgerActuals;
 
     const totalExpenses = useMemo(
         () =>
@@ -262,7 +262,28 @@ export default function MonthlyReview({
     };
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
-        router.post('/monthly-review', form);
+
+        if (isClosed) {
+            return;
+        }
+
+        router.post('/monthly-review', { ...form, status: 'open' });
+    };
+    const closeMonth = () => {
+        if (review.id === null) {
+            return;
+        }
+
+        router.post(`/monthly-review/${review.id}/close`, {}, {
+            onSuccess: () => setCloseOpen(false),
+        });
+    };
+    const reopenMonth = () => {
+        if (review.id === null) {
+            return;
+        }
+
+        router.post(`/monthly-review/${review.id}/reopen`);
     };
 
     return (
@@ -286,14 +307,38 @@ export default function MonthlyReview({
                                 onChange={(value) => changeMonth(value)}
                             />
                         </Field>
-                        <Button href="/commitments" variant="ghost">
-                            Manage commitments
+                        <Button href="/ledger" variant="ghost">
+                            <BookOpen data-icon="inline-start" />
+                            Add transactions
                         </Button>
-                        {review.status === 'closed' && review.id !== null && (
-                            <Button type="button" onClick={prepareNextMonth}>
-                                <CalendarPlus data-icon="inline-start" />
-                                Prepare next month
-                            </Button>
+                        {isClosed && review.id !== null ? (
+                            <>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={reopenMonth}
+                                >
+                                    <Unlock data-icon="inline-start" />
+                                    Reopen to edit
+                                </Button>
+                                <Button
+                                    type="button"
+                                    onClick={prepareNextMonth}
+                                >
+                                    <CalendarPlus data-icon="inline-start" />
+                                    Prepare next month
+                                </Button>
+                            </>
+                        ) : (
+                            review.id !== null && (
+                                <Button
+                                    type="button"
+                                    onClick={() => setCloseOpen(true)}
+                                >
+                                    <CheckCircle2 data-icon="inline-start" />
+                                    Close month
+                                </Button>
+                            )
                         )}
                     </div>
                 }
@@ -457,6 +502,63 @@ export default function MonthlyReview({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            <Dialog open={closeOpen} onOpenChange={setCloseOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Close this month?</DialogTitle>
+                        <DialogDescription>
+                            Closing protects this review from edits. You can
+                            reopen it later, but reopening records a revision
+                            event and returns the month to an editable state.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-xl bg-muted p-4 text-sm">
+                        <p className="font-semibold">Before closing</p>
+                        <p className="mt-1 text-muted-foreground">
+                            Confirm the actual totals, review the plan versus
+                            actual comparison, and write the result or lesson
+                            you want to carry into next month.
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setCloseOpen(false)}
+                        >
+                            Keep reviewing
+                        </Button>
+                        <Button type="button" onClick={closeMonth}>
+                            <LockKeyhole data-icon="inline-start" />
+                            Close month
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <div className="mb-4 grid gap-3 md:grid-cols-3">
+                <StepCard
+                    number="1"
+                    title="Finish month actuals"
+                    description="Enter totals once by rule, or add detailed transactions in the ledger."
+                    state={isClosed ? 'complete' : 'current'}
+                />
+                <StepCard
+                    number="2"
+                    title="Review and edit"
+                    description="Compare the plan, actual totals, obligations, and allocation progress."
+                    state={isClosed ? 'complete' : 'current'}
+                />
+                <StepCard
+                    number="3"
+                    title="Close with a result"
+                    description={
+                        isClosed
+                            ? 'Closed and protected. Reopen only when a real revision is needed.'
+                            : 'Record the lesson and next action, then close the month.'
+                    }
+                    state={isClosed ? 'complete' : 'next'}
+                />
+            </div>
             <div className="mb-4 grid gap-4 sm:grid-cols-3">
                 <SummaryCard
                     label="Income"
@@ -518,14 +620,37 @@ export default function MonthlyReview({
                 </AlertDescription>
             </Alert>
             <ObligationChangesCard changes={review.obligationChanges} />
+            <Alert className="mb-4">
+                {isClosed ? <LockKeyhole /> : <CheckCircle2 />}
+                <AlertTitle>
+                    {isClosed ? 'Month closed and protected' : 'Month is open for review'}
+                </AlertTitle>
+                <AlertDescription>
+                    {isClosed
+                        ? 'The totals and result below cannot be edited until you reopen this month.'
+                        : ledgerActuals
+                          ? 'Confirmed ledger transactions are driving this month’s actuals. Edit transactions in the ledger when a number needs correcting.'
+                          : 'Use quick totals for normal months. Add ledger transactions only when you need transaction-level detail or automatic contribution to the actuals.'}
+                </AlertDescription>
+            </Alert>
             <div className="grid items-start gap-4 xl:grid-cols-[1.15fr_0.85fr]">
                 <Card>
                     <CardHeader
-                        title="This month’s numbers"
+                        title="Step 1 · Finish month actuals"
                         meta={
-                            review.source === 'review'
-                                ? 'Saved review — editable'
-                                : 'Built from cash-flow entries — save an editable review'
+                            isClosed
+                                ? 'Closed review — reopen to revise'
+                                : ledgerActuals
+                                  ? 'Actuals come from confirmed ledger transactions'
+                                  : 'Enter the total for each expense rule once; detailed transactions are optional'
+                        }
+                        action={
+                            !isClosed ? (
+                                <Button href="/ledger" variant="outline" size="sm">
+                                    <BookOpen data-icon="inline-start" />
+                                    Open ledger
+                                </Button>
+                            ) : undefined
                         }
                     />
                     <form onSubmit={submit} className="flex flex-col gap-0">
@@ -540,6 +665,7 @@ export default function MonthlyReview({
                                         type="number"
                                         min="0"
                                         value={form.income}
+                                        disabled={actualsLocked}
                                         onChange={(event) =>
                                             update('income', event.target.value)
                                         }
@@ -554,6 +680,7 @@ export default function MonthlyReview({
                                         type="number"
                                         min="0"
                                         value={form.invested}
+                                        disabled={actualsLocked}
                                         onChange={(event) =>
                                             update(
                                                 'invested',
@@ -571,6 +698,7 @@ export default function MonthlyReview({
                                         type="number"
                                         min="0"
                                         value={form.essential_expenses}
+                                        disabled={actualsLocked}
                                         onChange={(event) =>
                                             update(
                                                 'essential_expenses',
@@ -588,6 +716,7 @@ export default function MonthlyReview({
                                         type="number"
                                         min="0"
                                         value={form.lifestyle_expenses}
+                                        disabled={actualsLocked}
                                         onChange={(event) =>
                                             update(
                                                 'lifestyle_expenses',
@@ -605,6 +734,7 @@ export default function MonthlyReview({
                                         type="number"
                                         min="0"
                                         value={form.recurring_commitments}
+                                        disabled={actualsLocked}
                                         onChange={(event) =>
                                             update(
                                                 'recurring_commitments',
@@ -622,6 +752,7 @@ export default function MonthlyReview({
                                         type="number"
                                         min="0"
                                         value={form.one_time_expenses}
+                                        disabled={actualsLocked}
                                         onChange={(event) =>
                                             update(
                                                 'one_time_expenses',
@@ -639,6 +770,7 @@ export default function MonthlyReview({
                                         type="number"
                                         min="0"
                                         value={form.debt_payments}
+                                        disabled={actualsLocked}
                                         onChange={(event) =>
                                             update(
                                                 'debt_payments',
@@ -655,6 +787,7 @@ export default function MonthlyReview({
                                         id="review-adjustment"
                                         type="number"
                                         value={form.manual_adjustment_egp}
+                                        disabled={actualsLocked}
                                         onChange={(event) =>
                                             update(
                                                 'manual_adjustment_egp',
@@ -662,37 +795,6 @@ export default function MonthlyReview({
                                             )
                                         }
                                     />
-                                </Field>
-                                <Field>
-                                    <FieldLabel htmlFor="review-status">
-                                        Review status
-                                    </FieldLabel>
-                                    <Select
-                                        value={form.status}
-                                        onValueChange={(value) =>
-                                            update(
-                                                'status',
-                                                String(value ?? ''),
-                                            )
-                                        }
-                                    >
-                                        <SelectTrigger
-                                            id="review-status"
-                                            className="w-full"
-                                        >
-                                            <SelectValue placeholder="Select status" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectGroup>
-                                                <SelectItem value="open">
-                                                    Open
-                                                </SelectItem>
-                                                <SelectItem value="closed">
-                                                    Closed
-                                                </SelectItem>
-                                            </SelectGroup>
-                                        </SelectContent>
-                                    </Select>
                                 </Field>
                                 <Field className="sm:col-span-2">
                                     <FieldLabel htmlFor="review-notes">
@@ -702,6 +804,7 @@ export default function MonthlyReview({
                                         id="review-notes"
                                         rows={3}
                                         value={form.notes}
+                                        disabled={isClosed}
                                         onChange={(event) =>
                                             update('notes', event.target.value)
                                         }
@@ -712,19 +815,23 @@ export default function MonthlyReview({
                         </CardContent>
                         <CardFooter className="flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-xs text-muted-foreground">
-                                {review.source === 'review'
-                                    ? 'You can revise this later.'
-                                    : 'Saving creates a monthly record you can revisit.'}
+                                {isClosed
+                                    ? 'Reopen the month to make a recorded revision.'
+                                    : 'Save your review while open. Close it only after the result and lesson are clear.'}
                             </p>
-                            <Button type="submit" className="sm:shrink-0">
-                                Save monthly review
+                            <Button
+                                type="submit"
+                                className="sm:shrink-0"
+                                disabled={isClosed}
+                            >
+                                Save actuals and review
                             </Button>
                         </CardFooter>
                     </form>
                 </Card>
                 <Card>
                     <CardHeader
-                        title="How the month moved"
+                        title="Step 2 · Review and edit"
                         meta={
                             plan
                                 ? plan.templateName
@@ -940,6 +1047,43 @@ function toForm(review: Review) {
         status: review.status,
         notes: review.notes ?? '',
     };
+}
+
+function StepCard({
+    number,
+    title,
+    description,
+    state,
+}: {
+    number: string;
+    title: string;
+    description: string;
+    state: 'current' | 'next' | 'complete';
+}) {
+    return (
+        <Card>
+            <CardContent className="flex gap-3 p-4">
+                <div
+                    className={cn(
+                        'flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+                        state === 'complete' &&
+                            'bg-primary text-primary-foreground',
+                        state === 'current' && 'border border-primary text-primary',
+                        state === 'next' &&
+                            'border border-border text-muted-foreground',
+                    )}
+                >
+                    {number}
+                </div>
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold">{title}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {description}
+                    </p>
+                </div>
+            </CardContent>
+        </Card>
+    );
 }
 
 function ObligationChangesCard({ changes }: { changes: ObligationChanges }) {

@@ -103,7 +103,7 @@ class FinanceTest extends TestCase
         ]])->assertSessionHasErrors('allocations');
     }
 
-    public function test_monthly_review_can_be_created_and_edited(): void
+    public function test_monthly_review_can_be_created_reopened_and_edited_only_when_open(): void
     {
         $this->post(route('monthly-review.store'), [
             'month' => '2026-08',
@@ -114,11 +114,15 @@ class FinanceTest extends TestCase
             'one_time_expenses' => 0,
             'debt_payments' => 0,
             'invested' => 80000,
-            'status' => 'closed',
+            'status' => 'open',
             'notes' => 'Reviewed',
         ])->assertRedirect();
 
-        $this->assertDatabaseHas('monthly_financial_reviews', ['month' => '2026-08-01 00:00:00', 'income_egp' => 100000, 'status' => 'closed']);
+        $review = MonthlyFinancialReview::firstOrFail();
+        $this->assertDatabaseHas('monthly_financial_reviews', ['month' => '2026-08-01 00:00:00', 'income_egp' => 100000, 'status' => 'open']);
+
+        $this->post(route('monthly-review.close', $review))->assertRedirect();
+        $this->assertDatabaseHas('monthly_financial_reviews', ['id' => $review->id, 'status' => 'closed']);
 
         $this->post(route('monthly-review.store'), [
             'month' => '2026-08',
@@ -129,12 +133,131 @@ class FinanceTest extends TestCase
             'one_time_expenses' => 0,
             'debt_payments' => 0,
             'invested' => 90000,
-            'status' => 'closed',
+            'status' => 'open',
+            'notes' => 'Updated',
+        ])->assertSessionHasErrors('review');
+
+        $this->assertDatabaseHas('monthly_financial_reviews', ['id' => $review->id, 'income_egp' => 100000, 'status' => 'closed']);
+
+        $this->post(route('monthly-review.reopen', $review))->assertRedirect();
+        $this->post(route('monthly-review.store'), [
+            'month' => '2026-08',
+            'income' => 110000,
+            'essential_expenses' => 12000,
+            'lifestyle_expenses' => 5000,
+            'recurring_commitments' => 3000,
+            'one_time_expenses' => 0,
+            'debt_payments' => 0,
+            'invested' => 90000,
+            'status' => 'open',
             'notes' => 'Updated',
         ])->assertRedirect();
 
         $this->assertSame(1, MonthlyFinancialReview::count());
         $this->assertDatabaseHas('monthly_financial_reviews', ['month' => '2026-08-01 00:00:00', 'income_egp' => 110000]);
+    }
+
+    public function test_closed_month_cannot_be_derived_until_reopened(): void
+    {
+        $review = MonthlyFinancialReview::create([
+            'month' => now()->startOfMonth(),
+            'income_egp' => 50000,
+            'status' => 'closed',
+        ]);
+
+        $this->post(route('monthly-review.derive'), [
+            'month' => now()->format('Y-m'),
+        ])->assertSessionHasErrors('review');
+
+        $this->assertDatabaseHas('monthly_financial_reviews', [
+            'id' => $review->id,
+            'income_egp' => 50000,
+            'status' => 'closed',
+        ]);
+    }
+
+    public function test_closed_month_blocks_actual_transaction_entry_until_reopened(): void
+    {
+        MonthlyFinancialReview::create([
+            'month' => now()->startOfMonth(),
+            'status' => 'closed',
+        ]);
+
+        $this->post(route('ledger.transactions.store'), [
+            'transaction_type' => 'expense',
+            'occurred_on' => now()->startOfMonth()->toDateString(),
+            'description' => 'Late entry',
+            'amount' => 100,
+            'currency' => 'EGP',
+            'amount_egp' => 100,
+        ])->assertSessionHasErrors('month');
+
+        $this->post(route('cash-flow.store'), [
+            'type' => 'expense',
+            'category' => 'late-entry',
+            'amount' => 100,
+            'currency' => 'EGP',
+            'occurred_on' => now()->startOfMonth()->toDateString(),
+        ])->assertSessionHasErrors('month');
+
+        $this->assertDatabaseCount('transactions', 0);
+        $this->assertDatabaseCount('cash_flows', 0);
+    }
+
+    public function test_open_review_totals_sync_manual_expense_rule_actuals(): void
+    {
+        $categories = collect([
+            'Essentials',
+            'Lifestyle',
+            'Commitments',
+            'Flexible / irregular',
+        ])->mapWithKeys(fn (string $name): array => [
+            strtolower($name) => BudgetCategory::create(['name' => $name, 'kind' => 'expense']),
+        ]);
+        $plan = AllocationPlan::create([
+            'month' => now()->startOfMonth(),
+            'planned_income_egp' => 50000,
+            'planned_expenses_egp' => 20000,
+            'status' => 'open',
+        ]);
+        foreach ($categories as $category) {
+            $plan->expenseItems()->create([
+                'budget_category_id' => $category->id,
+                'planned_amount_egp' => 5000,
+            ]);
+        }
+
+        $this->post(route('monthly-review.store'), [
+            'month' => now()->format('Y-m'),
+            'income' => 50000,
+            'essential_expenses' => 11000,
+            'lifestyle_expenses' => 4000,
+            'recurring_commitments' => 2500,
+            'one_time_expenses' => 800,
+            'debt_payments' => 1500,
+            'invested' => 10000,
+            'manual_adjustment_egp' => 200,
+            'status' => 'open',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('allocation_plan_expenses', [
+            'allocation_plan_id' => $plan->id,
+            'budget_category_id' => $categories['essentials']->id,
+            'actual_amount_egp' => 11000,
+            'actual_source' => 'manual_review',
+        ]);
+        $this->assertDatabaseHas('allocation_plan_expenses', [
+            'allocation_plan_id' => $plan->id,
+            'budget_category_id' => $categories['commitments']->id,
+            'actual_amount_egp' => 4000,
+            'actual_source' => 'manual_review',
+        ]);
+        $this->assertDatabaseHas('allocation_plan_expenses', [
+            'allocation_plan_id' => $plan->id,
+            'budget_category_id' => $categories['flexible / irregular']->id,
+            'actual_amount_egp' => 1000,
+            'actual_source' => 'manual_review',
+        ]);
     }
 
     public function test_monthly_allocation_plan_can_be_edited_when_date_is_stored_with_time(): void

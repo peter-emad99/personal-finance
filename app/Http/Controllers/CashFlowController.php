@@ -7,6 +7,7 @@ use App\Models\CashFlow;
 use App\Models\LedgerTransaction;
 use App\Models\TransactionCategory;
 use App\Services\AllocationActualService;
+use App\Services\MonthlyReviewGuard;
 use App\Services\TransactionCategoryService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -34,9 +35,10 @@ class CashFlowController extends Controller
         ]);
     }
 
-    public function store(Request $request, AllocationActualService $actuals): RedirectResponse
+    public function store(Request $request, AllocationActualService $actuals, MonthlyReviewGuard $reviewGuard): RedirectResponse
     {
         $data = $this->validated($request);
+        $reviewGuard->assertEditable($data['occurred_on']);
         $cashFlow = DB::transaction(function () use ($data): CashFlow {
             $cashFlow = CashFlow::create($data);
             $this->syncLedgerTransaction($cashFlow, $data);
@@ -48,10 +50,12 @@ class CashFlowController extends Controller
         return redirect()->route('cash-flow.index', ['month' => Carbon::parse($cashFlow->occurred_on)->format('Y-m')])->with('success', 'Actual income or expense recorded and monthly plan synced.');
     }
 
-    public function update(Request $request, CashFlow $cashFlow, AllocationActualService $actuals): RedirectResponse
+    public function update(Request $request, CashFlow $cashFlow, AllocationActualService $actuals, MonthlyReviewGuard $reviewGuard): RedirectResponse
     {
         $previousMonth = Carbon::parse($cashFlow->occurred_on);
         $data = $this->validated($request);
+        $reviewGuard->assertEditable($previousMonth);
+        $reviewGuard->assertEditable($data['occurred_on']);
         DB::transaction(function () use ($cashFlow, $data): void {
             $cashFlow->update($data);
             $this->syncLedgerTransaction($cashFlow, $data);
@@ -62,9 +66,10 @@ class CashFlowController extends Controller
         return redirect()->route('cash-flow.index', ['month' => Carbon::parse($cashFlow->occurred_on)->format('Y-m')])->with('success', 'Actual entry updated and monthly plan synced.');
     }
 
-    public function restore(int $cashFlow, AllocationActualService $actuals): RedirectResponse
+    public function restore(int $cashFlow, AllocationActualService $actuals, MonthlyReviewGuard $reviewGuard): RedirectResponse
     {
         $entry = CashFlow::withTrashed()->findOrFail($cashFlow);
+        $reviewGuard->assertEditable($entry->occurred_on);
         $entry->restore();
         $transaction = $entry->ledger_transaction_id === null
             ? null
@@ -111,9 +116,10 @@ class CashFlowController extends Controller
         return $data;
     }
 
-    public function destroy(CashFlow $cashFlow, AllocationActualService $actuals): RedirectResponse
+    public function destroy(CashFlow $cashFlow, AllocationActualService $actuals, MonthlyReviewGuard $reviewGuard): RedirectResponse
     {
         $month = Carbon::parse($cashFlow->occurred_on);
+        $reviewGuard->assertEditable($month);
         if ($cashFlow->ledger_transaction_id !== null) {
             $transaction = LedgerTransaction::find($cashFlow->ledger_transaction_id);
             if ($transaction !== null) {

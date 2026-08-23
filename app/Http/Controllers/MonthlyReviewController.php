@@ -14,6 +14,7 @@ use App\Services\AllocationActualService;
 use App\Services\BudgetRuleService;
 use App\Services\FinanceService;
 use App\Services\LedgerService;
+use App\Services\MonthlyReviewActualService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
@@ -73,7 +74,7 @@ class MonthlyReviewController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, MonthlyReviewActualService $manualActuals): RedirectResponse
     {
         $data = $request->validate([
             'month' => ['required', 'date_format:Y-m'],
@@ -85,32 +86,32 @@ class MonthlyReviewController extends Controller
             'debt_payments' => ['required', 'numeric', 'min:0'],
             'invested' => ['required', 'numeric', 'min:0'],
             'manual_adjustment_egp' => ['nullable', 'numeric'],
-            'status' => ['required', 'in:open,closed'],
+            'status' => ['sometimes', 'in:open'],
             'notes' => ['nullable', 'string'],
         ]);
         $month = Carbon::createFromFormat('Y-m', $data['month'])->startOfMonth();
 
         $review = MonthlyFinancialReview::whereDate('month', $month->toDateString())->first() ?? new MonthlyFinancialReview(['month' => $month->toDateString()]);
-        $review->fill([
-            'income_egp' => $data['income'],
-            'essential_expenses_egp' => $data['essential_expenses'],
-            'lifestyle_expenses_egp' => $data['lifestyle_expenses'],
-            'recurring_commitments_egp' => $data['recurring_commitments'],
-            'one_time_expenses_egp' => $data['one_time_expenses'],
-            'debt_payments_egp' => $data['debt_payments'],
-            'invested_egp' => $data['invested'],
-            'manual_adjustment_egp' => $data['manual_adjustment_egp'] ?? 0,
-            'status' => $data['status'],
-            'notes' => $data['notes'] ?: null,
-        ])->save();
-
-        if ($data['status'] === 'closed') {
-            $review->update([
-                'obligation_snapshot' => $this->obligationSnapshot(),
-                'reconciliation_status' => 'matched',
-                'reconciled_at' => now(),
-            ]);
+        if ($review->exists && $review->status === 'closed') {
+            throw ValidationException::withMessages(['review' => 'This month is closed. Reopen it before editing.']);
         }
+        DB::transaction(function () use ($data, $month, $review, $manualActuals): void {
+            $review->fill([
+                'income_egp' => $data['income'],
+                'essential_expenses_egp' => $data['essential_expenses'],
+                'lifestyle_expenses_egp' => $data['lifestyle_expenses'],
+                'recurring_commitments_egp' => $data['recurring_commitments'],
+                'one_time_expenses_egp' => $data['one_time_expenses'],
+                'debt_payments_egp' => $data['debt_payments'],
+                'invested_egp' => $data['invested'],
+                'manual_adjustment_egp' => $data['manual_adjustment_egp'] ?? 0,
+                'status' => 'open',
+                'reconciliation_status' => 'pending',
+                'reconciled_at' => null,
+                'notes' => ($data['notes'] ?? null) ?: null,
+            ])->save();
+            $manualActuals->syncManualPlanExpenseActuals($month, $data);
+        });
 
         return redirect()->route('monthly-review.index', ['month' => $month->format('Y-m')])->with('success', 'Monthly review saved.');
     }
@@ -124,28 +125,34 @@ class MonthlyReviewController extends Controller
 
     public function derive(Request $request, LedgerService $ledger): RedirectResponse
     {
-        $data = $request->validate(['month' => ['required', 'date_format:Y-m'], 'closed' => ['sometimes', 'boolean']]);
-        $month = Carbon::createFromFormat('Y-m', $data['month'])->startOfMonth();
-        $review = $ledger->deriveMonthlyReview($month, (bool) ($data['closed'] ?? false));
-        if ((bool) ($data['closed'] ?? false)) {
-            $review->update([
-                'obligation_snapshot' => $this->obligationSnapshot(),
-                'reconciliation_status' => 'matched',
-                'reconciled_at' => now(),
-            ]);
+        $data = $request->validate(['month' => ['required', 'date_format:Y-m']]);
+        if ($request->boolean('closed')) {
+            throw ValidationException::withMessages(['review' => 'Deriving actuals leaves the review open. Close it after review.']);
         }
+        $month = Carbon::createFromFormat('Y-m', $data['month'])->startOfMonth();
+        $existing = MonthlyFinancialReview::whereDate('month', $month->toDateString())->first();
+        if ($existing?->status === 'closed') {
+            throw ValidationException::withMessages(['review' => 'This month is closed. Reopen it before deriving new actuals.']);
+        }
+        $ledger->deriveMonthlyReview($month);
 
         return redirect()->route('monthly-review.index', ['month' => $month->format('Y-m')])->with('success', 'Monthly review derived from confirmed ledger transactions.');
     }
 
-    public function close(MonthlyFinancialReview $review, FinanceService $finance): RedirectResponse
+    public function close(MonthlyFinancialReview $review, FinanceService $finance, LedgerService $ledger): RedirectResponse
     {
+        if ($review->status === 'closed') {
+            return back()->with('success', 'Monthly review is already closed.');
+        }
+        $summary = $ledger->summarizeMonth(Carbon::parse($review->month), true);
+        $hasConfirmedLedger = $summary['source'] === 'confirmed_ledger';
         $review->update([
             'status' => 'closed',
             'closed_at' => now(),
             'obligation_snapshot' => $this->obligationSnapshot(),
-            'reconciliation_status' => 'matched',
-            'reconciled_at' => now(),
+            'reconciliation_status' => $hasConfirmedLedger ? 'matched' : 'reviewed',
+            'reconciled_at' => $hasConfirmedLedger ? now() : null,
+            'source_transaction_count' => (int) ($summary['sourceTransactionCount'] ?? 0),
         ]);
 
         $message = 'Monthly review closed.';

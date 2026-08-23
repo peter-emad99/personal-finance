@@ -96,6 +96,55 @@ class McpSafetyTest extends TestCase
         ]);
     }
 
+    public function test_mcp_cannot_edit_a_closed_monthly_review(): void
+    {
+        $review = MonthlyFinancialReview::create([
+            'month' => now()->startOfMonth(),
+            'income_egp' => 50000,
+            'status' => 'closed',
+        ]);
+
+        $response = $this->callTool(app(FinancialMcpServer::class), 'update_monthly_review', [
+            'id' => $review->id,
+            'month' => now()->format('Y-m'),
+            'income' => 55000,
+            'essential_expenses' => 12000,
+            'lifestyle_expenses' => 3000,
+            'recurring_commitments' => 0,
+            'one_time_expenses' => 0,
+            'debt_payments' => 0,
+            'invested' => 5000,
+            'status' => 'open',
+        ]);
+
+        $this->assertTrue($response['result']['isError'] ?? false);
+        $this->assertDatabaseHas('monthly_financial_reviews', [
+            'id' => $review->id,
+            'income_egp' => 50000,
+            'status' => 'closed',
+        ]);
+    }
+
+    public function test_mcp_cannot_create_a_transaction_in_a_closed_month(): void
+    {
+        MonthlyFinancialReview::create([
+            'month' => now()->startOfMonth(),
+            'status' => 'closed',
+        ]);
+
+        $response = $this->callTool(app(FinancialMcpServer::class), 'create_transaction', [
+            'transaction_type' => 'expense',
+            'occurred_on' => now()->startOfMonth()->toDateString(),
+            'description' => 'Late MCP entry',
+            'amount' => 100,
+            'currency' => 'EGP',
+            'amount_egp' => 100,
+        ]);
+
+        $this->assertTrue($response['result']['isError'] ?? false);
+        $this->assertDatabaseCount('transactions', 0);
+    }
+
     public function test_mcp_allocation_rule_requires_a_bucket_assigned_to_the_asset(): void
     {
         $asset = Asset::create(['name' => 'MCP fund', 'type' => 'Fund', 'currency' => 'EGP', 'current_value_egp' => 5000, 'liquidity' => 'within_3_days']);

@@ -27,6 +27,8 @@ use Illuminate\Validation\ValidationException;
  */
 class LedgerService
 {
+    public function __construct(private readonly ?MonthlyReviewGuard $reviewGuard = null) {}
+
     /** @return Collection<int, LedgerTransaction> */
     public function confirmedForMonth(CarbonInterface $month): Collection
     {
@@ -163,6 +165,9 @@ class LedgerService
 
         return DB::transaction(function () use ($month, $summary, $closed, $notes): MonthlyFinancialReview {
             $review = MonthlyFinancialReview::firstOrNew(['month' => $month->toDateString()]);
+            if ($review->exists && $review->status === 'closed') {
+                throw new \InvalidArgumentException('This month is closed. Reopen it before deriving new actuals.');
+            }
             $review->fill([
                 'income_egp' => $summary['income'],
                 'essential_expenses_egp' => $summary['essentialExpenses'],
@@ -335,6 +340,7 @@ class LedgerService
                 throw ValidationException::withMessages(['row' => 'A non-EGP imported row needs an explicit exchange rate or EGP amount before it can be posted.']);
             }
             $data = array_merge($row->only(['account_id', 'category_id', 'occurred_on', 'description', 'amount', 'currency', 'transaction_type', 'exchange_rate', 'amount_egp']), $overrides);
+            ($this->reviewGuard ?? app(MonthlyReviewGuard::class))->assertEditable($data['occurred_on']);
             $data['amount_egp'] = $data['amount_egp'] ?? round((float) $data['amount'] * (float) ($data['exchange_rate'] ?? 1), 2);
             $data['review_state'] = 'confirmed';
             $data['source'] = 'csv_import';

@@ -36,6 +36,8 @@ use App\Services\BudgetRuleService;
 use App\Services\FinanceService;
 use App\Services\IntegrityService;
 use App\Services\LedgerService;
+use App\Services\MonthlyReviewActualService;
+use App\Services\MonthlyReviewGuard;
 use App\Support\OwnerContext;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
@@ -49,7 +51,7 @@ use Throwable;
 /** Local owner-agent control plane with explicit, validated domain tools. */
 class FinancialMcpServer
 {
-    public function __construct(private readonly FinanceService $finance, private readonly LedgerService $ledger, private readonly BackupService $backups, private readonly IntegrityService $integrity, private readonly AllocationActualService $allocationActuals)
+    public function __construct(private readonly FinanceService $finance, private readonly LedgerService $ledger, private readonly BackupService $backups, private readonly IntegrityService $integrity, private readonly AllocationActualService $allocationActuals, private readonly MonthlyReviewGuard $reviewGuard, private readonly MonthlyReviewActualService $monthlyReviewActuals)
     {
         // Direct in-process protocol tests and local artisan invocations still
         // use the explicitly bootstrapped owner. HTTP never receives this
@@ -137,7 +139,7 @@ class FinancialMcpServer
             $this->tool('validate_data_integrity', 'Run owner-scoped data-integrity checks.', [], [], false),
             $this->tool('get_allocation_reconciliation', 'Show goal, non-goal, and genuinely unallocated asset balances.', []),
             $this->tool('get_reconciliation', 'Compare account balances, expected/received income, due/paid commitments, and review completeness.', ['month' => ['type' => 'string', 'pattern' => '^\\d{4}-\\d{2}$']]),
-            $this->tool('derive_monthly_review', 'Derive a monthly review from confirmed ledger transactions without double counting legacy cash flows.', ['month' => ['type' => 'string', 'pattern' => '^\\d{4}-\\d{2}$'], 'closed' => ['type' => 'boolean']], ['month'], false),
+            $this->tool('derive_monthly_review', 'Prepare open monthly actuals from confirmed ledger transactions. Review and close the month separately.', ['month' => ['type' => 'string', 'pattern' => '^\\d{4}-\\d{2}$']], ['month'], false),
             $this->tool('close_month', 'Close a derived or reviewed month and preserve its source provenance.', ['id' => ['type' => 'integer', 'minimum' => 1]], ['id'], false),
             $this->tool('reopen_month', 'Reopen a closed month for a recorded revision.', ['id' => ['type' => 'integer', 'minimum' => 1]], ['id'], false),
             $this->tool('prepare_next_month', 'Prepare the next month allocation plan from a closed monthly review.', ['review_id' => ['type' => 'integer', 'minimum' => 1], 'redirect_emergency_to' => ['type' => 'string', 'enum' => ['goals', 'investments']], 'lesson' => ['type' => 'string']], ['review_id'], false),
@@ -330,7 +332,7 @@ class FinancialMcpServer
             'bucket' => ['name' => 'required|string|max:120', 'purpose' => 'nullable|string|max:200', 'purpose_type' => 'required|in:emergency,goal,investment,other', 'target_amount_egp' => 'nullable|numeric|min:0', 'color' => 'required|string|max:20', 'goal_id' => 'nullable|exists:goals,id'],
             'goal' => ['name' => 'required|string|max:120', 'target_amount_egp' => 'required|numeric|min:0', 'deadline' => 'nullable|date', 'status' => 'nullable|in:active,completed,paused', 'priority' => 'required|integer|min:1|max:99', 'monthly_contribution_egp' => 'nullable|numeric|min:0', 'notes' => 'nullable|string'],
             'cash_flow' => ['type' => 'required|in:income,expense,obligation', 'category' => 'required|string|max:80', 'amount_egp' => 'required|numeric|min:0', 'occurred_on' => 'required|date', 'notes' => 'nullable|string'],
-            'monthly_review' => ['month' => 'required|date_format:Y-m', 'income' => 'required|numeric|min:0', 'essential_expenses' => 'required|numeric|min:0', 'lifestyle_expenses' => 'required|numeric|min:0', 'recurring_commitments' => 'required|numeric|min:0', 'one_time_expenses' => 'required|numeric|min:0', 'debt_payments' => 'required|numeric|min:0', 'invested' => 'required|numeric|min:0', 'manual_adjustment_egp' => 'nullable|numeric', 'status' => 'required|in:open,closed', 'notes' => 'nullable|string'],
+            'monthly_review' => ['month' => 'required|date_format:Y-m', 'income' => 'required|numeric|min:0', 'essential_expenses' => 'required|numeric|min:0', 'lifestyle_expenses' => 'required|numeric|min:0', 'recurring_commitments' => 'required|numeric|min:0', 'one_time_expenses' => 'required|numeric|min:0', 'debt_payments' => 'required|numeric|min:0', 'invested' => 'required|numeric|min:0', 'manual_adjustment_egp' => 'nullable|numeric', 'status' => 'sometimes|in:open', 'notes' => 'nullable|string'],
             'commitment' => ['name' => 'required|string|max:120', 'category' => 'required|string|max:80', 'amount_egp' => 'required|numeric|min:0', 'frequency' => 'required|in:weekly,monthly,quarterly,yearly', 'next_due_on' => 'nullable|date', 'renewal_on' => 'nullable|date', 'is_active' => 'nullable|boolean', 'notes' => 'nullable|string'],
             'liability' => ['name' => 'required|string|max:120', 'type' => 'required|string|max:80', 'balance_egp' => 'required|numeric|min:0', 'original_balance_egp' => 'nullable|numeric|min:0', 'interest_rate_percent' => 'nullable|numeric|min:0', 'monthly_payment_egp' => 'required|numeric|min:0', 'due_day' => 'nullable|integer|between:1,31', 'payoff_on' => 'nullable|date', 'is_active' => 'nullable|boolean', 'notes' => 'nullable|string'],
             'plan_template' => ['name' => 'required|string|max:120', 'description' => 'nullable|string|max:500', 'is_default' => 'nullable|boolean', 'is_active' => 'nullable|boolean'],
@@ -417,6 +419,9 @@ class FinancialMcpServer
     private function create(string $resource, array $arguments): array
     {
         $data = $this->validated($resource, $arguments);
+        if ($resource === 'cash_flow') {
+            $this->reviewGuard->assertEditable($data['occurred_on']);
+        }
         if ($resource === 'budget_rule') {
             $data = $this->normalizeBudgetRuleData($data);
         }
@@ -479,6 +484,12 @@ class FinancialMcpServer
         }
         if ($resource === 'financial_settings' && $before instanceof FinancialSetting && array_key_exists('is_active', $data) && ! $data['is_active'] && $before->is_active) {
             throw new \InvalidArgumentException('The active financial policy cannot be disabled.');
+        }
+        if ($resource === 'cash_flow' || $resource === 'transaction') {
+            $this->reviewGuard->assertEditable($before->occurred_on);
+            if (isset($data['occurred_on'])) {
+                $this->reviewGuard->assertEditable($data['occurred_on']);
+            }
         }
 
         return $this->mutate('update_'.$resource, 'update', $before, function () use ($resource, $id, $data): Model {
@@ -545,8 +556,11 @@ class FinancialMcpServer
         $this->assertArguments($arguments, ['id']);
         $id = (int) ($arguments['id'] ?? 0);
         $before = $this->find($resource, $id);
+        if ($resource === 'cash_flow' || $resource === 'transaction') {
+            $this->reviewGuard->assertEditable($before->occurred_on);
+        }
 
-        return $this->mutate('archive_'.$resource, 'archive', $before, function () use ($resource, $id): Model {
+        $envelope = $this->mutate('archive_'.$resource, 'archive', $before, function () use ($resource, $id): Model {
             $model = $this->find($resource, $id);
             if ($resource === 'financial_settings' && $model instanceof FinancialSetting) {
                 if ($model->is_active && FinancialSetting::query()->where('is_active', true)->count() <= 1) {
@@ -573,6 +587,11 @@ class FinancialMcpServer
 
             return $model;
         });
+        if ($resource === 'transaction' && $before instanceof LedgerTransaction && $before->review_state === 'confirmed') {
+            $this->allocationActuals->syncMonth(Carbon::parse($before->occurred_on));
+        }
+
+        return $envelope;
     }
 
     /**
@@ -584,8 +603,11 @@ class FinancialMcpServer
         $this->assertArguments($arguments, ['id']);
         $id = (int) ($arguments['id'] ?? 0);
         $before = $this->find($resource, $id, true);
+        if (($resource === 'cash_flow' || $resource === 'transaction') && isset($before->occurred_on)) {
+            $this->reviewGuard->assertEditable($before->occurred_on);
+        }
 
-        return $this->mutate('restore_'.$resource, 'restore', $before, function () use ($resource, $id): Model {
+        $envelope = $this->mutate('restore_'.$resource, 'restore', $before, function () use ($resource, $id): Model {
             $model = $this->restoreModel($resource, $id);
             if ($resource === 'commitment') {
                 $this->syncCommitmentRulesAcrossTemplates();
@@ -593,6 +615,11 @@ class FinancialMcpServer
 
             return $model;
         });
+        if ($resource === 'transaction' && $before instanceof LedgerTransaction && $before->review_state === 'confirmed') {
+            $this->allocationActuals->syncMonth(Carbon::parse($before->occurred_on));
+        }
+
+        return $envelope;
     }
 
     /**
@@ -1061,7 +1088,11 @@ class FinancialMcpServer
     {
         $month = Carbon::createFromFormat('Y-m', $data['month'])->startOfMonth()->toDateString();
         $review = $id ? MonthlyFinancialReview::findOrFail($id) : MonthlyFinancialReview::firstOrNew(['month' => $month]);
-        $review->fill(['income_egp' => $data['income'], 'essential_expenses_egp' => $data['essential_expenses'], 'lifestyle_expenses_egp' => $data['lifestyle_expenses'], 'recurring_commitments_egp' => $data['recurring_commitments'], 'one_time_expenses_egp' => $data['one_time_expenses'], 'debt_payments_egp' => $data['debt_payments'], 'invested_egp' => $data['invested'], 'manual_adjustment_egp' => $data['manual_adjustment_egp'] ?? 0, 'status' => $data['status'], 'notes' => $data['notes'] ?? null])->save();
+        if ($review->exists && $review->status === 'closed') {
+            throw new \InvalidArgumentException('This month is closed. Reopen it before editing.');
+        }
+        $review->fill(['income_egp' => $data['income'], 'essential_expenses_egp' => $data['essential_expenses'], 'lifestyle_expenses_egp' => $data['lifestyle_expenses'], 'recurring_commitments_egp' => $data['recurring_commitments'], 'one_time_expenses_egp' => $data['one_time_expenses'], 'debt_payments_egp' => $data['debt_payments'], 'invested_egp' => $data['invested'], 'manual_adjustment_egp' => $data['manual_adjustment_egp'] ?? 0, 'status' => 'open', 'reconciliation_status' => 'pending', 'reconciled_at' => null, 'notes' => ($data['notes'] ?? null) ?: null])->save();
+        $this->monthlyReviewActuals->syncManualPlanExpenseActuals(Carbon::parse($month), $data);
 
         return $review;
     }
@@ -1185,6 +1216,7 @@ class FinancialMcpServer
     /** @param array<string, mixed> $data */
     private function createTransaction(array $data): LedgerTransaction
     {
+        $this->reviewGuard->assertEditable($data['occurred_on']);
         if (strtoupper((string) $data['currency']) !== 'EGP' && ! isset($data['exchange_rate']) && ! isset($data['amount_egp'])) {
             throw new \InvalidArgumentException('A non-EGP transaction needs an explicit exchange rate or EGP amount.');
         }
@@ -1198,6 +1230,9 @@ class FinancialMcpServer
 
         $transaction = LedgerTransaction::create($data);
         $this->syncTransactionSplits($transaction, $splits);
+        if ($transaction->review_state === 'confirmed') {
+            $this->allocationActuals->syncMonth(Carbon::parse($transaction->occurred_on));
+        }
 
         return $transaction;
     }
@@ -1206,11 +1241,15 @@ class FinancialMcpServer
     private function updateTransaction(int $id, array $data): LedgerTransaction
     {
         $transaction = LedgerTransaction::findOrFail($id);
+        $this->reviewGuard->assertEditable($transaction->occurred_on);
+        $this->reviewGuard->assertEditable($data['occurred_on'] ?? $transaction->occurred_on);
         if (strtoupper((string) ($data['currency'] ?? $transaction->currency)) !== 'EGP' && ! isset($data['exchange_rate']) && ! isset($data['amount_egp']) && ($transaction->exchange_rate === null || strtoupper((string) $transaction->currency) === 'EGP')) {
             throw new \InvalidArgumentException('A non-EGP transaction needs an explicit exchange rate or EGP amount.');
         }
         $splits = $data['splits'] ?? null;
         unset($data['splits']);
+        $previousMonth = Carbon::parse($transaction->occurred_on);
+        $wasConfirmed = $transaction->review_state === 'confirmed';
         $data['amount_egp'] ??= round((float) ($data['amount'] ?? $transaction->amount) * (float) ($data['exchange_rate'] ?? $transaction->exchange_rate ?? 1), 2);
         $data['fingerprint'] = LedgerTransaction::fingerprintFor($data + ['account_id' => $transaction->account_id, 'occurred_on' => $transaction->occurred_on, 'description' => $transaction->description, 'currency' => $transaction->currency]);
         if (($data['review_state'] ?? $transaction->review_state) === 'confirmed') {
@@ -1219,6 +1258,12 @@ class FinancialMcpServer
         $transaction->update($data);
         if ($splits !== null) {
             $this->syncTransactionSplits($transaction, $splits);
+        }
+        if ($wasConfirmed) {
+            $this->allocationActuals->syncMonth($previousMonth);
+        }
+        if ($transaction->review_state === 'confirmed') {
+            $this->allocationActuals->syncMonth(Carbon::parse($transaction->occurred_on));
         }
 
         return $transaction;
@@ -1399,22 +1444,16 @@ class FinancialMcpServer
      */
     private function deriveReviewTool(array $arguments): array
     {
-        $this->assertArguments($arguments, ['month', 'closed']);
-        $data = Validator::make($arguments, ['month' => 'required|date_format:Y-m', 'closed' => 'sometimes|boolean'])->validate();
+        $this->assertArguments($arguments, ['month']);
+        if (($arguments['closed'] ?? false) === true) {
+            throw new \InvalidArgumentException('Deriving actuals leaves the review open. Use close_month after review.');
+        }
+        $data = Validator::make($arguments, ['month' => 'required|date_format:Y-m'])->validate();
         $month = $this->month($data['month']);
         $before = MonthlyFinancialReview::whereDate('month', $month->toDateString())->first();
 
-        return $this->mutate('derive_monthly_review', 'update', $before, function () use ($month, $data): Model {
-            $review = $this->ledger->deriveMonthlyReview($month, (bool) ($data['closed'] ?? false));
-            if ((bool) ($data['closed'] ?? false)) {
-                $review->update([
-                    'obligation_snapshot' => $this->obligationSnapshot(),
-                    'reconciliation_status' => 'matched',
-                    'reconciled_at' => now(),
-                ]);
-            }
-
-            return $review->refresh();
+        return $this->mutate('derive_monthly_review', 'update', $before, function () use ($month): Model {
+            return $this->ledger->deriveMonthlyReview($month, false)->refresh();
         });
     }
 
@@ -1426,15 +1465,21 @@ class FinancialMcpServer
     {
         $this->assertArguments($arguments, ['id']);
         $review = MonthlyFinancialReview::findOrFail((int) $arguments['id']);
+        if ($review->status === 'closed') {
+            throw new \InvalidArgumentException('This monthly review is already closed. Reopen it before making a revision.');
+        }
         $nextMonthPlanId = null;
+        $summary = $this->ledger->summarizeMonth(Carbon::parse($review->month), true);
+        $hasConfirmedLedger = $summary['source'] === 'confirmed_ledger';
 
-        $envelope = $this->mutate('close_month', 'update', $review, function () use ($review, &$nextMonthPlanId): Model {
+        $envelope = $this->mutate('close_month', 'update', $review, function () use ($review, &$nextMonthPlanId, $summary, $hasConfirmedLedger): Model {
             $review->update([
                 'status' => 'closed',
                 'closed_at' => now(),
                 'obligation_snapshot' => $this->obligationSnapshot(),
-                'reconciliation_status' => 'matched',
-                'reconciled_at' => now(),
+                'reconciliation_status' => $hasConfirmedLedger ? 'matched' : 'reviewed',
+                'reconciled_at' => $hasConfirmedLedger ? now() : null,
+                'source_transaction_count' => (int) ($summary['sourceTransactionCount'] ?? 0),
             ]);
             if ((bool) data_get(FinancialSetting::active()->policy, 'auto_prepare_next_month', false)) {
                 $proposal = $this->nextMonthProposal($review);

@@ -9,6 +9,7 @@ use App\Models\LedgerTransaction;
 use App\Models\TransactionCategory;
 use App\Services\AllocationActualService;
 use App\Services\LedgerService;
+use App\Services\MonthlyReviewGuard;
 use App\Services\TransactionCategoryService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -63,10 +64,11 @@ class LedgerController extends Controller
         return back()->with('success', 'Account restored.');
     }
 
-    public function storeTransaction(Request $request, AllocationActualService $actuals): RedirectResponse
+    public function storeTransaction(Request $request, AllocationActualService $actuals, MonthlyReviewGuard $reviewGuard): RedirectResponse
     {
         $data = $request->validate($this->transactionRules());
         $this->assertConversion($data);
+        $reviewGuard->assertEditable($data['occurred_on']);
         $data['amount_egp'] = $data['amount_egp'] ?? round((float) $data['amount'] * (float) ($data['exchange_rate'] ?? 1), 2);
         $data['review_state'] = $data['review_state'] ?? 'confirmed';
         $data['source'] = $data['source'] ?? 'manual';
@@ -80,11 +82,13 @@ class LedgerController extends Controller
         return back()->with('success', 'Ledger transaction recorded.');
     }
 
-    public function updateTransaction(Request $request, LedgerTransaction $transaction, AllocationActualService $actuals): RedirectResponse
+    public function updateTransaction(Request $request, LedgerTransaction $transaction, AllocationActualService $actuals, MonthlyReviewGuard $reviewGuard): RedirectResponse
     {
         $previousMonth = Carbon::parse($transaction->occurred_on);
         $data = $request->validate($this->transactionRules());
         $this->assertConversion($data);
+        $reviewGuard->assertEditable($previousMonth);
+        $reviewGuard->assertEditable($data['occurred_on']);
         $data['amount_egp'] = $data['amount_egp'] ?? round((float) $data['amount'] * (float) ($data['exchange_rate'] ?? 1), 2);
         $data['fingerprint'] = LedgerTransaction::fingerprintFor($data);
         $wasConfirmed = $transaction->review_state === 'confirmed';
@@ -99,9 +103,10 @@ class LedgerController extends Controller
         return back()->with('success', 'Ledger transaction updated.');
     }
 
-    public function destroyTransaction(LedgerTransaction $transaction, AllocationActualService $actuals): RedirectResponse
+    public function destroyTransaction(LedgerTransaction $transaction, AllocationActualService $actuals, MonthlyReviewGuard $reviewGuard): RedirectResponse
     {
         $month = Carbon::parse($transaction->occurred_on);
+        $reviewGuard->assertEditable($month);
         $transaction->update(['voided_at' => now(), 'review_state' => 'void']);
         $transaction->delete();
         $actuals->syncMonth($month);
@@ -109,9 +114,14 @@ class LedgerController extends Controller
         return back()->with('success', 'Ledger transaction voided and archived.');
     }
 
-    public function restoreTransaction(int $transaction): RedirectResponse
+    public function restoreTransaction(int $transaction, AllocationActualService $actuals, MonthlyReviewGuard $reviewGuard): RedirectResponse
     {
-        LedgerTransaction::withTrashed()->findOrFail($transaction)->restore();
+        $entry = LedgerTransaction::withTrashed()->findOrFail($transaction);
+        $reviewGuard->assertEditable($entry->occurred_on);
+        $entry->restore();
+        if ($entry->review_state === 'confirmed') {
+            $actuals->syncMonth(Carbon::parse($entry->occurred_on));
+        }
 
         return back()->with('success', 'Ledger transaction restored.');
     }

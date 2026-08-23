@@ -1,5 +1,7 @@
 export type Summary = {
     netWorth: number;
+    directlyControlledAssets: number;
+    heldElsewhere: number;
     investableNetWorth: number;
     liquidAssets: number;
     availableNow?: number;

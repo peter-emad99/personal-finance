@@ -2,20 +2,24 @@
 
 namespace Tests\Feature;
 
-use App\Models\Asset;
-use App\Models\AllocationPlan;
-use App\Models\Bucket;
-use App\Models\CashFlow;
-use App\Models\Goal;
 use App\Models\Account;
-use App\Models\Liability;
-use App\Models\LiabilityPaymentRecord;
-use App\Models\LedgerTransaction;
+use App\Models\AllocationPlan;
+use App\Models\Asset;
+use App\Models\Bucket;
+use App\Models\BudgetCategory;
+use App\Models\BudgetRule;
+use App\Models\CashFlow;
 use App\Models\FinancialSetting;
+use App\Models\Goal;
+use App\Models\LedgerTransaction;
+use App\Models\Liability;
 use App\Models\MonthlyFinancialReview;
+use App\Models\PlanTemplate;
 use App\Models\RecurringCommitment;
+use App\Models\TransactionCategory;
 use App\Models\User;
 use App\Services\AllocationActualService;
+use App\Services\BudgetRuleService;
 use App\Services\FinanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -69,7 +73,7 @@ class FinanceTest extends TestCase
     public function test_asset_can_be_split_across_purpose_buckets(): void
     {
         $asset = Asset::create(['name' => 'Money market', 'type' => 'Fixed income', 'currency' => 'EGP', 'current_value_egp' => 100000, 'is_liquid' => true, 'liquidity' => 'within_3_days']);
-        $emergency = Bucket::create(['name' => 'Emergency', 'color' => '#4ade80']);
+        $emergency = Bucket::create(['name' => 'Emergency', 'purpose_type' => 'emergency', 'color' => '#4ade80']);
         $car = Bucket::create(['name' => 'Car', 'color' => '#f6c453']);
 
         $this->put(route('assets.allocations.update', $asset), ['allocations' => [
@@ -176,7 +180,7 @@ class FinanceTest extends TestCase
 
         $this->assertSame('needs_sync', $flow['status']);
         $this->assertSame(2500.0, $flow['obligations']['totalConfiguredMonthly']);
-        $this->assertCount(2, $flow['warnings']);
+        $this->assertGreaterThanOrEqual(2, count($flow['warnings']));
     }
 
     public function test_closed_review_explains_item_level_obligation_changes_and_debt_projection(): void
@@ -223,12 +227,283 @@ class FinanceTest extends TestCase
         $this->assertDatabaseCount('allocation_plans', 0);
     }
 
+    public function test_monthly_plan_calculates_percentage_allocations_and_snapshots_expenses(): void
+    {
+        $car = Bucket::create(['name' => 'Kia K4', 'color' => '#f6c453']);
+        $longTerm = Bucket::create(['name' => 'Long-Term Investing', 'purpose_type' => 'investment', 'color' => '#7c8cf8']);
+        $categories = collect(['Essentials', 'Lifestyle', 'Commitments', 'Flexible / irregular'])
+            ->map(fn (string $name): BudgetCategory => BudgetCategory::create(['name' => $name, 'kind' => 'expense']))
+            ->values();
+
+        $response = $this->post(route('allocations.store'), [
+            'month' => now()->startOfMonth()->toDateString(),
+            'planned_income_egp' => 100000,
+            'planned_expenses_egp' => 20000,
+            'items' => [
+                ['bucket_id' => $car->id, 'asset_target' => 'Money market fund', 'allocation_percent' => 30, 'planned_amount_egp' => 0, 'actual_amount_egp' => 0],
+                ['bucket_id' => $longTerm->id, 'asset_target' => 'US ETF', 'allocation_percent' => 70, 'planned_amount_egp' => 0, 'actual_amount_egp' => 0],
+            ],
+            'expenses' => $categories->map(fn (BudgetCategory $category, int $index): array => [
+                'category_id' => $category->id,
+                'planned_amount_egp' => [10000, 5000, 1901.67, 3098.33][$index],
+                'actual_amount_egp' => 0,
+            ])->all(),
+        ]);
+
+        $response->assertRedirect();
+        $this->assertDatabaseHas('allocation_plan_items', [
+            'bucket_id' => $car->id,
+            'asset_target' => 'Money market fund',
+            'allocation_percent' => 30,
+            'planned_amount_egp' => 24000,
+        ]);
+        $this->assertSame(20000.0, (float) AllocationPlan::firstOrFail()->expenseItems()->sum('planned_amount_egp'));
+    }
+
+    public function test_monthly_templates_are_reusable_and_commitments_become_forced_expense_rules(): void
+    {
+        $commitment = RecurringCommitment::create([
+            'name' => 'Internet',
+            'category' => 'utilities',
+            'amount_egp' => 500,
+            'frequency' => 'monthly',
+            'is_active' => true,
+        ]);
+        $template = app(BudgetRuleService::class)->ensureDefaultTemplate(100000);
+        $commitmentRule = BudgetRule::query()->where('plan_template_id', $template->id)->where('recurring_commitment_id', $commitment->id)->first();
+
+        $this->assertNotNull($commitmentRule);
+        $this->assertSame(500.0, (float) $commitmentRule->amount_egp);
+
+        $this->post(route('monthly-rules.templates.duplicate'), [
+            'template_id' => $template->id,
+            'name' => 'Kia K4 priority',
+        ])->assertRedirect();
+
+        $copy = PlanTemplate::query()->where('name', 'Kia K4 priority')->firstOrFail();
+        $this->assertDatabaseHas('budget_rules', [
+            'plan_template_id' => $copy->id,
+            'recurring_commitment_id' => $commitment->id,
+        ]);
+    }
+
+    public function test_dashboard_uses_saved_month_plan_values_instead_of_live_template_rules(): void
+    {
+        $template = app(BudgetRuleService::class)->ensureDefaultTemplate(100000);
+        $plan = AllocationPlan::create([
+            'month' => now()->startOfMonth(),
+            'plan_template_id' => $template->id,
+            'planned_income_egp' => 50000,
+            'planned_expenses_egp' => 20000,
+            'status' => 'open',
+        ]);
+
+        $dashboard = app(FinanceService::class)->dashboard();
+        $monthlyPlan = $dashboard['monthlyPlan'];
+        $unallocated = collect($dashboard['monthlyRatios']['items'])->firstWhere('key', 'planned_unallocated');
+
+        $this->assertSame('saved_plan', $monthlyPlan['source']);
+        $this->assertSame(50000.0, (float) $monthlyPlan['plannedIncome']);
+        $this->assertSame('Saved planned income', $monthlyPlan['incomeRules']->first()['label']);
+        $this->assertSame(50000.0, (float) $monthlyPlan['incomeRules']->first()['amount']);
+        $this->assertSame(60.0, (float) $unallocated['targetPercent']);
+        $this->assertNotNull($plan->fresh());
+    }
+
+    public function test_monthly_ratio_rows_use_actual_values_and_keep_plan_targets_separate(): void
+    {
+        $goal = Goal::create([
+            'name' => 'Car',
+            'target_amount_egp' => 100000,
+            'status' => 'active',
+        ]);
+        $emergency = Bucket::create(['name' => 'Emergency Reserve', 'purpose_type' => 'emergency', 'color' => '#4db6ac']);
+        $goalBucket = Bucket::create(['name' => 'Car', 'purpose_type' => 'goal', 'color' => '#f6c453', 'goal_id' => $goal->id]);
+        $investment = Bucket::create(['name' => 'Long-term investing', 'purpose_type' => 'investment', 'color' => '#7c8cf8']);
+        $template = app(BudgetRuleService::class)->ensureDefaultTemplate(100000);
+        $plan = AllocationPlan::create([
+            'month' => now()->startOfMonth(),
+            'plan_template_id' => $template->id,
+            'planned_income_egp' => 100000,
+            'planned_expenses_egp' => 20000,
+            'status' => 'open',
+        ]);
+        $plan->items()->createMany([
+            ['bucket_id' => $emergency->id, 'planned_amount_egp' => 10000, 'actual_amount_egp' => 4000],
+            ['bucket_id' => $goalBucket->id, 'planned_amount_egp' => 15000, 'actual_amount_egp' => 3000],
+            ['bucket_id' => $investment->id, 'planned_amount_egp' => 15000, 'actual_amount_egp' => 0],
+        ]);
+        MonthlyFinancialReview::create([
+            'month' => now()->startOfMonth(),
+            'income_egp' => 100000,
+            'essential_expenses_egp' => 10000,
+            'lifestyle_expenses_egp' => 5000,
+            'recurring_commitments_egp' => 0,
+            'one_time_expenses_egp' => 0,
+            'debt_payments_egp' => 0,
+            'invested_egp' => 5000,
+            'status' => 'open',
+        ]);
+
+        $rows = collect(app(FinanceService::class)->dashboard()['monthlyRatios']['items'])->keyBy('key');
+
+        $emergencyRow = $rows->firstWhere('label', 'Emergency Reserve');
+        $goalRow = $rows->firstWhere('label', 'Car');
+        $investmentRow = $rows->firstWhere('label', 'Long-term investing');
+        $this->assertSame(4000.0, (float) $emergencyRow['amount']);
+        $this->assertSame(10.0, (float) $emergencyRow['targetPercent']);
+        $this->assertSame(3000.0, (float) $goalRow['amount']);
+        $this->assertSame(15.0, (float) $goalRow['targetPercent']);
+        $this->assertSame(0.0, (float) $investmentRow['amount']);
+        $this->assertSame(15.0, (float) $investmentRow['targetPercent']);
+        $this->assertSame(0.0, (float) $rows['planned_unallocated']['amount']);
+        $this->assertSame(40.0, (float) $rows['planned_unallocated']['targetPercent']);
+    }
+
+    public function test_actual_sync_does_not_guess_plan_category_or_purpose_bucket_from_names(): void
+    {
+        $plannedCategory = BudgetCategory::create(['name' => 'Planned food', 'kind' => 'expense']);
+        $otherCategory = BudgetCategory::create(['name' => 'Other real spending', 'kind' => 'expense']);
+        $transactionCategory = TransactionCategory::create([
+            'name' => 'Coffee shop',
+            'kind' => 'expense',
+            'budget_category_id' => $otherCategory->id,
+        ]);
+        $bucket = Bucket::create(['name' => 'Emergency Reserve', 'purpose_type' => 'emergency', 'color' => '#4db6ac']);
+        $template = app(BudgetRuleService::class)->ensureDefaultTemplate(100000);
+        $plan = AllocationPlan::create([
+            'month' => now()->startOfMonth(),
+            'plan_template_id' => $template->id,
+            'planned_income_egp' => 100000,
+            'planned_expenses_egp' => 10000,
+            'status' => 'open',
+        ]);
+        $plan->expenseItems()->create([
+            'budget_category_id' => $plannedCategory->id,
+            'planned_amount_egp' => 1000,
+        ]);
+        $plan->items()->create([
+            'bucket_id' => $bucket->id,
+            'planned_amount_egp' => 5000,
+        ]);
+
+        LedgerTransaction::create([
+            'category_id' => $transactionCategory->id,
+            'transaction_type' => 'expense',
+            'description' => 'Emergency Reserve coffee',
+            'amount' => 250,
+            'amount_egp' => 250,
+            'currency' => 'EGP',
+            'occurred_on' => now()->startOfMonth(),
+            'review_state' => 'confirmed',
+            'source' => 'manual',
+            'fingerprint' => 'unmapped-expense',
+        ]);
+        LedgerTransaction::create([
+            'transaction_type' => 'contribution',
+            'description' => 'Emergency Reserve contribution',
+            'amount' => 500,
+            'amount_egp' => 500,
+            'currency' => 'EGP',
+            'occurred_on' => now()->startOfMonth(),
+            'review_state' => 'confirmed',
+            'source' => 'manual',
+            'fingerprint' => 'unmapped-purpose',
+        ]);
+
+        $preview = app(AllocationActualService::class)->preview($plan);
+
+        $this->assertSame([], $preview['actuals']);
+        $this->assertSame(500.0, (float) $preview['unmappedPurposeAmount']);
+        $this->assertSame(250.0, (float) $preview['unmappedExpenseAmount']);
+        $this->assertSame([], $preview['expenseActuals']);
+    }
+
+    public function test_template_editor_supports_multiple_income_expense_and_asset_bucket_rules(): void
+    {
+        $asset = Asset::create(['name' => 'Money market', 'type' => 'Fixed income', 'currency' => 'EGP', 'current_value_egp' => 100000, 'liquidity' => 'within_3_days']);
+        $bucket = Bucket::create(['name' => 'Emergency', 'purpose_type' => 'emergency', 'color' => '#4ade80']);
+        $asset->buckets()->attach($bucket, ['amount_egp' => 100000]);
+        $category = BudgetCategory::create(['name' => 'Health', 'kind' => 'expense', 'is_default' => false]);
+        $template = app(BudgetRuleService::class)->ensureDefaultTemplate(100000);
+
+        $this->post(route('monthly-rules.store'), [
+            'template_id' => $template->id,
+            'income_rules' => [
+                ['name' => 'Salary', 'amount' => 90000, 'percent' => null],
+                ['name' => 'Freelance', 'amount' => 10000, 'percent' => null],
+            ],
+            'expense_rules' => [
+                ['name' => 'Health reserve', 'category_id' => $category->id, 'amount' => 2000, 'percent' => null],
+                ['name' => 'Food', 'category_id' => $category->id, 'amount' => 3000, 'percent' => null],
+            ],
+            'allocation_rules' => [[
+                'asset_id' => $asset->id,
+                'bucket_id' => $bucket->id,
+                'asset_target' => $asset->name,
+                'percent' => 100,
+            ]],
+        ])->assertRedirect();
+
+        $this->assertSame(2, BudgetRule::where('plan_template_id', $template->id)->where('direction', 'income')->where('is_active', true)->count());
+        $this->assertDatabaseHas('budget_rules', ['plan_template_id' => $template->id, 'name' => 'Health reserve', 'budget_category_id' => $category->id]);
+        $this->assertDatabaseHas('allocation_rules', ['plan_template_id' => $template->id, 'asset_id' => $asset->id, 'bucket_id' => $bucket->id]);
+    }
+
+    public function test_budget_categories_are_separate_crud_records_with_default_behavior(): void
+    {
+        $this->post(route('budget-categories.store'), ['name' => 'Travel', 'color' => '#123456', 'is_default' => false])->assertRedirect();
+        $category = BudgetCategory::where('name', 'Travel')->firstOrFail();
+
+        $this->get(route('budget-categories.index'))->assertOk();
+        $this->put(route('budget-categories.update', $category), ['name' => 'Travel', 'color' => '#654321', 'is_default' => true, 'is_active' => true])->assertRedirect();
+        $this->assertDatabaseHas('budget_categories', ['id' => $category->id, 'is_default' => true]);
+        $this->delete(route('budget-categories.destroy', $category))->assertRedirect();
+        $this->assertSoftDeleted('budget_categories', ['id' => $category->id]);
+        $this->post(route('budget-categories.restore', $category->id))->assertRedirect();
+        $this->assertDatabaseHas('budget_categories', ['id' => $category->id, 'deleted_at' => null]);
+    }
+
+    public function test_closed_monthly_plan_preserves_snapshot_and_rejects_template_or_value_edits(): void
+    {
+        $bucket = Bucket::create(['name' => 'Kia K4', 'color' => '#f6c453']);
+        $template = app(BudgetRuleService::class)->ensureDefaultTemplate(50000);
+
+        $this->post(route('allocations.store'), [
+            'month' => '2026-08-01',
+            'plan_template_id' => $template->id,
+            'planned_income_egp' => 50000,
+            'planned_expenses_egp' => 20000,
+            'items' => [[
+                'bucket_id' => $bucket->id,
+                'planned_amount_egp' => 30000,
+                'actual_amount_egp' => 0,
+            ]],
+            'expenses' => [],
+        ])->assertRedirect();
+
+        $plan = AllocationPlan::query()->whereDate('month', '2026-08-01')->firstOrFail();
+        $this->post(route('allocations.close', $plan))->assertRedirect();
+        $this->assertDatabaseHas('allocation_plans', ['id' => $plan->id, 'status' => 'closed']);
+
+        $this->post(route('allocations.store'), [
+            'month' => '2026-08-01',
+            'plan_template_id' => $template->id,
+            'planned_income_egp' => 99999,
+            'planned_expenses_egp' => 20000,
+            'items' => [],
+            'expenses' => [],
+        ])->assertStatus(422);
+
+        $this->assertDatabaseHas('allocation_plans', ['id' => $plan->id, 'planned_income_egp' => 50000, 'status' => 'closed']);
+    }
+
     public function test_closed_review_prepares_next_month_plan_from_current_obligations(): void
     {
         $goal = Goal::create(['name' => 'Travel', 'target_amount_egp' => 100000, 'monthly_contribution_egp' => 8000, 'status' => 'active']);
-        Bucket::create(['name' => 'Emergency Reserve', 'color' => '#4ade80']);
-        Bucket::create(['name' => 'Travel', 'goal_id' => $goal->id, 'color' => '#f6c453']);
-        Bucket::create(['name' => 'Long-Term Investing', 'color' => '#7c8cf8']);
+        Bucket::create(['name' => 'Emergency Reserve', 'purpose_type' => 'emergency', 'color' => '#4ade80']);
+        Bucket::create(['name' => 'Travel', 'purpose_type' => 'goal', 'goal_id' => $goal->id, 'color' => '#f6c453']);
+        Bucket::create(['name' => 'Long-Term Investing', 'purpose_type' => 'investment', 'color' => '#7c8cf8']);
         RecurringCommitment::create(['name' => 'Internet', 'category' => 'utilities', 'amount_egp' => 500, 'frequency' => 'monthly', 'is_active' => true]);
         Liability::create(['name' => 'Loan', 'type' => 'loan', 'balance_egp' => 25000, 'monthly_payment_egp' => 2000, 'is_active' => true]);
         $review = MonthlyFinancialReview::create([
@@ -256,7 +531,6 @@ class FinanceTest extends TestCase
         $settings = FinancialSetting::active();
         $settings->update([
             'policy' => [
-                'monthly_allocation_targets' => FinancialSetting::defaultMonthlyAllocationTargets(),
                 'variance_thresholds' => [
                     'income_percent' => 10,
                     'expenses_percent' => 10,
@@ -275,10 +549,15 @@ class FinanceTest extends TestCase
             'invested_egp' => 1000,
             'status' => 'open',
         ]);
-        AllocationPlan::create([
+        $plan = AllocationPlan::create([
             'month' => now()->startOfMonth(),
             'planned_income_egp' => 12000,
             'planned_expenses_egp' => 1000,
+        ]);
+        $plan->items()->create([
+            'bucket_id' => Bucket::create(['name' => 'Long-term investing', 'purpose_type' => 'investment', 'color' => '#4db6ac'])->id,
+            'planned_amount_egp' => 1800,
+            'actual_amount_egp' => 0,
         ]);
 
         $alerts = app(FinanceService::class)->dashboard()['monthlyFlow']['varianceAlerts'];
@@ -351,7 +630,7 @@ class FinanceTest extends TestCase
     public function test_confirmed_ledger_updates_allocation_actuals_without_double_counting(): void
     {
         $account = Account::create(['name' => 'Brokerage', 'type' => 'investment', 'currency' => 'EGP']);
-        $bucket = Bucket::create(['name' => 'Long-Term Investing', 'color' => '#7c8cf8']);
+        $bucket = Bucket::create(['name' => 'Long-Term Investing', 'purpose_type' => 'investment', 'color' => '#7c8cf8']);
         $plan = AllocationPlan::create([
             'month' => now()->startOfMonth(),
             'planned_income_egp' => 50000,

@@ -9,6 +9,7 @@ import {
     EmptyState,
     PageHeader,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { FormModal } from '@/components/form';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -44,7 +45,7 @@ type Transaction = {
     purpose_bucket_id?: number | null;
     purpose_bucket?: { name: string } | null;
 };
-type PurposeBucket = { id: number; name: string; goal_id?: number | null };
+type PurposeBucket = { id: number; name: string; goal_id?: number | null; purpose_type?: string };
 type ImportRow = {
     id: number;
     row_number: number;
@@ -455,14 +456,13 @@ export default function Ledger({
                                 <FieldLabel htmlFor="transaction-date">
                                     Date
                                 </FieldLabel>
-                                <Input
+                                <DatePicker
                                     id="transaction-date"
-                                    type="date"
                                     value={transaction.occurred_on}
-                                    onChange={(event) =>
+                                    onChange={(value) =>
                                         updateTransactionForm(
                                             'occurred_on',
-                                            event.target.value,
+                                            value,
                                         )
                                     }
                                 />
@@ -506,28 +506,35 @@ export default function Ledger({
                                     Purpose bucket (optional)
                                 </FieldLabel>
                                 <Select
-                                    value={transaction.purpose_bucket_id || 'auto'}
+                                    value={
+                                        transaction.purpose_bucket_id || 'none'
+                                    }
                                     onValueChange={(value) =>
                                         updateTransactionForm(
                                             'purpose_bucket_id',
-                                            value === 'auto' ? '' : String(value ?? ''),
+                                            value === 'none'
+                                                ? ''
+                                                : String(value ?? ''),
                                         )
                                     }
                                 >
                                     <SelectTrigger id="transaction-purpose">
-                                        <SelectValue placeholder="Auto-classify when possible" />
+                                        <SelectValue placeholder="Choose a purpose or leave unmapped" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectGroup>
-                                            <SelectItem value="auto">
-                                                Auto-classify when possible
+                                            <SelectItem value="none">
+                                                No purpose bucket (stay unmapped)
                                             </SelectItem>
                                             {buckets.map((bucket) => (
                                                 <SelectItem
                                                     key={bucket.id}
                                                     value={String(bucket.id)}
                                                 >
-                                                    {bucket.name}
+                                                    {bucket.name}{' '}
+                                                    <span className="text-muted-foreground">
+                                                        · {bucket.purpose_type ?? 'other'}
+                                                    </span>
                                                 </SelectItem>
                                             ))}
                                         </SelectGroup>

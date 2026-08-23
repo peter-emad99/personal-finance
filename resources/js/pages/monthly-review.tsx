@@ -14,6 +14,7 @@ import {
     CardHeader,
     PageHeader,
 } from '@/components/app-shell';
+import { MonthPicker } from '@/components/date-picker';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CardContent, CardFooter } from '@/components/ui/card';
 import {
@@ -118,6 +119,8 @@ type ObligationChanges = {
 };
 
 type Plan = {
+    templateName?: string | null;
+    status?: string;
     income: number;
     expenses: number;
     freeCashFlow: number;
@@ -126,6 +129,7 @@ type Plan = {
     sourceReviewMonth?: string | null;
     generatedAt?: string | null;
     allocations: { label: string; planned: number; actual: number }[];
+    expenseItems?: { label: string; planned: number; actual: number }[];
 } | null;
 type ActualTracking = {
     source: string;
@@ -140,6 +144,7 @@ type ActualTracking = {
         invested: number;
     };
     unmappedPurposeAmount: number;
+    unmappedExpenseAmount: number;
 } | null;
 type NextMonthProposal = {
     nextMonth: string;
@@ -153,6 +158,12 @@ type NextMonthProposal = {
     reserveComplete: boolean;
     redirectAmount: number;
     redirectTarget: 'goals' | 'investments' | null;
+    templateName?: string | null;
+    expenseItems?: {
+        categoryId: number;
+        categoryName: string;
+        planned: number;
+    }[];
     lesson: string | null;
     allocations: {
         bucketId: number;
@@ -269,14 +280,10 @@ export default function MonthlyReview({
                             >
                                 Review month
                             </FieldLabel>
-                            <Input
+                            <MonthPicker
                                 id="review-month"
-                                aria-label="Review month"
-                                type="month"
                                 value={month}
-                                onChange={(event) =>
-                                    changeMonth(event.target.value)
-                                }
+                                onChange={(value) => changeMonth(value)}
                             />
                         </Field>
                         <Button href="/commitments" variant="ghost">
@@ -318,12 +325,16 @@ export default function MonthlyReview({
                             </div>
                             <div className="rounded-xl border p-4 text-sm">
                                 <p className="font-semibold">
-                                    Emergency reserve
+                                    {nextMonthProposal.templateName
+                                        ? `Template preview · ${nextMonthProposal.templateName}`
+                                        : 'Emergency reserve'}
                                 </p>
                                 <p className="mt-1 text-muted-foreground">
-                                    {nextMonthProposal.reserveComplete
-                                        ? `Target complete. Redirect ${formatCompactEGP(nextMonthProposal.redirectAmount)} to a long-term purpose.`
-                                        : `Current ${formatCompactEGP(nextMonthProposal.currentEmergency)} of ${formatCompactEGP(nextMonthProposal.emergencyTarget)} target; proposed contribution ${formatCompactEGP(nextMonthProposal.emergencyContribution)}.`}
+                                    {nextMonthProposal.templateName
+                                        ? 'Income and expense rules are recalculated for next month; allocations use template percentages on the cash left after expenses.'
+                                        : nextMonthProposal.reserveComplete
+                                          ? `Target complete. Redirect ${formatCompactEGP(nextMonthProposal.redirectAmount)} to a long-term purpose.`
+                                          : `Current ${formatCompactEGP(nextMonthProposal.currentEmergency)} of ${formatCompactEGP(nextMonthProposal.emergencyTarget)} target; proposed contribution ${formatCompactEGP(nextMonthProposal.emergencyContribution)}.`}
                                 </p>
                                 {nextMonthProposal.reserveComplete && (
                                     <div className="mt-3 flex flex-wrap gap-2">
@@ -358,6 +369,35 @@ export default function MonthlyReview({
                                     </div>
                                 )}
                             </div>
+                            {nextMonthProposal.expenseItems &&
+                                nextMonthProposal.expenseItems.length > 0 && (
+                                    <div className="rounded-xl border p-4 text-sm">
+                                        <p className="font-semibold">
+                                            Proposed expenses
+                                        </p>
+                                        <div className="mt-2 flex flex-col gap-2">
+                                            {nextMonthProposal.expenseItems
+                                                .filter(
+                                                    (item) => item.planned > 0,
+                                                )
+                                                .map((item) => (
+                                                    <div
+                                                        key={`expense-${item.categoryId}`}
+                                                        className="flex items-center justify-between gap-3"
+                                                    >
+                                                        <span className="text-muted-foreground">
+                                                            {item.categoryName}
+                                                        </span>
+                                                        <span className="font-medium">
+                                                            {formatCompactEGP(
+                                                                item.planned,
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    </div>
+                                )}
                             <div className="rounded-xl bg-muted p-4 text-sm">
                                 <p className="font-semibold">
                                     Lesson to carry forward
@@ -687,10 +727,12 @@ export default function MonthlyReview({
                         title="How the month moved"
                         meta={
                             plan
-                                ? plan.generationMethod ===
-                                  'prepared_from_review'
-                                    ? `Prepared from ${plan.sourceReviewMonth ? new Date(`${plan.sourceReviewMonth}-01`).toLocaleDateString('en-EG', { month: 'long', year: 'numeric' }) : 'a closed'} review`
-                                    : 'Manual plan — use the surplus deliberately'
+                                ? plan.templateName
+                                    ? `Template snapshot · ${plan.templateName}`
+                                    : plan.generationMethod ===
+                                        'prepared_from_review'
+                                      ? `Prepared from ${plan.sourceReviewMonth ? new Date(`${plan.sourceReviewMonth}-01`).toLocaleDateString('en-EG', { month: 'long', year: 'numeric' }) : 'a closed'} review`
+                                      : 'Manual plan — use the surplus deliberately'
                                 : 'Use the surplus deliberately'
                         }
                     />
@@ -775,6 +817,37 @@ export default function MonthlyReview({
                                         ))}
                                     </div>
                                 </div>
+                                {plan.expenseItems &&
+                                    plan.expenseItems.length > 0 && (
+                                        <div className="rounded-xl border p-4">
+                                            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                                                Planned vs actual expenses
+                                            </p>
+                                            <div className="mt-3 flex flex-col gap-2">
+                                                {plan.expenseItems.map(
+                                                    (expense) => (
+                                                        <div
+                                                            key={expense.label}
+                                                            className="flex items-center justify-between gap-3 text-xs"
+                                                        >
+                                                            <span className="truncate text-muted-foreground">
+                                                                {expense.label}
+                                                            </span>
+                                                            <span className="shrink-0 font-medium">
+                                                                {formatCompactEGP(
+                                                                    expense.actual,
+                                                                )}{' '}
+                                                                /{' '}
+                                                                {formatCompactEGP(
+                                                                    expense.planned,
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                    ),
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                             </>
                         )}
                         <div className="rounded-xl bg-muted p-4 text-xs leading-5 text-muted-foreground">

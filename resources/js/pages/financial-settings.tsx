@@ -20,7 +20,6 @@ import {
 } from '@/components/ui/select';
 
 type Target = { min: number; max: number; target: number };
-type MonthlyAllocationTargets = Record<string, number>;
 type FinancialFreedom = {
     withdrawal_rate_percent?: number | string;
     annual_spending_override_egp?: number | string | null;
@@ -44,29 +43,10 @@ type Setting = {
     maximum_debt_burden_percent?: number | string | null;
     valuation_freshness_days?: number;
     policy?: {
-        monthly_allocation_targets?: MonthlyAllocationTargets;
         financial_freedom?: FinancialFreedom;
         variance_thresholds?: VarianceThresholds;
         auto_prepare_next_month?: boolean;
     } | null;
-};
-
-const defaultMonthlyAllocationTargets: MonthlyAllocationTargets = {
-    essentials: 35,
-    lifestyle: 15,
-    debt: 10,
-    emergency: 10,
-    goals: 15,
-    investing: 15,
-};
-
-const monthlyAllocationLabels: Record<string, string> = {
-    essentials: 'Essentials & commitments',
-    lifestyle: 'Lifestyle & one-time',
-    debt: 'Debt payments',
-    emergency: 'Emergency fund',
-    goals: 'Goals',
-    investing: 'Investments',
 };
 
 export default function FinancialSettings({
@@ -103,10 +83,6 @@ export default function FinancialSettings({
         ),
         asset_class_targets: targets,
         policy: {
-            monthly_allocation_targets: {
-                ...defaultMonthlyAllocationTargets,
-                ...(configuredPolicy.monthly_allocation_targets ?? {}),
-            },
             financial_freedom: {
                 withdrawal_rate_percent:
                     configuredPolicy.financial_freedom
@@ -145,17 +121,6 @@ export default function FinancialSettings({
         setForm((current) => ({
             ...current,
             policy: { ...current.policy, auto_prepare_next_month: checked },
-        }));
-    const updateMonthlyTarget = (key: string, value: string) =>
-        setForm((current) => ({
-            ...current,
-            policy: {
-                ...current.policy,
-                monthly_allocation_targets: {
-                    ...current.policy.monthly_allocation_targets,
-                    [key]: Number(value || 0),
-                },
-            },
         }));
     const updateFreedom = (key: keyof FinancialFreedom, value: string) =>
         setForm((current) => ({
@@ -201,8 +166,6 @@ export default function FinancialSettings({
                 : null,
             valuation_freshness_days: Number(form.valuation_freshness_days),
             policy: {
-                monthly_allocation_targets:
-                    form.policy.monthly_allocation_targets,
                 financial_freedom: {
                     withdrawal_rate_percent: Number(
                         form.policy.financial_freedom
@@ -250,7 +213,7 @@ export default function FinancialSettings({
             <PageHeader
                 eyebrow="Calculation rules"
                 title="Financial policy"
-                description="Configure the reserve, allocation, affordability, and freshness rules shown beside every dashboard decision."
+                description="Configure guardrails and calculation assumptions. Monthly income, expenses, and savings allocations are managed in the monthly plan and its templates."
             />
             <form onSubmit={submit} className="flex flex-col gap-4">
                 <Card>
@@ -431,44 +394,7 @@ export default function FinancialSettings({
                             </Field>
                         </FieldGroup>
                         <p className="mt-3 text-xs text-muted-foreground">
-                            Example: 80% means the dashboard warns when your actual investment pace is below 80% of the configured monthly investing target.
-                        </p>
-                    </div>
-                </Card>
-                <Card>
-                    <CardHeader
-                        title="Monthly allocation rules"
-                        meta="Your starting targets for every 100 EGP of income"
-                    />
-                    <div className="p-5">
-                        <FieldGroup>
-                            {Object.entries(
-                                form.policy.monthly_allocation_targets,
-                            ).map(([key, value]) => (
-                                <Field key={key}>
-                                    <FieldLabel htmlFor={`monthly-${key}`}>
-                                        {monthlyAllocationLabels[key] ?? key}
-                                    </FieldLabel>
-                                    <Input
-                                        id={`monthly-${key}`}
-                                        type="number"
-                                        min={0}
-                                        max={100}
-                                        step="0.1"
-                                        value={value}
-                                        onChange={(event) =>
-                                            updateMonthlyTarget(
-                                                key,
-                                                event.target.value,
-                                            )
-                                        }
-                                    />
-                                </Field>
-                            ))}
-                        </FieldGroup>
-                        <p className="mt-3 text-xs text-muted-foreground">
-                            These are personal rules, not universal advice. The
-                            six values must add up to 100%.
+                            Example: 80% means the dashboard warns when actual investing is below 80% of the investing amount planned for this month.
                         </p>
                     </div>
                 </Card>

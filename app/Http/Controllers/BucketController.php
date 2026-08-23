@@ -17,7 +17,7 @@ class BucketController extends Controller
     public function index(FinanceService $finance): Response
     {
         return Inertia::render('buckets', ['buckets' => Bucket::withTrashed()->with(['goal', 'assets.buckets.goal'])->orderBy('name')->get()->map(fn (Bucket $bucket) => [
-            'id' => $bucket->id, 'name' => $bucket->name, 'purpose' => $bucket->purpose, 'color' => $bucket->color,
+            'id' => $bucket->id, 'name' => $bucket->name, 'purpose' => $bucket->purpose, 'purposeType' => $bucket->goal_id !== null ? 'goal' : ($bucket->purpose_type ?? 'other'), 'color' => $bucket->color,
             'goalName' => $bucket->goal?->name, 'targetAmount' => (float) $bucket->target_amount_egp, 'currentAmount' => $finance->bucketValue($bucket),
             'assetCount' => $bucket->assets->count(), 'archived' => $bucket->trashed(), 'goalId' => $bucket->goal_id,
             'assetAllocations' => $bucket->assets->map(fn (Asset $asset): array => [
@@ -94,12 +94,19 @@ class BucketController extends Controller
     /** @return array<string, mixed> */
     private function validated(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'purpose' => ['nullable', 'string', 'max:200'],
             'target_amount_egp' => ['nullable', 'numeric', 'min:0'],
             'color' => ['required', 'string', 'max:20'],
             'goal_id' => ['nullable', 'exists:goals,id'],
+            'purpose_type' => ['required', 'in:emergency,goal,investment,other'],
         ]);
+
+        if (($data['goal_id'] ?? null) !== null) {
+            $data['purpose_type'] = 'goal';
+        }
+
+        return $data;
     }
 }

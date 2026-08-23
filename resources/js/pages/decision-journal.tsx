@@ -8,6 +8,7 @@ import {
     CardHeader,
     PageHeader,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -123,12 +124,11 @@ export default function DecisionJournal({
                                 <FieldLabel htmlFor="review-date">
                                     Review date
                                 </FieldLabel>
-                                <Input
+                                <DatePicker
                                     id="review-date"
-                                    type="date"
                                     value={form.review_date}
-                                    onChange={(event) =>
-                                        set('review_date', event.target.value)
+                                    onChange={(value) =>
+                                        set('review_date', value)
                                     }
                                 />
                             </Field>

@@ -7,8 +7,9 @@ use App\Models\Bucket;
 use App\Models\ImportBatch;
 use App\Models\LedgerTransaction;
 use App\Models\TransactionCategory;
-use App\Services\LedgerService;
 use App\Services\AllocationActualService;
+use App\Services\LedgerService;
+use App\Services\TransactionCategoryService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,8 +18,9 @@ use Inertia\Response;
 
 class LedgerController extends Controller
 {
-    public function index(Request $request, LedgerService $ledger): Response
+    public function index(Request $request, LedgerService $ledger, TransactionCategoryService $categoryDefaults): Response
     {
+        $categoryDefaults->ensureDefaults();
         $month = $request->string('month')->toString();
         $monthDate = $month && preg_match('/^\d{4}-\d{2}$/', $month) ? Carbon::createFromFormat('Y-m', $month)->startOfMonth() : now()->startOfMonth();
 
@@ -27,7 +29,7 @@ class LedgerController extends Controller
             'accounts' => Account::query()->orderBy('name')->get(),
             'transactions' => LedgerTransaction::with(['account', 'category', 'purposeBucket'])->whereBetween('occurred_on', [$monthDate, $monthDate->copy()->endOfMonth()])->latest('occurred_on')->get(),
             'categories' => TransactionCategory::query()->orderBy('kind')->orderBy('name')->get(),
-            'buckets' => Bucket::query()->with('goal')->orderBy('name')->get(['id', 'name', 'goal_id']),
+            'buckets' => Bucket::query()->with('goal')->orderBy('name')->get(['id', 'name', 'goal_id', 'purpose_type']),
             'imports' => ImportBatch::with('rows')->latest()->limit(20)->get(),
             'reconciliation' => $ledger->reconciliation($monthDate),
         ]);

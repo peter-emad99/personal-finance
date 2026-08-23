@@ -7,6 +7,7 @@ import {
     CardHeader,
     PageHeader,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { FormModal } from '@/components/form';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -118,13 +119,12 @@ export default function Valuations({
                                 <FieldLabel htmlFor="valuation-date">
                                     Valued on
                                 </FieldLabel>
-                                <Input
+                                <DatePicker
                                     id="valuation-date"
-                                    type="date"
                                     required
                                     value={form.valued_on}
-                                    onChange={(event) =>
-                                        update('valued_on', event.target.value)
+                                    onChange={(value) =>
+                                        update('valued_on', value)
                                     }
                                 />
                             </Field>

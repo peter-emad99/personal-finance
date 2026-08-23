@@ -4,11 +4,14 @@ namespace App\Mcp;
 
 use App\Models\Account;
 use App\Models\AllocationPlan;
+use App\Models\AllocationRule;
 use App\Models\Asset;
 use App\Models\AssetValuation;
 use App\Models\AuditLog;
 use App\Models\Backup;
 use App\Models\Bucket;
+use App\Models\BudgetCategory;
+use App\Models\BudgetRule;
 use App\Models\CashFlow;
 use App\Models\DecisionJournalEntry;
 use App\Models\FinancialSetting;
@@ -21,6 +24,7 @@ use App\Models\Liability;
 use App\Models\LiabilityBalanceHistory;
 use App\Models\LiabilityPaymentRecord;
 use App\Models\MonthlyFinancialReview;
+use App\Models\PlanTemplate;
 use App\Models\RecurringCommitment;
 use App\Models\Snapshot;
 use App\Models\TransactionCategory;
@@ -28,6 +32,7 @@ use App\Models\User;
 use App\Services\AllocationActualService;
 use App\Services\AuditLogger;
 use App\Services\BackupService;
+use App\Services\BudgetRuleService;
 use App\Services\FinanceService;
 use App\Services\IntegrityService;
 use App\Services\LedgerService;
@@ -119,6 +124,7 @@ class FinancialMcpServer
             $this->tool('list_recurring_commitments', 'List recurring commitments.', ['include_archived' => ['type' => 'boolean']]),
             $this->tool('list_liabilities', 'List liabilities.', ['include_archived' => ['type' => 'boolean']]),
             $this->tool('list_allocation_plans', 'List allocation plans.', ['include_archived' => ['type' => 'boolean']]),
+            $this->tool('list_plan_templates', 'List reusable income, expense, and savings allocation templates.', ['include_archived' => ['type' => 'boolean']]),
             $this->tool('list_snapshots', 'List current-state manual snapshots.', ['include_archived' => ['type' => 'boolean']]),
             $this->tool('get_financial_settings', 'Get the active financial policy.', []),
             $this->tool('get_audit_log', 'List recent mutation audit records.', ['limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 200]]),
@@ -136,6 +142,7 @@ class FinancialMcpServer
             $this->tool('reopen_month', 'Reopen a closed month for a recorded revision.', ['id' => ['type' => 'integer', 'minimum' => 1]], ['id'], false),
             $this->tool('prepare_next_month', 'Prepare the next month allocation plan from a closed monthly review.', ['review_id' => ['type' => 'integer', 'minimum' => 1], 'redirect_emergency_to' => ['type' => 'string', 'enum' => ['goals', 'investments']], 'lesson' => ['type' => 'string']], ['review_id'], false),
             $this->tool('sync_allocation_plan_actuals', 'Synchronize one allocation plan from confirmed ledger transactions.', ['allocation_plan_id' => ['type' => 'integer', 'minimum' => 1]], ['allocation_plan_id'], false),
+            $this->tool('close_allocation_plan', 'Close a monthly allocation snapshot and protect it from future template edits.', ['allocation_plan_id' => ['type' => 'integer', 'minimum' => 1]], ['allocation_plan_id'], false),
             $this->tool('import_csv', 'Queue CSV text or parsed rows for review without silently posting transactions.', ['file_name' => ['type' => 'string'], 'source' => ['type' => 'string'], 'csv' => ['type' => 'string'], 'rows' => ['type' => 'array']], [], false),
             $this->tool('accept_import_row', 'Explicitly post one pending, non-duplicate CSV row as a confirmed transaction; optional fields override the queued row.', ['id' => ['type' => 'integer', 'minimum' => 1], 'account_id' => ['type' => 'integer', 'minimum' => 1], 'category_id' => ['type' => 'integer', 'minimum' => 1], 'transaction_type' => ['type' => 'string'], 'occurred_on' => ['type' => 'string', 'format' => 'date'], 'description' => ['type' => 'string'], 'amount' => ['type' => 'number', 'exclusiveMinimum' => 0], 'currency' => ['type' => 'string', 'minLength' => 3, 'maxLength' => 3]], ['id'], false),
             $this->tool('reject_import_row', 'Reject one pending CSV row without posting it.', ['id' => ['type' => 'integer', 'minimum' => 1]], ['id'], false),
@@ -251,6 +258,7 @@ class FinancialMcpServer
             'list_recurring_commitments' => $this->listModel(RecurringCommitment::class, $this->listFlag($arguments)),
             'list_liabilities' => $this->listModel(Liability::class, $this->listFlag($arguments)),
             'list_allocation_plans' => $this->listModel(AllocationPlan::class, $this->listFlag($arguments)),
+            'list_plan_templates' => $this->listModel(PlanTemplate::class, $this->listFlag($arguments)),
             'list_snapshots' => $this->listModel(Snapshot::class, $this->listFlag($arguments)),
             'get_financial_settings' => $this->financialSettingsTool($arguments),
             'get_audit_log' => $this->auditTool($arguments),
@@ -268,6 +276,7 @@ class FinancialMcpServer
             'reopen_month' => $this->reopenMonthTool($arguments),
             'prepare_next_month' => $this->prepareNextMonthTool($arguments),
             'sync_allocation_plan_actuals' => $this->syncAllocationPlanActualsTool($arguments),
+            'close_allocation_plan' => $this->closeAllocationPlanTool($arguments),
             'import_csv' => $this->importCsvTool($arguments),
             'accept_import_row' => $this->acceptImportRowTool($arguments),
             'reject_import_row' => $this->rejectImportRowTool($arguments),
@@ -318,18 +327,22 @@ class FinancialMcpServer
     {
         $all = [
             'asset' => ['name' => 'required|string|max:120', 'type' => 'required|string|max:60', 'quantity' => 'nullable|numeric|min:0', 'currency' => 'required|string|max:8', 'cost_basis_egp' => 'nullable|numeric|min:0', 'current_value_egp' => 'required|numeric|min:0', 'unit_price_egp' => 'nullable|numeric|min:0', 'acquired_on' => 'nullable|date', 'account_name' => 'nullable|string|max:120', 'account_id' => 'nullable|exists:accounts,id', 'liquidity' => 'required|in:immediate,within_3_days,longer_term,illiquid', 'notes' => 'nullable|string'],
-            'bucket' => ['name' => 'required|string|max:120', 'purpose' => 'nullable|string|max:200', 'target_amount_egp' => 'nullable|numeric|min:0', 'color' => 'required|string|max:20', 'goal_id' => 'nullable|exists:goals,id'],
+            'bucket' => ['name' => 'required|string|max:120', 'purpose' => 'nullable|string|max:200', 'purpose_type' => 'required|in:emergency,goal,investment,other', 'target_amount_egp' => 'nullable|numeric|min:0', 'color' => 'required|string|max:20', 'goal_id' => 'nullable|exists:goals,id'],
             'goal' => ['name' => 'required|string|max:120', 'target_amount_egp' => 'required|numeric|min:0', 'deadline' => 'nullable|date', 'status' => 'nullable|in:active,completed,paused', 'priority' => 'required|integer|min:1|max:99', 'monthly_contribution_egp' => 'nullable|numeric|min:0', 'notes' => 'nullable|string'],
             'cash_flow' => ['type' => 'required|in:income,expense,obligation', 'category' => 'required|string|max:80', 'amount_egp' => 'required|numeric|min:0', 'occurred_on' => 'required|date', 'notes' => 'nullable|string'],
             'monthly_review' => ['month' => 'required|date_format:Y-m', 'income' => 'required|numeric|min:0', 'essential_expenses' => 'required|numeric|min:0', 'lifestyle_expenses' => 'required|numeric|min:0', 'recurring_commitments' => 'required|numeric|min:0', 'one_time_expenses' => 'required|numeric|min:0', 'debt_payments' => 'required|numeric|min:0', 'invested' => 'required|numeric|min:0', 'manual_adjustment_egp' => 'nullable|numeric', 'status' => 'required|in:open,closed', 'notes' => 'nullable|string'],
             'commitment' => ['name' => 'required|string|max:120', 'category' => 'required|string|max:80', 'amount_egp' => 'required|numeric|min:0', 'frequency' => 'required|in:weekly,monthly,quarterly,yearly', 'next_due_on' => 'nullable|date', 'renewal_on' => 'nullable|date', 'is_active' => 'nullable|boolean', 'notes' => 'nullable|string'],
             'liability' => ['name' => 'required|string|max:120', 'type' => 'required|string|max:80', 'balance_egp' => 'required|numeric|min:0', 'original_balance_egp' => 'nullable|numeric|min:0', 'interest_rate_percent' => 'nullable|numeric|min:0', 'monthly_payment_egp' => 'required|numeric|min:0', 'due_day' => 'nullable|integer|between:1,31', 'payoff_on' => 'nullable|date', 'is_active' => 'nullable|boolean', 'notes' => 'nullable|string'],
-            'allocation_plan' => ['month' => 'required|date', 'planned_income_egp' => 'required|numeric|min:0', 'planned_expenses_egp' => 'required|numeric|min:0', 'source_review_id' => 'nullable|exists:monthly_financial_reviews,id', 'generation_method' => 'nullable|in:manual,prepared_from_review', 'generated_at' => 'nullable|date', 'notes' => 'nullable|string', 'items' => 'nullable|array'],
+            'plan_template' => ['name' => 'required|string|max:120', 'description' => 'nullable|string|max:500', 'is_default' => 'nullable|boolean', 'is_active' => 'nullable|boolean'],
+            'allocation_plan' => ['month' => 'required|date', 'plan_template_id' => 'nullable|exists:plan_templates,id', 'planned_income_egp' => 'required|numeric|min:0', 'planned_expenses_egp' => 'required|numeric|min:0', 'source_review_id' => 'nullable|exists:monthly_financial_reviews,id', 'generation_method' => 'nullable|in:manual,prepared_from_review,from_template', 'status' => 'nullable|in:open,closed', 'closed_at' => 'nullable|date', 'generated_at' => 'nullable|date', 'notes' => 'nullable|string', 'income_items' => 'nullable|array', 'items' => 'nullable|array', 'expenses' => 'nullable|array'],
+            'budget_category' => ['name' => 'required|string|max:100', 'kind' => 'required|in:expense,income', 'color' => 'nullable|string|max:20', 'is_active' => 'nullable|boolean', 'is_default' => 'nullable|boolean', 'sort_order' => 'nullable|integer|min:0'],
+            'budget_rule' => ['name' => 'required|string|max:120', 'direction' => 'required|in:income,expense', 'budget_category_id' => 'nullable|exists:budget_categories,id', 'amount_egp' => 'nullable|numeric|min:0', 'percent_of_income' => 'nullable|numeric|between:0,100', 'frequency' => 'required|in:monthly,weekly,quarterly,yearly', 'is_active' => 'nullable|boolean'],
+            'allocation_rule' => ['plan_template_id' => 'required|exists:plan_templates,id', 'asset_id' => 'required|exists:assets,id', 'bucket_id' => 'required|exists:buckets,id', 'asset_target' => 'nullable|string|max:160', 'allocation_percent' => 'required|numeric|between:0,100', 'is_active' => 'nullable|boolean', 'sort_order' => 'nullable|integer|min:0'],
             'snapshot' => ['as_of' => 'nullable|date', 'notes' => 'nullable|string'],
             'financial_settings' => ['name' => 'required|string|max:120', 'base_currency' => 'required|string|max:8', 'emergency_reserve_months' => 'required|integer|between:1,36', 'emergency_eligible_liquidity' => 'required|in:immediate,within_3_days', 'policy' => 'nullable|array', 'asset_class_targets' => 'nullable|array', 'rebalancing_tolerance_percent' => 'nullable|numeric|between:0,100', 'goal_funding_policy' => 'nullable|in:priority_order,manual_contributions', 'minimum_cash_after_purchase_egp' => 'nullable|numeric|min:0', 'maximum_monthly_payment_egp' => 'nullable|numeric|min:0', 'maximum_debt_burden_percent' => 'nullable|numeric|between:0,100', 'valuation_freshness_days' => 'nullable|integer|between:1,3650', 'is_active' => 'nullable|boolean'],
             'decision_journal_entry' => ['decision' => 'required|string|max:240', 'assumptions' => 'nullable|array', 'alternatives' => 'nullable|array', 'rule_result' => 'nullable|array', 'chosen_action' => 'nullable|string|max:240', 'review_date' => 'nullable|date', 'outcome' => 'nullable|string', 'status' => 'nullable|in:open,reviewed,closed'],
             'account' => ['name' => 'required|string|max:120', 'institution' => 'nullable|string|max:120', 'type' => 'required|in:bank,cash,brokerage,card,investment,other', 'currency' => 'required|string|size:3', 'opening_balance_egp' => 'nullable|numeric', 'reported_balance_egp' => 'nullable|numeric', 'reported_balance_as_of' => 'nullable|date', 'is_active' => 'nullable|boolean', 'notes' => 'nullable|string'],
-            'transaction_category' => ['name' => 'required|string|max:100', 'kind' => 'required|in:income,expense,transfer,investment,adjustment', 'parent_name' => 'nullable|string|max:100', 'is_system' => 'nullable|boolean'],
+            'transaction_category' => ['name' => 'required|string|max:100', 'kind' => 'required|in:income,expense,transfer,investment,adjustment', 'budget_category_id' => 'nullable|exists:budget_categories,id', 'parent_name' => 'nullable|string|max:100', 'is_system' => 'nullable|boolean'],
             'transaction' => ['account_id' => 'nullable|exists:accounts,id', 'counter_account_id' => 'nullable|exists:accounts,id|different:account_id', 'category_id' => 'nullable|exists:transaction_categories,id', 'purpose_bucket_id' => 'nullable|exists:buckets,id', 'import_batch_id' => 'nullable|exists:import_batches,id', 'import_row_id' => 'nullable|exists:import_rows,id', 'transaction_type' => 'required|in:income,expense,transfer,contribution,withdrawal,dividend,interest,fee,tax,debt_payment,obligation,correction', 'occurred_on' => 'required|date', 'posted_on' => 'nullable|date', 'description' => 'nullable|string|max:240', 'amount' => 'required|numeric|gt:0', 'currency' => 'required|string|size:3', 'exchange_rate' => 'nullable|numeric|gt:0', 'amount_egp' => 'nullable|numeric|gt:0', 'review_state' => 'nullable|in:pending,confirmed,rejected,void', 'source' => 'nullable|string|max:80', 'external_id' => 'nullable|string|max:180', 'fingerprint' => 'nullable|string|max:64', 'metadata' => 'nullable|array', 'splits' => 'nullable|array', 'notes' => 'nullable|string'],
             'asset_valuation' => ['asset_id' => 'required|exists:assets,id', 'valued_on' => 'required|date', 'value_egp' => 'required|numeric|min:0', 'quantity' => 'nullable|numeric|min:0', 'currency' => 'required|string|size:3', 'source' => 'required|string|max:120', 'valuation_method' => 'required|string|max:80', 'notes' => 'nullable|string'],
             'fx_rate' => ['base_currency' => 'required|string|size:3', 'quote_currency' => 'required|string|size:3|different:base_currency', 'rate_date' => 'required|date', 'rate' => 'required|numeric|gt:0', 'source' => 'required|string|max:120', 'method' => 'required|string|max:80', 'notes' => 'nullable|string'],
@@ -404,6 +417,9 @@ class FinancialMcpServer
     private function create(string $resource, array $arguments): array
     {
         $data = $this->validated($resource, $arguments);
+        if ($resource === 'budget_rule') {
+            $data = $this->normalizeBudgetRuleData($data);
+        }
 
         return $this->mutate('create_'.$resource, 'create', null, function () use ($resource, $data): Model {
             return match ($resource) {
@@ -412,9 +428,13 @@ class FinancialMcpServer
                 'goal' => $this->createGoal($data),
                 'cash_flow' => CashFlow::create($data),
                 'monthly_review' => $this->saveReview($data),
-                'commitment' => RecurringCommitment::create($data),
+                'commitment' => $this->createCommitment($data),
                 'liability' => Liability::create($data),
                 'allocation_plan' => $this->saveAllocationPlan($data),
+                'plan_template' => $this->createPlanTemplate($data),
+                'budget_category' => BudgetCategory::create($data),
+                'budget_rule' => BudgetRule::create($data),
+                'allocation_rule' => $this->createAllocationRule($data),
                 'snapshot' => $this->createSnapshot($data),
                 'financial_settings' => $this->createSettings($data),
                 'decision_journal_entry' => DecisionJournalEntry::create($data),
@@ -454,6 +474,9 @@ class FinancialMcpServer
         $data = $this->validated($resource, $arguments, ['id']);
         unset($data['id']);
         $before = $this->find($resource, $id);
+        if ($resource === 'budget_rule' && $before instanceof BudgetRule) {
+            $data = $this->normalizeBudgetRuleData($data, $before);
+        }
         if ($resource === 'financial_settings' && $before instanceof FinancialSetting && array_key_exists('is_active', $data) && ! $data['is_active'] && $before->is_active) {
             throw new \InvalidArgumentException('The active financial policy cannot be disabled.');
         }
@@ -463,6 +486,11 @@ class FinancialMcpServer
                 'goal' => $this->updateGoal($id, $data),
                 'monthly_review' => $this->saveReview($data, $id),
                 'allocation_plan' => $this->saveAllocationPlan($data, $id),
+                'budget_category' => tap(BudgetCategory::findOrFail($id), fn (BudgetCategory $model) => $model->update($data)),
+                'budget_rule' => tap(BudgetRule::findOrFail($id), fn (BudgetRule $model) => $model->update($data)),
+                'allocation_rule' => $this->updateAllocationRule($id, $data),
+                'plan_template' => tap(PlanTemplate::findOrFail($id), fn (PlanTemplate $model) => $model->update($data)),
+                'commitment' => $this->updateCommitment($id, $data),
                 'snapshot' => $this->updateSnapshot($id, $data),
                 'decision_journal_entry' => tap(DecisionJournalEntry::findOrFail($id), fn (DecisionJournalEntry $model) => $model->update($data)),
                 'transaction' => $this->updateTransaction($id, $data),
@@ -473,6 +501,25 @@ class FinancialMcpServer
                 default => tap($this->find($resource, $id), fn (Model $model) => $model->update($resource === 'asset' ? $this->assetData($data) : $data)),
             };
         });
+    }
+
+    /** @param array<string, mixed> $data */
+    private function normalizeBudgetRuleData(array $data, ?BudgetRule $existing = null): array
+    {
+        $direction = (string) ($data['direction'] ?? $existing?->direction ?? 'expense');
+        if ($direction !== 'income') {
+            return $data;
+        }
+
+        if ($existing === null && (! array_key_exists('amount_egp', $data) || $data['amount_egp'] === null)) {
+            throw new \InvalidArgumentException('Income sources require a fixed amount_egp.');
+        }
+        if (array_key_exists('percent_of_income', $data) && $data['percent_of_income'] !== null) {
+            throw new \InvalidArgumentException('Income sources use a fixed amount; percent_of_income is only for expense rules.');
+        }
+        $data['percent_of_income'] = null;
+
+        return $data;
     }
 
     /** @param array<string, mixed> $data */
@@ -520,6 +567,9 @@ class FinancialMcpServer
                 Goal::query()->findOrFail($id)->buckets()->delete();
             }
             $model->delete();
+            if ($resource === 'commitment') {
+                $this->syncCommitmentRulesAcrossTemplates();
+            }
 
             return $model;
         });
@@ -536,7 +586,12 @@ class FinancialMcpServer
         $before = $this->find($resource, $id, true);
 
         return $this->mutate('restore_'.$resource, 'restore', $before, function () use ($resource, $id): Model {
-            return $this->restoreModel($resource, $id);
+            $model = $this->restoreModel($resource, $id);
+            if ($resource === 'commitment') {
+                $this->syncCommitmentRulesAcrossTemplates();
+            }
+
+            return $model;
         });
     }
 
@@ -886,6 +941,7 @@ class FinancialMcpServer
             'id' => $bucket->id,
             'name' => $bucket->name,
             'purpose' => $bucket->purpose,
+            'purposeType' => $bucket->goal_id !== null ? 'goal' : ($bucket->purpose_type ?? 'other'),
             'goalId' => $bucket->goal_id,
             'targetAmount' => (float) $bucket->target_amount_egp,
             'currentAmount' => $this->finance->bucketValue($bucket),
@@ -932,10 +988,72 @@ class FinancialMcpServer
     {
         return DB::transaction(function () use ($data): Goal {
             $goal = Goal::create($data + ['status' => 'active']);
-            Bucket::create(['goal_id' => $goal->id, 'name' => $goal->name.' Fund', 'purpose' => 'Reserved for '.$goal->name, 'target_amount_egp' => $goal->target_amount_egp, 'color' => '#7c8cf8']);
+            Bucket::create(['goal_id' => $goal->id, 'purpose_type' => 'goal', 'name' => $goal->name.' Fund', 'purpose' => 'Reserved for '.$goal->name, 'target_amount_egp' => $goal->target_amount_egp, 'color' => '#7c8cf8']);
 
             return $goal;
         });
+    }
+
+    /** @param array<string, mixed> $data */
+    private function createCommitment(array $data): RecurringCommitment
+    {
+        $commitment = RecurringCommitment::create($data);
+        $this->syncCommitmentRulesAcrossTemplates();
+
+        return $commitment;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function createAllocationRule(array $data): AllocationRule
+    {
+        $asset = Asset::findOrFail($data['asset_id']);
+        if (! $asset->buckets()->whereKey($data['bucket_id'])->exists()) {
+            throw new \InvalidArgumentException('The selected bucket is not assigned to the selected asset.');
+        }
+        $data['asset_target'] ??= $asset->name;
+
+        return AllocationRule::create($data);
+    }
+
+    /** @param array<string, mixed> $data */
+    private function updateAllocationRule(int $id, array $data): AllocationRule
+    {
+        $rule = AllocationRule::findOrFail($id);
+        $asset = Asset::findOrFail($data['asset_id']);
+        if (! $asset->buckets()->whereKey($data['bucket_id'])->exists()) {
+            throw new \InvalidArgumentException('The selected bucket is not assigned to the selected asset.');
+        }
+        $data['asset_target'] ??= $asset->name;
+        $rule->update($data);
+
+        return $rule;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function createPlanTemplate(array $data): PlanTemplate
+    {
+        $template = PlanTemplate::create($data + ['is_active' => true, 'is_default' => false]);
+        app(BudgetRuleService::class)->template($template->id);
+
+        return $template;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function updateCommitment(int $id, array $data): RecurringCommitment
+    {
+        $commitment = RecurringCommitment::findOrFail($id);
+        $commitment->update($data);
+        $this->syncCommitmentRulesAcrossTemplates();
+
+        return $commitment;
+    }
+
+    private function syncCommitmentRulesAcrossTemplates(): void
+    {
+        $service = app(BudgetRuleService::class);
+        foreach (PlanTemplate::query()->where('is_active', true)->get() as $template) {
+            $service->syncCommitmentRules($template);
+        }
     }
 
     /** @param array<string, mixed> $data */
@@ -951,26 +1069,78 @@ class FinancialMcpServer
     /** @param array<string, mixed> $data */
     private function saveAllocationPlan(array $data, ?int $id = null): AllocationPlan
     {
+        if (array_key_exists('income_items', $data)) {
+            $incomeTotal = round((float) collect($data['income_items'])->sum(fn (array $item): float => (float) ($item['planned_amount_egp'] ?? 0)), 2);
+            if (abs($incomeTotal - (float) $data['planned_income_egp']) > 0.01) {
+                throw new \InvalidArgumentException('Income sources must add up to the planned monthly income.');
+            }
+        }
         $plan = $id ? AllocationPlan::findOrFail($id) : AllocationPlan::firstOrNew(['month' => Carbon::parse($data['month'])->startOfMonth()->toDateString()]);
+        if ($plan->exists && $plan->status === 'closed') {
+            throw new \InvalidArgumentException('This monthly plan is closed and cannot be edited.');
+        }
         $plan->fill([
             'month' => Carbon::parse($data['month'])->startOfMonth()->toDateString(),
+            'plan_template_id' => $data['plan_template_id'] ?? $plan->plan_template_id,
             'planned_income_egp' => $data['planned_income_egp'],
             'planned_expenses_egp' => $data['planned_expenses_egp'],
             'source_review_id' => $data['source_review_id'] ?? $plan->source_review_id,
             'generation_method' => $data['generation_method'] ?? ($plan->generation_method ?: 'manual'),
+            'status' => $data['status'] ?? ($plan->status ?: 'open'),
+            'closed_at' => $data['closed_at'] ?? $plan->closed_at,
             'generated_at' => $data['generated_at'] ?? $plan->generated_at,
             'notes' => $data['notes'] ?? $plan->notes,
         ])->save();
+        if (array_key_exists('income_items', $data)) {
+            $plan->incomeItems()->delete();
+            foreach ($data['income_items'] ?? [] as $item) {
+                Validator::make($item, ['budget_rule_id' => 'nullable|exists:budget_rules,id', 'name' => 'required|string|max:120', 'planned_amount_egp' => 'required|numeric|min:0', 'actual_amount_egp' => 'nullable|numeric|min:0'])->validate();
+                $plan->incomeItems()->create([
+                    'budget_rule_id' => $item['budget_rule_id'] ?? null,
+                    'name' => $item['name'],
+                    'planned_amount_egp' => $item['planned_amount_egp'],
+                    'actual_amount_egp' => $item['actual_amount_egp'] ?? 0,
+                ]);
+            }
+        }
         if (array_key_exists('items', $data)) {
             $plan->items()->delete();
-            $bucketIds = [];
+            $allocationKeys = [];
+            $available = max(0, (float) $data['planned_income_egp'] - (float) $data['planned_expenses_egp']);
+            $percentTotal = 0.0;
+            $hasPercentage = false;
+            $hasFixed = false;
             foreach ($data['items'] ?? [] as $item) {
-                Validator::make($item, ['bucket_id' => 'required|exists:buckets,id', 'planned_amount_egp' => 'required|numeric|min:0', 'actual_amount_egp' => 'nullable|numeric|min:0'])->validate();
-                if (in_array((int) $item['bucket_id'], $bucketIds, true)) {
-                    throw new \InvalidArgumentException('Allocation plan items cannot repeat a bucket.');
+                Validator::make($item, ['bucket_id' => 'required|exists:buckets,id', 'asset_id' => 'nullable|exists:assets,id', 'planned_amount_egp' => 'required|numeric|min:0', 'actual_amount_egp' => 'nullable|numeric|min:0', 'asset_target' => 'nullable|string|max:160', 'allocation_percent' => 'nullable|numeric|between:0,100'])->validate();
+                $asset = isset($item['asset_id']) ? Asset::findOrFail($item['asset_id']) : null;
+                if ($asset !== null && ! $asset->buckets()->whereKey($item['bucket_id'])->exists()) {
+                    throw new \InvalidArgumentException('The selected bucket is not assigned to the selected asset.');
                 }
-                $bucketIds[] = (int) $item['bucket_id'];
-                $plan->items()->create(['bucket_id' => $item['bucket_id'], 'planned_amount_egp' => $item['planned_amount_egp'], 'actual_amount_egp' => $item['actual_amount_egp'] ?? 0]);
+                $allocationKey = (string) ($item['asset_id'] ?? 'none').':'.$item['bucket_id'];
+                if (in_array($allocationKey, $allocationKeys, true)) {
+                    throw new \InvalidArgumentException('The same asset and purpose bucket can only appear once in a monthly plan.');
+                }
+                $allocationKeys[] = $allocationKey;
+                $usesPercentage = array_key_exists('allocation_percent', $item) && $item['allocation_percent'] !== null && $item['allocation_percent'] !== '';
+                $hasPercentage = $hasPercentage || $usesPercentage;
+                $hasFixed = $hasFixed || ! $usesPercentage;
+                $percent = $usesPercentage ? (float) $item['allocation_percent'] : null;
+                $percentTotal += $percent ?? 0;
+                $amount = $usesPercentage ? round($available * $percent / 100, 2) : (float) $item['planned_amount_egp'];
+                $plan->items()->create(['bucket_id' => $item['bucket_id'], 'asset_id' => $item['asset_id'] ?? null, 'asset_target' => $item['asset_target'] ?? $asset?->name, 'allocation_percent' => $percent, 'planned_amount_egp' => $amount, 'actual_amount_egp' => $item['actual_amount_egp'] ?? 0]);
+            }
+            if ($hasPercentage && $hasFixed) {
+                throw new \InvalidArgumentException('Use percentages for every savings allocation row, or fixed amounts for every row.');
+            }
+            if ($percentTotal > 100.01) {
+                throw new \InvalidArgumentException('Savings allocation percentages cannot exceed 100%.');
+            }
+        }
+        if (array_key_exists('expenses', $data)) {
+            $plan->expenseItems()->delete();
+            foreach ($data['expenses'] ?? [] as $item) {
+                Validator::make($item, ['category_id' => 'required|exists:budget_categories,id', 'planned_amount_egp' => 'required|numeric|min:0', 'actual_amount_egp' => 'nullable|numeric|min:0'])->validate();
+                $plan->expenseItems()->create(['budget_category_id' => $item['category_id'], 'planned_amount_egp' => $item['planned_amount_egp'], 'actual_amount_egp' => $item['actual_amount_egp'] ?? 0]);
             }
         }
 
@@ -1097,7 +1267,7 @@ class FinancialMcpServer
             throw new \InvalidArgumentException('A positive id is required.');
         }
         $class = match ($resource) {
-            'asset' => Asset::class, 'bucket' => Bucket::class, 'goal' => Goal::class, 'cash_flow' => CashFlow::class, 'monthly_review' => MonthlyFinancialReview::class, 'commitment' => RecurringCommitment::class, 'liability' => Liability::class, 'allocation_plan' => AllocationPlan::class, 'snapshot' => Snapshot::class, 'financial_settings' => FinancialSetting::class, 'decision_journal_entry' => DecisionJournalEntry::class,
+            'asset' => Asset::class, 'bucket' => Bucket::class, 'budget_category' => BudgetCategory::class, 'budget_rule' => BudgetRule::class, 'allocation_rule' => AllocationRule::class, 'plan_template' => PlanTemplate::class, 'goal' => Goal::class, 'cash_flow' => CashFlow::class, 'monthly_review' => MonthlyFinancialReview::class, 'commitment' => RecurringCommitment::class, 'liability' => Liability::class, 'allocation_plan' => AllocationPlan::class, 'snapshot' => Snapshot::class, 'financial_settings' => FinancialSetting::class, 'decision_journal_entry' => DecisionJournalEntry::class,
             'account' => Account::class, 'transaction_category' => TransactionCategory::class, 'transaction' => LedgerTransaction::class, 'asset_valuation' => AssetValuation::class, 'fx_rate' => FxRate::class, 'import_batch' => ImportBatch::class, 'import_row' => ImportRow::class, 'liability_balance_history' => LiabilityBalanceHistory::class, 'liability_payment_record' => LiabilityPaymentRecord::class,
             default => throw new \InvalidArgumentException("Resource '{$resource}' is not supported."),
         };
@@ -1110,6 +1280,9 @@ class FinancialMcpServer
         return match ($resource) {
             'asset' => tap(Asset::withTrashed()->findOrFail($id), fn (Asset $model) => $model->restore()),
             'bucket' => tap(Bucket::withTrashed()->findOrFail($id), fn (Bucket $model) => $model->restore()),
+            'budget_category' => tap(BudgetCategory::withTrashed()->findOrFail($id), fn (BudgetCategory $model) => $model->restore()),
+            'budget_rule' => tap(BudgetRule::withTrashed()->findOrFail($id), fn (BudgetRule $model) => $model->restore()),
+            'allocation_rule' => tap(AllocationRule::withTrashed()->findOrFail($id), fn (AllocationRule $model) => $model->restore()),
             'goal' => tap(Goal::withTrashed()->findOrFail($id), function (Goal $model): void {
                 $model->restore();
                 Bucket::withTrashed()->where('goal_id', $model->id)->restore();
@@ -1119,6 +1292,7 @@ class FinancialMcpServer
             'commitment' => tap(RecurringCommitment::withTrashed()->findOrFail($id), fn (RecurringCommitment $model) => $model->restore()),
             'liability' => tap(Liability::withTrashed()->findOrFail($id), fn (Liability $model) => $model->restore()),
             'allocation_plan' => tap(AllocationPlan::withTrashed()->findOrFail($id), fn (AllocationPlan $model) => $model->restore()),
+            'plan_template' => tap(PlanTemplate::withTrashed()->findOrFail($id), fn (PlanTemplate $model) => $model->restore()),
             'snapshot' => tap(Snapshot::withTrashed()->findOrFail($id), fn (Snapshot $model) => $model->restore()),
             'decision_journal_entry' => tap(DecisionJournalEntry::withTrashed()->findOrFail($id), fn (DecisionJournalEntry $model) => $model->restore()),
             'financial_settings' => tap(FinancialSetting::withTrashed()->findOrFail($id), function (FinancialSetting $model): void {
@@ -1161,7 +1335,10 @@ class FinancialMcpServer
             return $model->loadMissing('rows')->toArray() + ['archived' => $model->trashed()];
         }
         if ($model instanceof AllocationPlan) {
-            return $model->loadMissing(['items.bucket.goal', 'sourceReview'])->toArray() + ['archived' => $model->trashed()];
+            return $model->loadMissing(['incomeItems.budgetRule', 'items.bucket.goal', 'expenseItems.category', 'sourceReview', 'template'])->toArray() + ['archived' => $model->trashed()];
+        }
+        if ($model instanceof PlanTemplate) {
+            return $model->loadMissing(['budgetRules.category', 'allocationRules.bucket.goal', 'allocationPlans'])->toArray() + ['archived' => $model->trashed()];
         }
         if ($model instanceof RecurringCommitment) {
             return $this->finance->commitmentPayloadForAgent($model);
@@ -1362,7 +1539,7 @@ class FinancialMcpServer
         $plannedExpenses = round((float) $review->essential_expenses_egp + (float) $review->lifestyle_expenses_egp + $monthlyCommitments + $monthlyDebtPayments, 2);
         $available = max(0, $plannedIncome - $plannedExpenses);
         $settings = FinancialSetting::active();
-        $emergencyBucket = Bucket::whereNull('goal_id')->where('name', 'like', '%Emergency%')->with('assets')->first();
+        $emergencyBucket = Bucket::where('purpose_type', 'emergency')->with('assets')->first();
         $currentEmergency = $emergencyBucket ? $this->finance->bucketValue($emergencyBucket) : 0;
         $monthlyBase = (float) $review->essential_expenses_egp + $monthlyCommitments + $monthlyDebtPayments;
         $emergencyTarget = round($monthlyBase * (int) ($settings->emergency_reserve_months ?: 6), 2);
@@ -1385,7 +1562,7 @@ class FinancialMcpServer
             $goalAllocations[0]['amount'] = round($goalAllocations[0]['amount'] + min($redirectAmount, $investmentContribution), 2);
             $investmentContribution = max(0, $investmentContribution - $redirectAmount);
         }
-        $investmentBucket = Bucket::whereNull('goal_id')->where('name', 'not like', '%Emergency%')->orderBy('name')->first();
+        $investmentBucket = Bucket::where('purpose_type', 'investment')->orderBy('name')->first();
         $allocations = collect();
         if ($emergencyBucket !== null && $emergencyContribution > 0) {
             $allocations->push(['bucketId' => $emergencyBucket->id, 'label' => $emergencyBucket->name, 'kind' => 'emergency', 'amount' => round($emergencyContribution, 2)]);
@@ -1431,6 +1608,22 @@ class FinancialMcpServer
         });
 
         return $envelope + ['sync' => $result];
+    }
+
+    /** @param array<string, mixed> $arguments */
+    private function closeAllocationPlanTool(array $arguments): array
+    {
+        $this->assertArguments($arguments, ['allocation_plan_id']);
+        $plan = AllocationPlan::findOrFail((int) $arguments['allocation_plan_id']);
+        if ($plan->status === 'closed') {
+            throw new \InvalidArgumentException('This monthly plan is already closed.');
+        }
+
+        return $this->mutate('close_allocation_plan', 'update', $plan, function () use ($plan): Model {
+            $plan->update(['status' => 'closed', 'closed_at' => now()]);
+
+            return $plan;
+        });
     }
 
     /**
@@ -1719,6 +1912,7 @@ class FinancialMcpServer
             'id' => $bucket->id,
             'name' => $bucket->name,
             'purpose' => $bucket->purpose,
+            'purpose_type' => $bucket->goal_id !== null ? 'goal' : ($bucket->purpose_type ?? 'other'),
             'goal_id' => $bucket->goal_id,
             'target_amount_egp' => (float) $bucket->target_amount_egp,
             'current_amount_egp' => $this->finance->bucketValue($bucket),

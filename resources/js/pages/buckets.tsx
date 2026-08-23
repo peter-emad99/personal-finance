@@ -38,6 +38,15 @@ import {
     FieldLabel,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectLabel,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import {
     Tooltip,
@@ -57,6 +66,7 @@ type Bucket = {
     id: number;
     name: string;
     purpose: string | null;
+    purposeType: 'emergency' | 'goal' | 'investment' | 'other';
     color: string;
     goalName: string | null;
     goalId: number | null;
@@ -87,6 +97,7 @@ const blank = {
     target_amount_egp: '',
     color: '#7c8cf8',
     goal_id: null as number | null,
+    purpose_type: 'other',
 };
 
 export default function Buckets({
@@ -123,6 +134,7 @@ export default function Buckets({
                           : '',
                       color: bucket.color,
                       goal_id: bucket.goalId,
+                      purpose_type: bucket.purposeType,
                   }
                 : blank,
         );
@@ -250,7 +262,7 @@ export default function Buckets({
                                         </Badge>
                                     ) : (
                                         <Badge variant="outline">
-                                            Flexible
+                                            {purposeTypeLabel(bucket.purposeType)}
                                         </Badge>
                                     )}
                                 </CardAction>
@@ -523,6 +535,38 @@ export default function Buckets({
                                     }
                                     placeholder="Short description"
                                 />
+                            </Field>
+                            <Field>
+                                <FieldLabel htmlFor="bucket-type">
+                                    Policy purpose
+                                </FieldLabel>
+                                <Select
+                                    value={form.purpose_type}
+                                    disabled={form.goal_id !== null}
+                                    onValueChange={(value) =>
+                                        update('purpose_type', String(value ?? 'other'))
+                                    }
+                                >
+                                    <SelectTrigger id="bucket-type" className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            <SelectLabel>
+                                                Used only by policy calculations
+                                            </SelectLabel>
+                                            <SelectItem value="emergency">Emergency reserve</SelectItem>
+                                            <SelectItem value="investment">Investment</SelectItem>
+                                            <SelectItem value="other">Other purpose</SelectItem>
+                                            <SelectItem value="goal" disabled>Goal-linked (created from Goals)</SelectItem>
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
+                                <FieldDescription>
+                                    This is explicit metadata for policy cards;
+                                    the dashboard plan still shows your exact
+                                    bucket row and label.
+                                </FieldDescription>
                             </Field>
                             <Field>
                                 <FieldLabel htmlFor="bucket-target">
@@ -939,6 +983,15 @@ export default function Buckets({
             )}
         </AppShell>
     );
+}
+
+function purposeTypeLabel(type: Bucket['purposeType']): string {
+    return {
+        emergency: 'Emergency reserve',
+        goal: 'Goal-linked',
+        investment: 'Investment',
+        other: 'Other purpose',
+    }[type];
 }
 
 function Explanation({ title, text }: { title: string; text: string }) {

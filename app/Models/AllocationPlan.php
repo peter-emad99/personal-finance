@@ -21,7 +21,14 @@ class AllocationPlan extends Model
             'planned_income_egp' => 'decimal:2',
             'planned_expenses_egp' => 'decimal:2',
             'generated_at' => 'datetime',
+            'closed_at' => 'datetime',
         ];
+    }
+
+    /** @return BelongsTo<PlanTemplate, $this> */
+    public function template(): BelongsTo
+    {
+        return $this->belongsTo(PlanTemplate::class, 'plan_template_id');
     }
 
     /** @return BelongsTo<MonthlyFinancialReview, $this> */
@@ -34,5 +41,17 @@ class AllocationPlan extends Model
     public function items(): HasMany
     {
         return $this->hasMany(AllocationPlanItem::class);
+    }
+
+    /** @return HasMany<AllocationPlanExpense, $this> */
+    public function expenseItems(): HasMany
+    {
+        return $this->hasMany(AllocationPlanExpense::class);
+    }
+
+    /** @return HasMany<AllocationPlanIncome, $this> */
+    public function incomeItems(): HasMany
+    {
+        return $this->hasMany(AllocationPlanIncome::class);
     }
 }

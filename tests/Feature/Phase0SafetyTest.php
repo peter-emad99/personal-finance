@@ -40,6 +40,18 @@ class Phase0SafetyTest extends TestCase
         $this->assertSame(0.3, $summary['availableNow']);
     }
 
+    public function test_dashboard_separates_receivables_from_directly_controlled_assets(): void
+    {
+        Asset::create(['name' => 'Cash', 'type' => 'Cash', 'currency' => 'EGP', 'current_value_egp' => 1300, 'liquidity' => 'immediate']);
+        Asset::create(['name' => 'Money with family', 'type' => 'Receivable - Family', 'currency' => 'EGP', 'current_value_egp' => 700, 'liquidity' => 'longer_term']);
+
+        $summary = app(FinanceService::class)->dashboard()['summary'];
+
+        $this->assertSame(2000.0, $summary['totalAssets']);
+        $this->assertSame(700.0, $summary['heldElsewhere']);
+        $this->assertSame(1300.0, $summary['directlyControlledAssets']);
+    }
+
     public function test_cash_flow_fallback_does_not_add_recurring_commitments_to_actual_expenses(): void
     {
         CashFlow::create(['type' => 'income', 'category' => 'salary', 'amount_egp' => 1000, 'occurred_on' => now()->startOfMonth()]);

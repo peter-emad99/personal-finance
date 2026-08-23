@@ -19,6 +19,7 @@ import {
     Moon,
     Repeat2,
     Settings,
+    SlidersHorizontal,
     Sun,
     WalletCards,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ import {
 import { Button as UiButton } from '@/components/ui/button';
 import {
     Card as UiCard,
+    CardAction as UiCardAction,
     CardDescription as UiCardDescription,
     CardHeader as UiCardHeader,
     CardTitle as UiCardTitle,
@@ -94,14 +96,14 @@ const pageHints: Record<string, { title: string; description: string }> = {
     'Learn the system': {
         title: 'How to learn and apply the system',
         description:
-            'Use the basic workflow first: record what you own, measure this month, protect the reserve, assign the surplus, then review the result. Each guide card opens the page where you can act.',
+            'Start with the eight-step setup, then use the dashboard read order, formula guide, and complete page map. Each guide card opens the page where you can act.',
     },
     Dashboard: {
         title: 'How to use this page',
         description:
             'Start here. Read the cash-flow status and attention queue first, then open the one action that improves your position this month.',
     },
-    'Cash flow': {
+    'Income & expenses': {
         title: 'What to record here',
         description:
             'Enter income and real outflows for the selected month. Free cash flow is the amount left after expenses and becomes the ceiling for your monthly plan.',
@@ -109,7 +111,22 @@ const pageHints: Record<string, { title: string; description: string }> = {
     Allocations: {
         title: 'What this plan means',
         description:
-            'Planned is what you intend to direct. Actual is what confirmed ledger transactions show happened. Keep the plan within available cash flow.',
+            'A monthly plan is a snapshot generated from a template. Planned is what you intend to direct; actual is what confirmed ledger transactions show happened. Keep allocations within cash left after planned expense rules.',
+    },
+    'Monthly plans': {
+        title: 'How monthly snapshots work',
+        description:
+            'Each row is one month’s saved income, expense, allocation, and actual snapshot. Closing a plan protects its history while templates continue to evolve.',
+    },
+    'Plan templates': {
+        title: 'How reusable rules work',
+        description:
+            'Templates define income rules, category-based expense rules, and percentage allocation rules for future monthly snapshots. Editing a template does not rewrite saved months.',
+    },
+    'Budget categories': {
+        title: 'How expense categories work',
+        description:
+            'Categories group planned and actual outflows. They are separate from purpose buckets: categories say what you spend on, while buckets say what surplus money is for.',
     },
     Goals: {
         title: 'How goals work',
@@ -205,37 +222,73 @@ const pageHints: Record<string, { title: string; description: string }> = {
 
 const navigationGroups: NavigationGroup[] = [
     {
-        label: 'Your money',
+        label: 'Plan',
         items: [
             { href: '/', label: 'Dashboard', icon: LayoutDashboard },
             { href: '/learn', label: 'Learn the system', icon: GraduationCap },
-            { href: '/cash-flow', label: 'Income & expenses', icon: Gauge },
+            {
+                href: '/monthly-plans',
+                label: 'Monthly plans & history',
+                icon: FileClock,
+            },
             { href: '/allocations', label: 'Monthly plan', icon: ListChecks },
-            { href: '/goals', label: 'Goals', icon: Flag },
-            { href: '/assets', label: 'What you own', icon: WalletCards },
+            {
+                href: '/monthly-rules',
+                label: 'Plan templates',
+                icon: SlidersHorizontal,
+            },
         ],
     },
     {
-        label: 'Manage',
+        label: 'Track',
         items: [
-            { href: '/buckets', label: 'Purpose buckets', icon: Database },
+            { href: '/cash-flow', label: 'Income & expenses', icon: Gauge },
+            { href: '/ledger', label: 'Ledger & imports', icon: BookOpen },
             { href: '/commitments', label: 'Commitments', icon: Repeat2 },
             { href: '/liabilities', label: 'Liabilities', icon: CreditCard },
             { href: '/monthly-review', label: 'Monthly review', icon: Gauge },
+        ],
+    },
+    {
+        label: 'Portfolio',
+        items: [
+            { href: '/assets', label: 'What you own', icon: WalletCards },
+            { href: '/buckets', label: 'Purpose buckets', icon: Database },
+            { href: '/goals', label: 'Goals', icon: Flag },
+        ],
+    },
+    {
+        label: 'Analyze',
+        items: [
+            {
+                href: '/reconciliation',
+                label: 'Reconciliation',
+                icon: ListChecks,
+            },
+            {
+                href: '/allocation-reconciliation',
+                label: 'Reconcile purposes',
+                icon: ListChecks,
+            },
             {
                 href: '/scenarios',
                 label: 'Purchase scenarios',
                 icon: Calculator,
             },
+            { href: '/snapshots', label: 'Snapshots', icon: FileClock },
         ],
     },
     {
-        label: 'Advanced',
+        label: 'Settings',
         items: [
-            { href: '/ledger', label: 'Ledger & imports', icon: BookOpen },
+            {
+                href: '/budget-categories',
+                label: 'Expense categories',
+                icon: ListChecks,
+            },
             {
                 href: '/transaction-categories',
-                label: 'Categories',
+                label: 'Ledger categories',
                 icon: ListChecks,
             },
             {
@@ -249,17 +302,6 @@ const navigationGroups: NavigationGroup[] = [
                 label: 'Liability history',
                 icon: FileClock,
             },
-            {
-                href: '/reconciliation',
-                label: 'Reconciliation',
-                icon: ListChecks,
-            },
-            {
-                href: '/allocation-reconciliation',
-                label: 'Reconcile purposes',
-                icon: ListChecks,
-            },
-            { href: '/snapshots', label: 'Snapshots', icon: FileClock },
             {
                 href: '/settings/financial',
                 label: 'Financial policy',
@@ -599,7 +641,7 @@ export function CardHeader({
                     </UiCardDescription>
                 )}
             </div>
-            {action && <div className="self-start">{action}</div>}
+            {action && <UiCardAction>{action}</UiCardAction>}
         </UiCardHeader>
     );
 }

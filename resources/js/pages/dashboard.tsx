@@ -73,7 +73,15 @@ type MonthlyPlan = {
         nativeAmount: number;
         amount: number;
     }[];
+    plannedIncomeSources: { id?: number; label: string; amount: number }[];
     expenseCategories: { label: string; amount: number }[];
+    incomeRules: { label: string; amount: number; percent?: number | null }[];
+    plannedExpenseCategories: {
+        categoryId?: number | null;
+        label: string;
+        planned: number;
+        actual: number;
+    }[];
     income: number;
     expenses: number;
     freeCashFlow: number;
@@ -84,15 +92,28 @@ type MonthlyPlan = {
         label: string;
         amount: number;
         actual: number;
-        kind: 'emergency' | 'goal' | 'investment';
+        allocationPercent?: number | null;
+        assetId?: number | null;
     }[];
     plannedTotal: number;
     unallocated: number;
     plannedIncome: number;
     plannedExpenses: number;
-    source: 'saved_plan' | 'starter_template';
+    plannedFreeCashFlow: number;
+    templateId?: number | null;
+    templateName?: string | null;
+    planStatus?: string | null;
+    source: 'saved_plan' | 'plan_template';
+    actualTracking?: {
+        source: string;
+        transactionCount: number;
+        unmappedPurposeAmount: number;
+        unmappedExpenseAmount: number;
+        matchedExpenseAmount?: number;
+    } | null;
 };
 type MonthlyFlow = {
+    source: string;
     status: 'balanced' | 'needs_direction' | 'needs_sync' | 'over_allocated';
     income: number;
     expenses: number;
@@ -133,7 +154,12 @@ type MonthlyFlow = {
         variance: number;
     }[];
     allocationTotal: number;
+    actualAllocationTotal: number;
+    plannedUnassigned: number;
+    actualUnassigned: number;
     unassigned: number;
+    plannedOverAllocated: number;
+    actualOverAllocated: number;
     overAllocated: number;
     varianceAlerts: {
         code: string;
@@ -210,20 +236,6 @@ type AttentionItem = {
     reason: string;
     actionUrl: string;
 };
-type MonthlyRatio = {
-    key: string;
-    label: string;
-    amount: number;
-    percent: number;
-    targetPercent: number;
-};
-type MonthlyRatios = {
-    income: number;
-    freeCashFlow: number;
-    savingsRate: number;
-    investmentRate: number;
-    items: MonthlyRatio[];
-};
 type FinancialFreedom = {
     annualSpending: number;
     withdrawalRatePercent: number;
@@ -267,7 +279,6 @@ export default function Dashboard({
     dataFreshness,
     marketRates,
     attentionQueue = [],
-    monthlyRatios,
     financialFreedom,
     wealthStage,
     obligationChanges,
@@ -290,7 +301,6 @@ export default function Dashboard({
     };
     marketRates?: MarketRates;
     attentionQueue?: AttentionItem[];
-    monthlyRatios?: MonthlyRatios;
     financialFreedom?: FinancialFreedom;
     wealthStage?: WealthStage;
     obligationChanges?: ObligationChanges;
@@ -359,11 +369,7 @@ export default function Dashboard({
             {dataFreshness?.demoDataWarning && (
                 <DemoWorkspaceCard
                     hasObligationChange={obligationChanges?.hasChanges ?? false}
-                    emergencyContribution={
-                        monthlyPlan?.allocationItems.find(
-                            (item) => item.kind === 'emergency',
-                        )?.amount ?? 0
-                    }
+                    emergencyContribution={monthlyPlan?.unallocated ?? 0}
                     onReset={() => {
                         if (
                             window.confirm(
@@ -434,10 +440,20 @@ export default function Dashboard({
                             ))}
                         </div>
                     </CardContent>
-                    <CardFooter className="grid gap-4 border-hero-foreground/10 bg-hero-foreground/5 sm:grid-cols-3">
+                    <CardFooter className="grid gap-4 border-hero-foreground/10 bg-hero-foreground/5 sm:grid-cols-2 lg:grid-cols-5">
                         <HeroMetric
                             label="Total assets"
                             value={formatCompactEGP(summary.totalAssets ?? 0)}
+                        />
+                        <HeroMetric
+                            label="Directly controlled"
+                            value={formatCompactEGP(
+                                summary.directlyControlledAssets,
+                            )}
+                        />
+                        <HeroMetric
+                            label="Held elsewhere"
+                            value={formatCompactEGP(summary.heldElsewhere)}
                         />
                         <HeroMetric
                             label="Reserved for goals"
@@ -516,67 +532,61 @@ export default function Dashboard({
                     <CardContent className="grid gap-3 pt-1 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] lg:items-stretch">
                         <FlowStep
                             icon={CircleDollarSign}
-                            label="Income"
-                            value={monthlyPlan?.income ?? summary.income}
-                            items={(monthlyPlan?.incomeSources ?? []).map(
-                                (source) => ({
-                                    label: source.label,
-                                    value: formatSourceAmount(source),
-                                }),
-                            )}
-                            empty="Add salary, freelance work, or another source"
+                            label="Planned income"
+                            value={monthlyPlan?.plannedIncome ?? summary.income}
+                            items={(monthlyPlan
+                                ? monthlyPlan.source === 'saved_plan'
+                                    ? monthlyPlan.plannedIncomeSources
+                                    : monthlyPlan.incomeRules.length
+                                      ? monthlyPlan.incomeRules
+                                      : monthlyPlan.plannedIncomeSources
+                                : []
+                            ).map((source) => ({
+                                label: source.label,
+                                value: 'percent' in source && source.percent !== null && source.percent !== undefined
+                                    ? `${source.percent}% · ${formatCompactEGP(source.amount)}`
+                                    : formatCompactEGP(source.amount),
+                            }))}
+                            empty="Create the monthly plan and add income sources"
                         />
                         <FlowArrow />
                         <FlowStep
                             icon={ReceiptText}
-                            label="Monthly expenses"
-                            value={monthlyPlan?.expenses ?? summary.expenses}
-                            items={(monthlyPlan?.expenseCategories ?? []).map(
-                                (expense) => ({
-                                    label: expense.label,
-                                    value: formatCompactEGP(expense.amount),
-                                }),
-                            )}
+                            label="Planned expenses"
+                            value={monthlyPlan?.plannedExpenses ?? monthlyPlan?.expenses ?? summary.expenses}
+                            items={(monthlyPlan?.plannedExpenseCategories?.length ? monthlyPlan.plannedExpenseCategories : monthlyPlan?.expenseCategories ?? []).map((expense) => ({
+                                label: expense.label,
+                                value: formatCompactEGP('planned' in expense ? expense.planned : expense.amount),
+                            }))}
                             empty="Add your recurring and flexible expenses"
                         />
                         <FlowArrow />
                         <FlowStep
-                            icon={ShieldCheck}
-                            label="Emergency contribution"
-                            value={
-                                monthlyPlan?.allocationItems.find(
-                                    (item) => item.kind === 'emergency',
-                                )?.amount ?? 0
-                            }
-                            items={[
-                                {
-                                    label: 'Remaining gap',
-                                    value: formatCompactEGP(
-                                        monthlyPlan?.emergencyGap ?? 0,
-                                    ),
-                                },
-                            ]}
-                            empty="Your reserve is already covered"
+                            icon={ListChecks}
+                            label="Planned allocations"
+                            value={monthlyPlan?.plannedTotal ?? 0}
+                            items={(monthlyPlan?.allocationItems ?? []).map(
+                                (item) => ({
+                                    label: item.label,
+                                    value: formatCompactEGP(item.amount),
+                                }),
+                            )}
+                            empty="Add allocation rules to give the surplus a job"
                         />
                         <FlowArrow />
                         <FlowStep
-                            icon={TrendingUp}
-                            label="Ready to allocate"
-                            value={Math.max(
-                                0,
-                                (monthlyPlan?.freeCashFlow ??
-                                    summary.freeCashFlow) -
-                                    (monthlyPlan?.allocationItems.find(
-                                        (item) => item.kind === 'emergency',
-                                    )?.amount ?? 0),
-                            )}
+                            icon={Target}
+                            label="Planned unassigned remainder"
+                            value={monthlyPlan?.unallocated ?? 0}
                             items={[
                                 {
-                                    label: 'Goals + investments',
-                                    value: 'Give every pound a job',
+                                    label: 'Current plan',
+                                    value: monthlyPlan?.source === 'saved_plan'
+                                        ? 'Saved for this month'
+                                        : 'Preview from template',
                                 },
                             ]}
-                            empty="Income is fully used this month"
+                            empty="The plan is fully assigned"
                         />
                     </CardContent>
                 </Card>
@@ -592,7 +602,10 @@ export default function Dashboard({
             <MonthlyHistoryCard history={monthlyHistory} />
 
             <div className="mt-6 grid items-start gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-                <MonthlyRatiosCard ratios={monthlyRatios} />
+                <MonthlyPlanComparisonCard
+                    monthlyPlan={monthlyPlan}
+                    actualSource={monthlyFlow?.source ?? dataFreshness?.cashFlowSource}
+                />
                 <WealthJourneyCard
                     stage={wealthStage}
                     financialFreedom={financialFreedom}
@@ -661,14 +674,12 @@ export default function Dashboard({
                         <CardTitle>Where the surplus goes</CardTitle>
                         <CardDescription>
                             {monthlyPlan?.source === 'saved_plan'
-                                ? 'Your saved plan for this month'
-                                : 'A starter split until you save your own plan'}
+                                ? `Saved snapshot${monthlyPlan.templateName ? ` · ${monthlyPlan.templateName}` : ''}`
+                                : `Preview from ${monthlyPlan?.templateName ?? 'the selected template'}`}
                         </CardDescription>
                         <CardAction>
                             <Badge variant="outline">
-                                {monthlyPlan?.source === 'saved_plan'
-                                    ? 'Saved plan'
-                                    : 'Flexible template'}
+                                {monthlyPlan?.source === 'saved_plan' ? 'Saved snapshot' : 'Template rules'}
                             </Badge>
                         </CardAction>
                     </CardHeader>
@@ -683,7 +694,7 @@ export default function Dashboard({
                                         : 0;
 
                                 return (
-                                    <div key={`${item.kind}-${item.label}`}>
+                                    <div key={`${item.bucketId ?? item.label}-${item.label}`}>
                                         <div className="mb-2 flex items-start justify-between gap-3">
                                             <div className="flex items-center gap-2">
                                                 <span
@@ -701,9 +712,12 @@ export default function Dashboard({
                                                         {item.label}
                                                     </p>
                                                     <p className="text-xs text-muted-foreground">
-                                                        {allocationKindLabel(
-                                                            item.kind,
-                                                        )}
+                                                        {item.allocationPercent !==
+                                                        null &&
+                                                        item.allocationPercent !==
+                                                        undefined
+                                                            ? `${item.allocationPercent}% of post-expense cash`
+                                                            : 'Fixed plan amount'}
                                                     </p>
                                                 </div>
                                             </div>
@@ -895,6 +909,14 @@ export default function Dashboard({
                             value={summary.totalAssets ?? 0}
                         />
                         <CalculationRow
+                            label="Held elsewhere / receivables"
+                            value={summary.heldElsewhere}
+                        />
+                        <CalculationRow
+                            label="Directly controlled assets"
+                            value={summary.directlyControlledAssets}
+                        />
+                        <CalculationRow
                             label="Active liabilities"
                             value={-(summary.liabilities ?? 0)}
                         />
@@ -904,9 +926,9 @@ export default function Dashboard({
                             total
                         />
                         <p className="text-xs leading-5 text-muted-foreground">
-                            Goal reservations change what is available to
-                            invest, but they do not reduce net worth because you
-                            still own the underlying asset.
+                            Net worth includes receivables because they are
+                            still owned by you. Directly controlled assets
+                            exclude money currently held by other people.
                         </p>
                     </div>
                 </SheetContent>
@@ -971,7 +993,7 @@ function DemoWorkspaceCard({
                     <AlertTitle>Current demo lesson</AlertTitle>
                     <AlertDescription>
                         {hasObligationChange
-                            ? `A commitment changed after the last close. With the reserve complete, ${formatCompactEGP(emergencyContribution)} can be redirected to a goal or investment.`
+                            ? `A commitment changed after the last close. ${formatCompactEGP(emergencyContribution)} is still unassigned in the current plan and needs a deliberate decision.`
                             : 'Close the current review after making a change to see the system explain its impact.'}
                     </AlertDescription>
                 </Alert>
@@ -1148,30 +1170,40 @@ function buildWealthGroups(assets: Asset[]) {
         1,
         assets.reduce((sum, asset) => sum + asset.currentValue, 0),
     );
-    const cashEgp = assets
+    const heldElsewhere = assets
+        .filter((asset) => asset.type.toLowerCase().includes('receivable'))
+        .reduce((sum, asset) => sum + asset.currentValue, 0);
+    const controlledAssets = assets.filter(
+        (asset) => !asset.type.toLowerCase().includes('receivable'),
+    );
+    const cashEgp = controlledAssets
         .filter(
             (asset) =>
                 asset.currency === 'EGP' &&
                 asset.type.toLowerCase().includes('cash'),
         )
         .reduce((sum, asset) => sum + asset.currentValue, 0);
-    const usd = assets
+    const usd = controlledAssets
         .filter((asset) => asset.currency === 'USD')
         .reduce((sum, asset) => sum + asset.currentValue, 0);
-    const gold = assets
+    const gold = controlledAssets
         .filter(
             (asset) =>
                 asset.currency.toLowerCase() === 'gold' ||
                 asset.type.toLowerCase().includes('gold'),
         )
         .reduce((sum, asset) => sum + asset.currentValue, 0);
-    const investments = Math.max(0, total - cashEgp - usd - gold);
+    const investments = Math.max(
+        0,
+        total - heldElsewhere - cashEgp - usd - gold,
+    );
 
     return [
         { label: 'EGP cash', value: cashEgp },
         { label: 'US dollars', value: usd },
         { label: 'Gold', value: gold },
         { label: 'Investments', value: investments },
+        { label: 'Held elsewhere', value: heldElsewhere },
     ]
         .filter((group) => group.value > 0)
         .map((group) => ({
@@ -1188,24 +1220,6 @@ function sourceLabel(source?: string) {
     return source === 'confirmed_ledger'
         ? 'Using confirmed transactions'
         : `Using ${source.replaceAll('_', ' ')}`;
-}
-
-function formatSourceAmount(source: MonthlyPlan['incomeSources'][number]) {
-    if (source.currency === 'USD') {
-        return `${source.nativeAmount.toLocaleString('en-EG')} USD · ${formatCompactEGP(source.amount)}`;
-    }
-
-    return formatCompactEGP(source.amount);
-}
-
-function allocationKindLabel(
-    kind: MonthlyPlan['allocationItems'][number]['kind'],
-) {
-    return {
-        emergency: 'Safety first',
-        goal: 'Near-term goal',
-        investment: 'Long-term growth',
-    }[kind];
 }
 
 function HeroMetric({ label, value }: { label: string; value: string }) {
@@ -1592,7 +1606,7 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
         return null;
     }
 
-    const allocationCapacity = Math.max(flow.freeCashFlow, 0);
+    const allocationCapacity = Math.max(flow.planned.freeCashFlow, 0);
     const allocationPercent =
         allocationCapacity > 0
             ? Math.min(100, (flow.allocationTotal / allocationCapacity) * 100)
@@ -1672,7 +1686,7 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                                         Math.abs(
                                             outflow.expected - outflow.amount,
                                         ) > 0.01
-                                            ? `active records ${formatCompactEGP(outflow.expected)}`
+                                            ? `planned ${formatCompactEGP(outflow.expected)}`
                                             : undefined
                                     }
                                 />
@@ -1701,7 +1715,7 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                         <div>
                             <div className="flex items-center justify-between gap-3 text-sm">
                                 <span className="font-semibold">
-                                    Surplus assigned
+                                    Planned surplus assigned
                                 </span>
                                 <span className="text-muted-foreground">
                                     {formatCompactEGP(flow.allocationTotal)} /{' '}
@@ -1712,11 +1726,18 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                                 <Progress value={allocationPercent} />
                             </div>
                             <p className="mt-2 text-xs text-muted-foreground">
+                                Actual linked: {formatCompactEGP(flow.actualAllocationTotal)} ·
+                                actual free cash without a linked allocation:{' '}
+                                {formatCompactEGP(flow.actualUnassigned)}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
                                 {flow.overAllocated > 0
-                                    ? `${formatCompactEGP(flow.overAllocated)} over available cash flow`
-                                    : flow.unassigned > 0
-                                      ? `${formatCompactEGP(flow.unassigned)} still needs a purpose`
-                                      : 'Every available pound has a planned purpose'}
+                                    ? `${formatCompactEGP(flow.plannedOverAllocated)} over planned cash flow`
+                                    : flow.plannedUnassigned > 0
+                                      ? `${formatCompactEGP(flow.plannedUnassigned)} still unassigned in the plan`
+                                      : flow.actualUnassigned > 0
+                                        ? `${formatCompactEGP(flow.actualUnassigned)} actual cash remains without a linked allocation`
+                                        : 'Every planned pound has an allocation rule'}
                             </p>
                         </div>
                         <div className="rounded-lg border p-4">
@@ -1822,79 +1843,278 @@ function FlowHealthRow({
     );
 }
 
-function MonthlyRatiosCard({ ratios }: { ratios?: MonthlyRatios }) {
-    const items = ratios?.items ?? [];
+function MonthlyPlanComparisonCard({
+    monthlyPlan,
+    actualSource,
+}: {
+    monthlyPlan?: MonthlyPlan;
+    actualSource?: string;
+}) {
+    const planExpenses = monthlyPlan?.plannedExpenseCategories ?? [];
+    const planAllocations = monthlyPlan?.allocationItems ?? [];
+    const planIsSaved = monthlyPlan?.source === 'saved_plan';
+    const actualTracking = monthlyPlan?.actualTracking;
+    const actualExpenseTotal = planExpenses.reduce(
+        (total, item) => total + item.actual,
+        0,
+    );
+    const actualAllocationTotal = planAllocations.reduce(
+        (total, item) => total + item.actual,
+        0,
+    );
+    const actualSourceLabel =
+        actualSource === 'confirmed_ledger'
+            ? 'Confirmed ledger'
+            : actualSource === 'monthly_review'
+              ? 'Monthly review'
+              : actualSource === 'cash_flow'
+                ? 'Cash-flow entries'
+                : actualSource
+                  ? labelize(actualSource)
+                  : 'Current month actuals';
 
     return (
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                     <CircleGauge className="text-muted-foreground" />
-                    Monthly allocation rules
+                    Current month: plan vs actual
                 </CardTitle>
                 <CardDescription>
-                    Your income is compared with the personal targets in your
-                    financial policy.
+                    {planIsSaved
+                        ? `${monthlyPlan?.templateName ?? 'Plan template'} is saved for this month. Editing the template will not rewrite this snapshot.`
+                        : `${monthlyPlan?.templateName ?? 'The active template'} is only a preview. Save a monthly plan to freeze these values for this month.`}
                 </CardDescription>
                 <CardAction>
-                    <Badge variant="outline">
-                        {ratios ? `${ratios.savingsRate}% free` : 'Set up'}
-                    </Badge>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        <Badge variant={planIsSaved ? 'secondary' : 'outline'}>
+                            {planIsSaved ? 'Saved plan' : 'Template preview'}
+                        </Badge>
+                        <Badge variant="outline">
+                            {monthlyPlan
+                                ? `${monthlyPlan.plannedFreeCashFlow.toLocaleString('en-EG')} EGP planned free`
+                                : 'Set up'}
+                        </Badge>
+                    </div>
                 </CardAction>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-                {items.map((item) => (
-                    <div key={item.key}>
-                        <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
-                            <span className="min-w-0 truncate font-medium">
-                                {item.label}
-                            </span>
-                            <span className="shrink-0 text-muted-foreground">
-                                {item.percent}% ·{' '}
-                                {formatCompactEGP(item.amount)}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <div className="flex-1">
-                                <Progress value={Math.min(100, item.percent)} />
+                {monthlyPlan && (
+                    <div className="flex flex-col gap-4">
+                        <div className="rounded-xl border p-3">
+                            <p className="text-sm font-semibold">Income</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                Actual income is the confirmed month total. It
+                                is not guessed into individual plan sources.
+                            </p>
+                            <div className="mt-3">
+                                <PlanActualRow
+                                    label="Total monthly income"
+                                    planned={monthlyPlan.plannedIncome}
+                                    actual={monthlyPlan.income}
+                                />
                             </div>
-                            <span className="w-16 shrink-0 text-right text-[11px] text-muted-foreground">
-                                target {item.targetPercent}%
-                            </span>
+                            {monthlyPlan.plannedIncomeSources.length > 0 && (
+                                <div className="mt-3 flex flex-col gap-1.5 border-t pt-3">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                        Plan sources
+                                    </p>
+                                    {monthlyPlan.plannedIncomeSources.map(
+                                        (source) => (
+                                            <FlowHealthRow
+                                                key={`income-source-${source.id ?? source.label}`}
+                                                label={source.label}
+                                                value={source.amount}
+                                            />
+                                        ),
+                                    )}
+                                </div>
+                            )}
                         </div>
+
+                        <div className="rounded-xl border p-3">
+                            <p className="text-sm font-semibold">
+                                Plan expense categories
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                These rows come directly from the current
+                                month plan. Actuals appear only when a ledger
+                                transaction is linked to the same category.
+                            </p>
+                            <div className="mt-3 flex flex-col gap-3">
+                                {planExpenses.map((item) => (
+                                    <PlanActualRow
+                                        key={`expense-${item.categoryId ?? item.label}`}
+                                        label={item.label}
+                                        planned={item.planned}
+                                        actual={item.actual}
+                                    />
+                                ))}
+                                {!planExpenses.length && (
+                                    <p className="text-sm text-muted-foreground">
+                                        No expense categories are in this
+                                        plan.
+                                    </p>
+                                )}
+                            </div>
+                            {actualTracking &&
+                                actualTracking.unmappedExpenseAmount > 0 && (
+                                    <UnmappedRow
+                                        label="Unmapped actual expenses"
+                                        amount={actualTracking.unmappedExpenseAmount}
+                                        detail="No matching plan category"
+                                    />
+                                )}
+                        </div>
+
+                        <div className="rounded-xl border p-3">
+                            <p className="text-sm font-semibold">
+                                Plan allocation rules
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                These are the exact bucket and asset rows saved
+                                in this month’s plan. No row is renamed into an
+                                emergency, goal, or investment category here.
+                            </p>
+                            <div className="mt-3 flex flex-col gap-3">
+                                {planAllocations.map((item) => (
+                                    <PlanActualRow
+                                        key={`allocation-${item.bucketId ?? item.label}-${item.label}`}
+                                        label={item.label}
+                                        planned={item.amount}
+                                        actual={item.actual}
+                                        detail={
+                                            item.allocationPercent !== null &&
+                                            item.allocationPercent !== undefined
+                                                ? `${item.allocationPercent}% rule`
+                                                : undefined
+                                        }
+                                    />
+                                ))}
+                                {!planAllocations.length && (
+                                    <p className="text-sm text-muted-foreground">
+                                        No allocation rules are in this plan.
+                                    </p>
+                                )}
+                            </div>
+                            {actualTracking &&
+                                actualTracking.unmappedPurposeAmount > 0 && (
+                                    <UnmappedRow
+                                        label="Unlinked actual allocations"
+                                        amount={actualTracking.unmappedPurposeAmount}
+                                        detail="No purpose bucket selected"
+                                    />
+                                )}
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <SmallMetric
+                                icon={CircleDollarSign}
+                                label="Planned unassigned remainder"
+                                value={formatCompactEGP(monthlyPlan.unallocated)}
+                            />
+                            <SmallMetric
+                                icon={TrendingUp}
+                                label="Actual linked allocations"
+                                value={formatCompactEGP(actualAllocationTotal)}
+                            />
+                        </div>
+
+                        <p className="text-xs text-muted-foreground">
+                            Actual source: {actualSourceLabel}. Linked expense
+                            actuals total {formatCompactEGP(actualExpenseTotal)};
+                            unlinked transactions stay separate instead of
+                            being classified by name.
+                        </p>
                     </div>
-                ))}
-                {!items.length && (
-                    <p className="text-sm text-muted-foreground">
-                        Add a monthly review or confirmed transactions to see
-                        your income split.
-                    </p>
                 )}
-                {ratios && (
-                    <div className="grid grid-cols-2 gap-3 pt-1">
-                        <SmallMetric
-                            icon={CircleDollarSign}
-                            label="Income"
-                            value={formatCompactEGP(ratios.income)}
-                        />
-                        <SmallMetric
-                            icon={TrendingUp}
-                            label="Investment rate"
-                            value={`${ratios.investmentRate}%`}
-                        />
-                    </div>
+                {!monthlyPlan && (
+                    <p className="text-sm text-muted-foreground">
+                        Add a monthly plan to see exact planned categories and
+                        allocation rules beside actuals.
+                    </p>
                 )}
             </CardContent>
             <CardFooter className="justify-between gap-3">
                 <span className="text-xs text-muted-foreground">
-                    Targets are personal rules, not universal advice.
+                    {planIsSaved
+                        ? 'This month is a saved snapshot; actuals do not rewrite the plan.'
+                        : 'This is a live template preview until you save the monthly plan.'}
                 </span>
-                <Button href="/settings/financial" variant="ghost" size="sm">
-                    Edit rules
+                <Button
+                    href={planIsSaved ? '/allocations' : '/monthly-rules'}
+                    variant="ghost"
+                    size="sm"
+                >
+                    {planIsSaved ? 'Edit current plan' : 'Edit template'}
                     <ArrowRight data-icon="inline-end" />
                 </Button>
             </CardFooter>
         </Card>
+    );
+}
+
+function PlanActualRow({
+    label,
+    planned,
+    actual,
+    detail,
+}: {
+    label: string;
+    planned: number;
+    actual: number;
+    detail?: string;
+}) {
+    const progress = planned > 0 ? (actual / planned) * 100 : actual > 0 ? 100 : 0;
+    const variance = actual - planned;
+
+    return (
+        <div>
+            <div className="flex items-start justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate font-medium">{label}</span>
+                <span className="shrink-0 text-right text-xs text-muted-foreground">
+                    Planned {formatCompactEGP(planned)} · Actual{' '}
+                    {formatCompactEGP(actual)}
+                </span>
+            </div>
+            <div className="mt-1.5 flex items-center gap-3">
+                <div className="flex-1">
+                    <Progress value={Math.min(100, Math.max(0, progress))} />
+                </div>
+                <span className="w-28 shrink-0 text-right text-[11px] text-muted-foreground">
+                    {variance === 0
+                        ? 'on plan'
+                        : `${variance > 0 ? '+' : ''}${formatCompactEGP(variance)} variance`}
+                </span>
+            </div>
+            {detail && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                    {detail}
+                </p>
+            )}
+        </div>
+    );
+}
+
+function UnmappedRow({
+    label,
+    amount,
+    detail,
+}: {
+    label: string;
+    amount: number;
+    detail: string;
+}) {
+    return (
+        <div className="mt-3 rounded-lg bg-muted/60 p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+                <span className="font-medium">{label}</span>
+                <span className="font-medium tabular-nums">
+                    {formatCompactEGP(amount)}
+                </span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+        </div>
     );
 }
 

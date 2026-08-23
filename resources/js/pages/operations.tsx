@@ -55,7 +55,9 @@ export default function Operations({ backups }: { backups: Backup[] }) {
                             <TableHead>File</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Retention</TableHead>
-                            <TableHead>Actions</TableHead>
+                            <TableHead className="text-right">
+                                Actions
+                            </TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>

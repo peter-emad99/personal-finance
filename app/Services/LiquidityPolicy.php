@@ -43,7 +43,7 @@ class LiquidityPolicy
     /** @param Collection<int, Bucket> $buckets */
     public function emergencyEligibleAmount(Collection $buckets, string $maximum): float
     {
-        return $this->sumMoney($buckets->filter(fn (Bucket $bucket): bool => str_contains(strtolower((string) $bucket->name), 'emergency')), function (Bucket $bucket) use ($maximum): string {
+        return $this->sumMoney($buckets->filter(fn (Bucket $bucket): bool => ($bucket->purpose_type ?? 'other') === 'emergency'), function (Bucket $bucket) use ($maximum): string {
             return (string) $this->sumMoney($bucket->assets->filter(fn (Asset $asset): bool => $this->allows((string) $asset->liquidity, $maximum)), fn (Asset $asset): string => (string) data_get($asset, 'pivot.amount_egp', '0'));
         });
     }
@@ -97,7 +97,6 @@ class LiquidityPolicy
             'maximumMonthlyPayment' => $settings->maximum_monthly_payment_egp !== null ? (float) $settings->maximum_monthly_payment_egp : null,
             'maximumDebtBurdenPercent' => $settings->maximum_debt_burden_percent !== null ? (float) $settings->maximum_debt_burden_percent : null,
             'valuationFreshnessDays' => (int) ($settings->valuation_freshness_days ?? 30),
-            'monthlyAllocationTargets' => $customPolicy['monthly_allocation_targets'] ?? FinancialSetting::defaultMonthlyAllocationTargets(),
             'financialFreedom' => array_merge(FinancialSetting::defaultFinancialFreedom(), is_array($customPolicy['financial_freedom'] ?? null) ? $customPolicy['financial_freedom'] : []),
             'varianceThresholds' => array_merge([
                 'income_percent' => 10,

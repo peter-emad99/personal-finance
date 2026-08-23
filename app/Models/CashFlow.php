@@ -21,4 +21,9 @@ class CashFlow extends Model
             'occurred_on' => 'date',
         ];
     }
+
+    public function transactionCategory()
+    {
+        return $this->belongsTo(TransactionCategory::class, 'transaction_category_id');
+    }
 }

@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\MonthlyFinancialReview;
 use App\Models\AllocationPlan;
 use App\Models\Bucket;
+use App\Models\BudgetCategory;
 use App\Models\FinancialSetting;
 use App\Models\Goal;
 use App\Models\Liability;
+use App\Models\MonthlyFinancialReview;
 use App\Models\RecurringCommitment;
-use App\Services\FinanceService;
 use App\Services\AllocationActualService;
+use App\Services\BudgetRuleService;
+use App\Services\FinanceService;
 use App\Services\LedgerService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
@@ -26,7 +28,7 @@ class MonthlyReviewController extends Controller
     public function index(Request $request, FinanceService $finance, AllocationActualService $actuals): Response
     {
         $month = $this->month($request->input('month'));
-        $plan = AllocationPlan::with(['items.bucket.goal', 'sourceReview'])->whereDate('month', $month)->first();
+        $plan = AllocationPlan::with(['template', 'items.asset', 'items.bucket.goal', 'expenseItems.category', 'sourceReview'])->whereDate('month', $month)->first();
         $actualTracking = $plan ? $actuals->preview($plan) : null;
         $review = $finance->monthlyReview($month);
         $reviewModel = MonthlyFinancialReview::whereDate('month', $month)->first();
@@ -39,6 +41,8 @@ class MonthlyReviewController extends Controller
         return Inertia::render('monthly-review', [
             'review' => $review,
             'plan' => $plan ? [
+                'templateName' => $plan->template?->name,
+                'status' => $plan->status,
                 'income' => (float) $plan->planned_income_egp,
                 'expenses' => (float) $plan->planned_expenses_egp,
                 'freeCashFlow' => (float) $plan->planned_income_egp - (float) $plan->planned_expenses_egp,
@@ -47,10 +51,19 @@ class MonthlyReviewController extends Controller
                 'sourceReviewMonth' => $plan->sourceReview?->month ? Carbon::parse($plan->sourceReview->month)->format('Y-m') : null,
                 'generatedAt' => $plan->generated_at ? Carbon::parse($plan->generated_at)->toIso8601String() : null,
                 'allocations' => $plan->items->map(fn ($item): array => [
-                    'label' => $item->bucket->name,
+                    'label' => ($item->asset_target ?: $item->asset?->name)
+                        ? ($item->asset_target ?: $item->asset?->name).' → '.($item->bucket?->name ?? 'Unassigned bucket')
+                        : ($item->bucket?->name ?? 'Unassigned bucket'),
                     'planned' => (float) $item->planned_amount_egp,
                     'actual' => $actualTracking && $actualTracking['source'] === 'confirmed_ledger'
-                        ? (float) ($actualTracking['actuals'][$item->bucket_id] ?? 0)
+                        ? (float) ($actualTracking['itemActuals'][$item->id] ?? $actualTracking['actuals'][$item->bucket_id] ?? 0)
+                        : (float) $item->actual_amount_egp,
+                ])->values(),
+                'expenseItems' => $plan->expenseItems->map(fn ($item): array => [
+                    'label' => $item->category?->name ?? 'Uncategorized',
+                    'planned' => (float) $item->planned_amount_egp,
+                    'actual' => $actualTracking && $actualTracking['source'] === 'confirmed_ledger'
+                        ? (float) ($actualTracking['expenseActuals'][$item->budget_category_id] ?? 0)
                         : (float) $item->actual_amount_egp,
                 ])->values(),
             ] : null,
@@ -161,12 +174,14 @@ class MonthlyReviewController extends Controller
         $proposal = $this->nextMonthPlan($review, $finance, $redirectTarget);
         if ($proposal['alreadyExists']) {
             $nextMonth = Carbon::parse($review->month)->startOfMonth()->addMonth();
+
             return redirect()->route('allocations.index', ['month' => $nextMonth->format('Y-m')])->with('success', 'A plan for next month already exists.');
         }
 
         $this->persistNextMonthPlan($review, $proposal, $request->input('lesson'));
 
         $nextMonth = Carbon::parse($proposal['nextMonth']);
+
         return redirect()->route('allocations.index', ['month' => $nextMonth->format('Y-m')])->with('success', 'Next month’s plan was prepared from this review.');
     }
 
@@ -174,8 +189,12 @@ class MonthlyReviewController extends Controller
     private function persistNextMonthPlan(MonthlyFinancialReview $review, array $proposal, ?string $lesson = null): void
     {
         DB::transaction(function () use ($review, $proposal, $lesson): void {
+            $sourcePlan = AllocationPlan::with(['template'])->whereDate('month', Carbon::parse($review->month)->startOfMonth()->toDateString())->first();
+            $rules = app(BudgetRuleService::class);
+            $template = $sourcePlan?->template ?? $rules->ensureDefaultTemplate((float) $proposal['plannedIncome']);
             $plan = AllocationPlan::create([
                 'month' => $proposal['nextMonth'],
+                'plan_template_id' => $template->id,
                 'planned_income_egp' => $proposal['plannedIncome'],
                 'planned_expenses_egp' => $proposal['plannedExpenses'],
                 'source_review_id' => $review->id,
@@ -185,10 +204,28 @@ class MonthlyReviewController extends Controller
                     ? 'Lesson carried forward: '.$lesson
                     : 'Prepared from the closed review and current obligations.',
             ]);
+            foreach ($proposal['incomeItems'] ?? [['name' => 'Monthly income', 'planned' => $proposal['plannedIncome'], 'budgetRuleId' => null]] as $incomeItem) {
+                $plan->incomeItems()->create([
+                    'budget_rule_id' => $incomeItem['budgetRuleId'] ?? null,
+                    'name' => $incomeItem['name'],
+                    'planned_amount_egp' => $incomeItem['planned'],
+                    'actual_amount_egp' => 0,
+                ]);
+            }
             foreach ($proposal['allocations'] as $item) {
                 if ($item['amount'] > 0) {
-                    $plan->items()->create(['bucket_id' => $item['bucketId'], 'planned_amount_egp' => $item['amount'], 'actual_amount_egp' => 0]);
+                    $plan->items()->create([
+                        'bucket_id' => $item['bucketId'],
+                        'asset_id' => $item['assetId'] ?? null,
+                        'asset_target' => $item['assetTarget'] ?? null,
+                        'allocation_percent' => $item['allocationPercent'] ?? null,
+                        'planned_amount_egp' => $item['amount'],
+                        'actual_amount_egp' => 0,
+                    ]);
                 }
+            }
+            foreach ($proposal['expenseItems'] ?? [] as $expense) {
+                $plan->expenseItems()->create(['budget_category_id' => $expense['categoryId'], 'planned_amount_egp' => $expense['planned'], 'actual_amount_egp' => 0]);
             }
         });
     }
@@ -208,11 +245,78 @@ class MonthlyReviewController extends Controller
         $plannedExpenses = round((float) $review->essential_expenses_egp + (float) $review->lifestyle_expenses_egp + $monthlyCommitments + $monthlyDebtPayments, 2);
         $available = max(0, $plannedIncome - $plannedExpenses);
         $settings = FinancialSetting::active();
-        $emergencyBucket = Bucket::whereNull('goal_id')->where('name', 'like', '%Emergency%')->with('assets')->first();
+        $emergencyBucket = Bucket::where('purpose_type', 'emergency')->with('assets')->first();
         $currentEmergency = $emergencyBucket ? $finance->bucketValue($emergencyBucket) : 0;
         $monthlyBase = (float) $review->essential_expenses_egp + $monthlyCommitments + $monthlyDebtPayments;
         $emergencyTarget = round($monthlyBase * (int) ($settings->emergency_reserve_months ?: 6), 2);
         $emergencyGap = max(0, round($emergencyTarget - $currentEmergency, 2));
+
+        $sourcePlan = AllocationPlan::with('template')->whereDate('month', Carbon::parse($review->month)->startOfMonth()->toDateString())->first();
+        if ($sourcePlan?->template !== null) {
+            $rules = app(BudgetRuleService::class);
+            $template = $rules->template($sourcePlan->template->id, $plannedIncome);
+            $incomeBase = $plannedIncome;
+            $plannedIncome = $rules->templateIncome($template, $incomeBase);
+            $expenseItems = $rules->templateExpenseSuggestions($template, $plannedIncome)
+                ->map(fn (array $item): array => [
+                    'categoryId' => $item['categoryId'],
+                    'categoryName' => $item['categoryName'],
+                    'planned' => (float) $item['planned'],
+                ]);
+            $commitmentCategory = $expenseItems->first(fn (array $item): bool => strtolower($item['categoryName']) === 'commitments');
+            if ($monthlyDebtPayments > 0) {
+                if ($commitmentCategory !== null) {
+                    $expenseItems = $expenseItems->map(fn (array $item): array => $item['categoryId'] === $commitmentCategory['categoryId']
+                        ? $item + ['planned' => round($item['planned'] + $monthlyDebtPayments, 2)]
+                        : $item);
+                } else {
+                    $category = app(BudgetRuleService::class)->ensureDefaultCategories()->first(fn (BudgetCategory $item): bool => strtolower($item->name) === 'commitments');
+                    if ($category !== null) {
+                        $expenseItems->push(['categoryId' => $category->id, 'categoryName' => $category->name, 'planned' => $monthlyDebtPayments]);
+                    }
+                }
+            }
+            $plannedExpenses = round((float) $expenseItems->sum('planned'), 2);
+            $available = max(0, $plannedIncome - $plannedExpenses);
+            $allocations = $rules->templateAllocationSuggestions($template, $plannedIncome, $plannedExpenses)
+                ->filter(fn (array $item): bool => $item['amount'] > 0)
+                ->map(fn (array $item): array => [
+                    'bucketId' => $item['bucketId'],
+                    'label' => $item['label'],
+                    'kind' => $item['kind'],
+                    'amount' => $item['amount'],
+                    'assetId' => $item['assetId'],
+                    'assetTarget' => $item['assetTarget'],
+                    'allocationPercent' => $item['allocationPercent'],
+                ])->values();
+            $emergencyContribution = round((float) $allocations->where('kind', 'emergency')->sum('amount'), 2);
+
+            return [
+                'alreadyExists' => false,
+                'nextMonth' => $nextMonth->toDateString(),
+                'plannedIncome' => round($plannedIncome, 2),
+                'plannedExpenses' => $plannedExpenses,
+                'available' => round($available, 2),
+                'currentEmergency' => round($currentEmergency, 2),
+                'emergencyTarget' => $emergencyTarget,
+                'emergencyGap' => round($emergencyGap, 2),
+                'emergencyContribution' => $emergencyContribution,
+                'reserveComplete' => $emergencyGap <= 0.01,
+                'redirectAmount' => 0,
+                'redirectTarget' => null,
+                'lesson' => $review->notes,
+                'templateId' => $template->id,
+                'templateName' => $template->name,
+                'incomeItems' => $rules->templateIncomeSuggestions($template, $incomeBase)->map(fn (array $item): array => [
+                    'budgetRuleId' => $item['id'],
+                    'name' => $item['label'],
+                    'planned' => $item['amount'],
+                ])->values()->all(),
+                'expenseItems' => $expenseItems->values()->all(),
+                'allocations' => $allocations->all(),
+            ];
+        }
+
         $emergencyContribution = min($emergencyGap, round($available * 0.2, 2));
         $reserveComplete = $emergencyGap <= 0.01;
         $redirectAmount = $reserveComplete ? round(min($available, $available * 0.2), 2) : 0;
@@ -231,7 +335,7 @@ class MonthlyReviewController extends Controller
             $goalAllocations[0]['amount'] = round($goalAllocations[0]['amount'] + min($redirectAmount, $investmentContribution), 2);
             $investmentContribution = max(0, $investmentContribution - $redirectAmount);
         }
-        $investmentBucket = Bucket::whereNull('goal_id')->where('name', 'not like', '%Emergency%')->orderBy('name')->first();
+        $investmentBucket = Bucket::where('purpose_type', 'investment')->orderBy('name')->first();
         $allocations = collect();
         if ($emergencyBucket !== null && $emergencyContribution > 0) {
             $allocations->push(['bucketId' => $emergencyBucket->id, 'label' => $emergencyBucket->name, 'kind' => 'emergency', 'amount' => round($emergencyContribution, 2)]);
@@ -242,6 +346,17 @@ class MonthlyReviewController extends Controller
         if ($investmentBucket !== null && $investmentContribution > 0) {
             $allocations->push(['bucketId' => $investmentBucket->id, 'label' => $investmentBucket->name, 'kind' => 'investment', 'amount' => round($investmentContribution, 2)]);
         }
+
+        $categories = app(BudgetRuleService::class)->ensureDefaultCategories()->keyBy(fn (BudgetCategory $category): string => strtolower($category->name));
+        $expenseItems = collect([
+            ['category' => 'essentials', 'planned' => (float) $review->essential_expenses_egp],
+            ['category' => 'lifestyle', 'planned' => (float) $review->lifestyle_expenses_egp],
+            ['category' => 'commitments', 'planned' => round($monthlyCommitments + $monthlyDebtPayments, 2)],
+        ])->map(function (array $item) use ($categories): ?array {
+            $category = $categories->get($item['category']);
+
+            return $category ? ['categoryId' => $category->id, 'categoryName' => $category->name, 'planned' => round($item['planned'], 2)] : null;
+        })->filter()->values();
 
         return [
             'alreadyExists' => false,
@@ -257,6 +372,8 @@ class MonthlyReviewController extends Controller
             'redirectAmount' => $redirectAmount,
             'redirectTarget' => $reserveComplete ? $redirectTarget : null,
             'lesson' => $review->notes,
+            'incomeItems' => [['budgetRuleId' => null, 'name' => 'Monthly income', 'planned' => round($plannedIncome, 2)]],
+            'expenseItems' => $expenseItems->all(),
             'allocations' => $allocations->values()->all(),
         ];
     }

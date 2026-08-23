@@ -46,7 +46,7 @@ class GoalController extends Controller
         ]);
         DB::transaction(function () use ($data): void {
             $goal = Goal::create($data + ['status' => 'active']);
-            Bucket::create(['goal_id' => $goal->id, 'name' => $goal->name.' Fund', 'purpose' => 'Reserved for '.$goal->name, 'target_amount_egp' => $goal->target_amount_egp, 'color' => '#7c8cf8']);
+            Bucket::create(['goal_id' => $goal->id, 'purpose_type' => 'goal', 'name' => $goal->name.' Fund', 'purpose' => 'Reserved for '.$goal->name, 'target_amount_egp' => $goal->target_amount_egp, 'color' => '#7c8cf8']);
         });
 
         return back()->with('success', 'Goal created with a dedicated bucket.');

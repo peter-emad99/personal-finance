@@ -213,7 +213,9 @@ export default function Liabilities({
                                 <TableHead className="px-5 py-3">
                                     Payoff
                                 </TableHead>
-                                <TableHead>Actions</TableHead>
+                                <TableHead className="text-right">
+                                    Actions
+                                </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody className="divide-y divide-border">

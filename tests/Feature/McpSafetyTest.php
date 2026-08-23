@@ -39,6 +39,10 @@ class McpSafetyTest extends TestCase
         $this->assertTrue($tools->contains('name', 'import_csv'));
         $this->assertTrue($tools->contains('name', 'prepare_next_month'));
         $this->assertTrue($tools->contains('name', 'sync_allocation_plan_actuals'));
+        $this->assertTrue($tools->contains('name', 'list_plan_templates'));
+        $this->assertTrue($tools->contains('name', 'create_plan_template'));
+        $this->assertTrue($tools->contains('name', 'create_allocation_rule'));
+        $this->assertTrue($tools->contains('name', 'close_allocation_plan'));
         $this->assertFalse($tools->firstWhere('name', 'create_asset')['annotations']['readOnlyHint']);
         $createAsset = $tools->firstWhere('name', 'create_asset');
         $this->assertArrayNotHasKey('id', $createAsset['inputSchema']['properties']);
@@ -66,6 +70,49 @@ class McpSafetyTest extends TestCase
         $this->assertNotEmpty($data['audit_id']);
         $this->assertNotEmpty($data['dashboard_version']);
         $this->assertDatabaseHas('audit_logs', ['action' => 'create', 'tool_name' => 'create_asset']);
+    }
+
+    public function test_mcp_templates_and_commitments_share_the_same_rule_model(): void
+    {
+        $templateResponse = $this->callTool(app(FinancialMcpServer::class), 'create_plan_template', [
+            'name' => 'MCP investment month',
+            'description' => 'A reusable investment-focused month.',
+        ]);
+        $this->assertFalse($templateResponse['result']['isError'] ?? false);
+        $templateId = $templateResponse['result']['structuredContent']['data']['entity']['id'];
+
+        $commitmentResponse = $this->callTool(app(FinancialMcpServer::class), 'create_commitment', [
+            'name' => 'MCP internet',
+            'category' => 'utilities',
+            'amount_egp' => 700,
+            'frequency' => 'monthly',
+            'is_active' => true,
+        ]);
+        $this->assertFalse($commitmentResponse['result']['isError'] ?? false);
+        $this->assertDatabaseHas('budget_rules', [
+            'plan_template_id' => $templateId,
+            'name' => 'Commitment: MCP internet',
+            'amount_egp' => 700,
+        ]);
+    }
+
+    public function test_mcp_allocation_rule_requires_a_bucket_assigned_to_the_asset(): void
+    {
+        $asset = Asset::create(['name' => 'MCP fund', 'type' => 'Fund', 'currency' => 'EGP', 'current_value_egp' => 5000, 'liquidity' => 'within_3_days']);
+        $bucket = Bucket::create(['name' => 'MCP reserve', 'color' => '#123456']);
+        $asset->buckets()->attach($bucket, ['amount_egp' => 5000]);
+        $template = $this->callTool(app(FinancialMcpServer::class), 'create_plan_template', ['name' => 'MCP allocation template']);
+        $templateId = $template['result']['structuredContent']['data']['entity']['id'];
+
+        $response = $this->callTool(app(FinancialMcpServer::class), 'create_allocation_rule', [
+            'plan_template_id' => $templateId,
+            'asset_id' => $asset->id,
+            'bucket_id' => $bucket->id,
+            'allocation_percent' => 100,
+        ]);
+
+        $this->assertFalse($response['result']['isError'] ?? false);
+        $this->assertDatabaseHas('allocation_rules', ['plan_template_id' => $templateId, 'asset_id' => $asset->id, 'bucket_id' => $bucket->id]);
     }
 
     public function test_mcp_accepts_full_asset_value_allocations_and_audits_before_and_after_states(): void
@@ -169,7 +216,7 @@ class McpSafetyTest extends TestCase
 
     public function test_mcp_prepares_next_month_from_a_closed_review_with_provenance(): void
     {
-        $bucket = Bucket::create(['name' => 'Long-Term Investing', 'color' => '#123456']);
+        $bucket = Bucket::create(['name' => 'Long-Term Investing', 'purpose_type' => 'investment', 'color' => '#123456']);
         $review = MonthlyFinancialReview::create([
             'month' => now()->startOfMonth(),
             'income_egp' => 10000,

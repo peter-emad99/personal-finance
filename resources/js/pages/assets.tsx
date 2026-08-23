@@ -17,6 +17,7 @@ import {
     PageHeader,
     Progress,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { FormModal, FormModalClose } from '@/components/form';
 import {
     Card,
@@ -759,15 +760,11 @@ export default function Assets({
                                         Acquired on{' '}
                                         <Help text="The date you bought or received the holding. It helps you remember the history; it does not change its value." />
                                     </FieldLabel>
-                                    <Input
+                                    <DatePicker
                                         id="asset-acquired-on"
-                                        type="date"
                                         value={form.acquired_on}
-                                        onChange={(event) =>
-                                            update(
-                                                'acquired_on',
-                                                event.target.value,
-                                            )
+                                        onChange={(value) =>
+                                            update('acquired_on', value)
                                         }
                                     />
                                 </Field>

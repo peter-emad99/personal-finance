@@ -14,8 +14,8 @@ use App\Models\CashFlow;
 use App\Models\DecisionJournalEntry;
 use App\Models\FinancialSetting;
 use App\Models\FxRate;
-use App\Models\GoldPrice;
 use App\Models\Goal;
+use App\Models\GoldPrice;
 use App\Models\ImportBatch;
 use App\Models\IntegrityCheck;
 use App\Models\LedgerTransaction;
@@ -51,13 +51,16 @@ class FinanceService
 
     private readonly MarketDataService $marketData;
 
-    public function __construct(?LiquidityPolicy $liquidityPolicy = null, ?LedgerService $ledgerService = null, ?AllocationActualService $allocationActuals = null, ?ObligationChangeService $obligationChanges = null, ?MarketDataService $marketData = null)
+    private readonly BudgetRuleService $budgetRules;
+
+    public function __construct(?LiquidityPolicy $liquidityPolicy = null, ?LedgerService $ledgerService = null, ?AllocationActualService $allocationActuals = null, ?ObligationChangeService $obligationChanges = null, ?MarketDataService $marketData = null, ?BudgetRuleService $budgetRules = null)
     {
         $this->liquidityPolicy = $liquidityPolicy ?? new LiquidityPolicy;
         $this->ledgerService = $ledgerService ?? new LedgerService;
         $this->allocationActuals = $allocationActuals ?? new AllocationActualService($this->ledgerService);
         $this->obligationChanges = $obligationChanges ?? new ObligationChangeService;
         $this->marketData = $marketData ?? new MarketDataService;
+        $this->budgetRules = $budgetRules ?? new BudgetRuleService;
     }
 
     /** @return array<string, mixed> */
@@ -85,6 +88,11 @@ class FinanceService
         $totalLiabilities = $this->sumMoney($liabilities, fn (Liability $liability): string => (string) $liability->balance_egp);
         $totalAssetValue = $this->sumMoney($assets, fn (Asset $asset): string => (string) $asset->current_value_egp);
         $netWorth = round($totalAssetValue - $totalLiabilities, 2);
+        $heldElsewhere = $this->sumMoney(
+            $assets->filter(fn (Asset $asset): bool => str_contains(strtolower((string) $asset->type), 'receivable')),
+            fn (Asset $asset): string => (string) $asset->current_value_egp,
+        );
+        $directlyControlledAssets = round(max(0, $totalAssetValue - $heldElsewhere), 2);
         $availability = $this->liquidityPolicy->availability($assets);
         $reservedForGoals = (float) $this->goalBuckets($buckets)->sum(function (Bucket $bucket) {
             return $this->bucketValue($bucket);
@@ -92,22 +100,24 @@ class FinanceService
         $income = $useManualReview ? (float) $review->income_egp : (float) $ledgerSummary['income'];
         $expenses = $useManualReview
             ? $this->reviewExpenses($review)
-            : round((float) $ledgerSummary['essentialExpenses'] + (float) $ledgerSummary['lifestyleExpenses'] + (float) $ledgerSummary['recurringCommitments'] + (float) $ledgerSummary['oneTimeExpenses'] + (float) $ledgerSummary['debtPayments'], 2);
-        $essentialExpenses = $useManualReview
-            ? (float) $review->essential_expenses_egp + (float) $review->recurring_commitments_egp + (float) $review->debt_payments_egp
-            : round((float) $ledgerSummary['essentialExpenses'] + (float) $ledgerSummary['recurringCommitments'] + (float) $ledgerSummary['debtPayments'], 2);
+            : (float) ($ledgerSummary['totalOutflow'] ?? round((float) $ledgerSummary['essentialExpenses'] + (float) $ledgerSummary['lifestyleExpenses'] + (float) $ledgerSummary['recurringCommitments'] + (float) $ledgerSummary['oneTimeExpenses'] + (float) $ledgerSummary['debtPayments'], 2));
         $policy = $this->liquidityPolicy->payload();
         $sourceStatus = $this->sourceStatus($review, $assets, $asOf);
         $emergency = $this->liquidityPolicy->emergencyEligibleAmount(
             $buckets,
             (string) $policy['emergencyEligibleLiquidity'],
         );
-        $monthlyBase = $essentialExpenses ?: $expenses;
+        // Confirmed ledger rows do not carry a universal "essential" type.
+        // Use total recorded outflow as the conservative policy base unless
+        // the user has supplied an explicit monthly-review base.
+        $monthlyBase = $useManualReview
+            ? (float) $review->essential_expenses_egp + (float) $review->recurring_commitments_egp + (float) $review->debt_payments_egp
+            : $expenses;
         $invested = $useManualReview ? (float) $review->invested_egp : (float) $ledgerSummary['invested'];
         $recurringMonthly = $useManualReview
             ? (float) $review->recurring_commitments_egp
             : ($ledgerSummary['source'] === 'confirmed_ledger'
-                ? (float) $ledgerSummary['recurringCommitments']
+                ? 0.0
                 : (float) $commitments->sum(fn (RecurringCommitment $commitment) => $commitment->monthlyAmount()));
 
         $allocatedToGoals = $this->sumMoney($this->goalBuckets($buckets), fn (Bucket $bucket): string => (string) $this->bucketValue($bucket));
@@ -154,28 +164,33 @@ class FinanceService
         $actualTracking = $this->allocationActuals->previewForMonth($monthStart);
         $obligationChanges = $this->obligationChanges->compare($this->reviewSnapshot($review), $commitments, $liabilities);
         if ($actualTracking !== null && $actualTracking['source'] === 'confirmed_ledger') {
-            $allocationItems = $monthlyPlan['allocationItems'] ?? [];
-            if (is_array($allocationItems)) {
-                $monthlyPlan['allocationItems'] = array_map(function (mixed $item) use ($actualTracking): mixed {
+            $monthlyPlan['allocationItems'] = collect($monthlyPlan['allocationItems'] ?? [])
+                ->map(function (mixed $item) use ($actualTracking): mixed {
                     if (is_array($item)) {
-                        $item['actual'] = (float) ($actualTracking['actuals'][$item['bucketId'] ?? 0] ?? 0);
+                        $item['actual'] = (float) ($actualTracking['itemActuals'][$item['planItemId'] ?? 0]
+                            ?? $actualTracking['actuals'][$item['bucketId'] ?? 0]
+                            ?? 0);
                     }
 
                     return $item;
-                }, $allocationItems);
-            }
+                })->values();
+            $monthlyPlan['plannedExpenseCategories'] = collect($monthlyPlan['plannedExpenseCategories'] ?? [])
+                ->map(function (mixed $item) use ($actualTracking): mixed {
+                    if (is_array($item) && ($item['categoryId'] ?? null) !== null) {
+                        $item['actual'] = (float) ($actualTracking['expenseActuals'][$item['categoryId']] ?? 0);
+                    }
+
+                    return $item;
+                })->values();
+        }
+        if ($actualTracking !== null) {
             $monthlyPlan['actualTracking'] = $actualTracking;
         }
         $monthlyRatios = $this->monthlyRatios(
             $income,
-            $useManualReview ? (float) $review->essential_expenses_egp : (float) $ledgerSummary['essentialExpenses'],
-            $useManualReview ? (float) $review->lifestyle_expenses_egp : (float) $ledgerSummary['lifestyleExpenses'],
-            $useManualReview ? (float) $review->recurring_commitments_egp : (float) $ledgerSummary['recurringCommitments'],
-            $useManualReview ? (float) $review->debt_payments_egp : (float) $ledgerSummary['debtPayments'],
-            $useManualReview ? (float) $review->one_time_expenses_egp + (float) $review->manual_adjustment_egp : (float) $ledgerSummary['oneTimeExpenses'],
+            $expenses,
             $invested,
             $monthlyPlan,
-            $policy,
         );
         $financialFreedom = $this->financialFreedom($netWorth, $reservedForGoals, $emergency, $expenses, $invested, $policy);
         $wealthStage = $this->wealthStage($income - $expenses, $monthlyBase, $emergency, $invested, $totalLiabilities, $netWorth, $financialFreedom, (int) $policy['emergencyReserveMonths']);
@@ -216,6 +231,8 @@ class FinanceService
             'marketRates' => $marketRates,
             'figureSources' => [
                 'netWorth' => ['status' => 'manual_value', 'source' => 'assets.current_value_egp − liabilities.balance_egp'],
+                'directlyControlledAssets' => ['status' => 'manual_value', 'source' => 'assets.current_value_egp excluding receivables'],
+                'heldElsewhere' => ['status' => 'manual_value', 'source' => 'assets classified as receivables'],
                 'cashSafety' => ['status' => 'manual_value', 'source' => 'assets.liquidity + emergency purpose allocations'],
                 'monthlyCashFlow' => ['status' => $useManualReview ? ($review->status === 'closed' ? 'closed_review' : 'current_estimate') : ($ledgerSummary['source'] === 'confirmed_ledger' ? 'confirmed' : 'needs_review'), 'source' => $useManualReview ? 'monthly_financial_reviews' : $ledgerSummary['source']],
                 'goals' => ['status' => 'current_estimate', 'source' => 'goals + purpose buckets + monthly cash flow'],
@@ -223,6 +240,8 @@ class FinanceService
             ],
             'summary' => [
                 'netWorth' => $netWorth,
+                'directlyControlledAssets' => $directlyControlledAssets,
+                'heldElsewhere' => $heldElsewhere,
                 'investableNetWorth' => max(0, $netWorth - $reservedForGoals),
                 // Keep liquidAssets as a compatibility alias for the safe, three-day tier.
                 'liquidAssets' => $availability['availableWithinThreeDays'],
@@ -271,11 +290,7 @@ class FinanceService
             'monthlyFlow' => $this->monthlyFlowPayload(
                 $income,
                 $expenses,
-                $useManualReview ? (float) $review->essential_expenses_egp : (float) $ledgerSummary['essentialExpenses'],
-                $useManualReview ? (float) $review->lifestyle_expenses_egp : (float) $ledgerSummary['lifestyleExpenses'],
-                $useManualReview ? (float) $review->recurring_commitments_egp : (float) $ledgerSummary['recurringCommitments'],
-                $useManualReview ? (float) $review->one_time_expenses_egp : (float) $ledgerSummary['oneTimeExpenses'],
-                $useManualReview ? (float) $review->manual_adjustment_egp : 0,
+                $useManualReview ? (float) $review->recurring_commitments_egp : 0.0,
                 $useManualReview ? (float) $review->debt_payments_egp : (float) $ledgerSummary['debtPayments'],
                 $invested,
                 $monthlyPlan,
@@ -348,7 +363,7 @@ class FinanceService
             'changeAttribution' => $snapshot->change_attribution,
             'capturedAt' => $snapshot->captured_at ? Carbon::parse($snapshot->captured_at)->toIso8601String() : null,
         ])->values()->all();
-        $allocationPlans = AllocationPlan::with('items')->orderByDesc('month')->limit(24)->get()->map(fn (AllocationPlan $plan): array => $plan->toArray())->values()->all();
+        $allocationPlans = AllocationPlan::with(['incomeItems', 'items', 'expenseItems'])->orderByDesc('month')->limit(24)->get()->map(fn (AllocationPlan $plan): array => $plan->toArray())->values()->all();
         $settings = FinancialSetting::withTrashed()->orderByDesc('id')->get()->map(fn (FinancialSetting $setting): array => $setting->toArray())->values()->all();
         $auditReferences = AuditLog::latest()->limit(200)->get(['id', 'action', 'entity_type', 'entity_id', 'tool_name', 'dashboard_version', 'created_at'])->toArray();
 
@@ -549,7 +564,7 @@ class FinanceService
                 'id' => null,
                 'month' => $month->toDateString(),
                 'income' => $ledgerSummary['income'],
-                'expenses' => round($ledgerSummary['essentialExpenses'] + $ledgerSummary['lifestyleExpenses'] + $ledgerSummary['recurringCommitments'] + $ledgerSummary['oneTimeExpenses'] + $ledgerSummary['debtPayments'], 2),
+                'expenses' => (float) ($ledgerSummary['totalOutflow'] ?? round($ledgerSummary['essentialExpenses'] + $ledgerSummary['lifestyleExpenses'] + $ledgerSummary['recurringCommitments'] + $ledgerSummary['oneTimeExpenses'] + $ledgerSummary['debtPayments'], 2)),
                 'essentialExpenses' => $ledgerSummary['essentialExpenses'],
                 'lifestyleExpenses' => $ledgerSummary['lifestyleExpenses'],
                 'recurringCommitments' => $ledgerSummary['recurringCommitments'],
@@ -564,7 +579,7 @@ class FinanceService
                 'reconciliationStatus' => $review?->reconciliation_status ?? 'pending',
                 'reconciledAt' => $review?->reconciled_at?->toIso8601String(),
                 'obligationSnapshot' => $review?->obligation_snapshot,
-            ] + $this->monthlyReviewLinkage((float) $ledgerSummary['recurringCommitments'], (float) $ledgerSummary['debtPayments'], $commitments, $liabilities, 'confirmed_ledger') + ['obligationChanges' => $obligationChanges];
+            ] + $this->monthlyReviewLinkage(0.0, (float) $ledgerSummary['debtPayments'], $commitments, $liabilities, 'confirmed_ledger') + ['obligationChanges' => $obligationChanges];
         }
         $income = (float) $flows->where('type', 'income')->sum('amount_egp');
         // A fallback review is built from actual entries only. Commitments are
@@ -787,7 +802,7 @@ class FinanceService
                 : (float) $summary['income'];
             $expenses = $review && $summary['source'] !== 'confirmed_ledger'
                 ? $this->reviewExpenses($review)
-                : round((float) $summary['essentialExpenses'] + (float) $summary['lifestyleExpenses'] + (float) $summary['recurringCommitments'] + (float) $summary['oneTimeExpenses'] + (float) $summary['debtPayments'], 2);
+                : (float) ($summary['totalOutflow'] ?? round((float) $summary['essentialExpenses'] + (float) $summary['lifestyleExpenses'] + (float) $summary['recurringCommitments'] + (float) $summary['oneTimeExpenses'] + (float) $summary['debtPayments'], 2));
             $invested = $review && $summary['source'] !== 'confirmed_ledger' ? (float) $review->invested_egp : (float) $summary['invested'];
             $debtPayments = $review && $summary['source'] !== 'confirmed_ledger' ? (float) $review->debt_payments_egp : (float) $summary['debtPayments'];
             $history[] = [
@@ -862,7 +877,7 @@ class FinanceService
         $ledgerSummary = $this->ledgerService->summarizeMonth($asOf->copy()->startOfMonth(), true);
         $monthlyFreeCashFlow = $review && $ledgerSummary['source'] !== 'confirmed_ledger'
             ? (float) $review->income_egp - $this->reviewExpenses($review)
-            : (float) $ledgerSummary['income'] - round((float) $ledgerSummary['essentialExpenses'] + (float) $ledgerSummary['lifestyleExpenses'] + (float) $ledgerSummary['recurringCommitments'] + (float) $ledgerSummary['oneTimeExpenses'] + (float) $ledgerSummary['debtPayments'], 2);
+            : (float) $ledgerSummary['income'] - (float) ($ledgerSummary['totalOutflow'] ?? round((float) $ledgerSummary['essentialExpenses'] + (float) $ledgerSummary['lifestyleExpenses'] + (float) $ledgerSummary['recurringCommitments'] + (float) $ledgerSummary['oneTimeExpenses'] + (float) $ledgerSummary['debtPayments'], 2));
         $fundingSources = $goal->buckets
             ->flatMap(fn (Bucket $bucket) => $bucket->assets->map(fn (Asset $asset): array => [
                 'assetId' => $asset->id,
@@ -980,52 +995,111 @@ class FinanceService
         $freeCashFlow = round($income - $expenses, 2);
         $emergencyTarget = round(max(0, $monthlyBase * $reserveMonths), 2);
         $emergencyGap = round(max(0, $emergencyTarget - $emergencyFund), 2);
-        $savedPlan = AllocationPlan::with('items.bucket')->whereDate('month', $month->toDateString())->first();
-
+        $savedPlan = AllocationPlan::with([
+            'template',
+            'incomeItems.budgetRule',
+            'items.asset',
+            'items.bucket.goal',
+            'expenseItems.category',
+        ])->whereDate('month', $month->toDateString())->first();
+        $template = $savedPlan?->template ?? $this->budgetRules->ensureDefaultTemplate($income);
+        $plannedIncome = $savedPlan ? (float) $savedPlan->planned_income_egp : $this->budgetRules->templateIncome($template, $income);
         if ($savedPlan !== null) {
-            $allocationItems = $savedPlan->items->map(fn (AllocationPlanItem $item): array => [
-                'bucketId' => $item->bucket_id,
-                'label' => $item->bucket->name,
-                'amount' => (float) $item->planned_amount_egp,
-                'actual' => (float) $item->actual_amount_egp,
-                'kind' => $item->bucket->goal_id ? 'goal' : (str_contains(strtolower($item->bucket->name), 'emergency') ? 'emergency' : 'investment'),
-            ])->filter(fn (array $item): bool => $item['amount'] > 0)->values();
-            $planSource = 'saved_plan';
+            $incomeRules = $savedPlan->incomeItems->isNotEmpty()
+                ? $savedPlan->incomeItems->map(fn ($item): array => [
+                    'id' => $item->budget_rule_id,
+                    'label' => $item->name,
+                    'amount' => (float) $item->planned_amount_egp,
+                    'percent' => null,
+                ])->values()
+                : collect([[
+                    'label' => 'Saved planned income',
+                    'amount' => (float) $savedPlan->planned_income_egp,
+                    'percent' => null,
+                ]]);
+            $plannedIncomeSources = $savedPlan->incomeItems->isNotEmpty()
+                ? $savedPlan->incomeItems->map(fn ($item): array => [
+                    'id' => $item->id,
+                    'label' => $item->name,
+                    'amount' => (float) $item->planned_amount_egp,
+                ])->values()
+                : collect([[
+                    'label' => 'Saved planned income',
+                    'amount' => (float) $savedPlan->planned_income_egp,
+                ]]);
         } else {
-            $available = max(0, $freeCashFlow);
-            $emergencyContribution = min($emergencyGap, round($available * 0.2, 2));
-            $goalPool = min(
-                max(0, $available - $emergencyContribution),
-                round($available * 0.3, 2),
-                (float) $goals->sum(fn (array $goal): float => (float) ($goal['plannedMonthlyContribution'] ?? $goal['requiredMonthlyContribution'] ?? 0)),
-            );
-            $investmentPool = max(0, round($available - $emergencyContribution - $goalPool, 2));
-            $emergencyBucket = $buckets->first(fn (Bucket $bucket): bool => str_contains(strtolower($bucket->name), 'emergency'));
-            $goalBucket = $buckets->first(fn (Bucket $bucket): bool => $bucket->goal_id !== null);
-            $investmentBucket = $buckets->first(fn (Bucket $bucket): bool => $bucket->goal_id === null && ! str_contains(strtolower($bucket->name), 'emergency'));
-            $allocationItems = collect([
-                ['bucketId' => $emergencyBucket?->id, 'label' => $emergencyBucket?->name ?? 'Emergency fund', 'amount' => $emergencyContribution, 'actual' => 0, 'kind' => 'emergency'],
-                ['bucketId' => $goalBucket?->id, 'label' => $goalBucket?->name ?? 'Goals', 'amount' => $goalPool, 'actual' => 0, 'kind' => 'goal'],
-                ['bucketId' => $investmentBucket?->id, 'label' => $investmentBucket?->name ?? 'Long-term investments', 'amount' => $investmentPool, 'actual' => 0, 'kind' => 'investment'],
-            ])->filter(fn (array $item): bool => $item['amount'] > 0)->values();
-            $planSource = 'starter_template';
+            $incomeRules = $this->budgetRules->templateIncomeSuggestions($template, $income);
+            $plannedIncomeSources = $incomeRules;
         }
 
+        if ($savedPlan !== null) {
+            $plannedExpenseCategories = $savedPlan->expenseItems->isNotEmpty()
+                ? $savedPlan->expenseItems->map(fn ($item): array => [
+                    'categoryId' => $item->budget_category_id,
+                    'label' => $item->category?->name ?? 'Uncategorized',
+                    'planned' => (float) $item->planned_amount_egp,
+                    'actual' => (float) $item->actual_amount_egp,
+                ])->values()
+                : collect([[
+                    'categoryId' => null,
+                    'label' => 'Saved planned outflow',
+                    'planned' => (float) $savedPlan->planned_expenses_egp,
+                    'actual' => 0.0,
+                ]]);
+            $plannedExpenses = (float) $savedPlan->planned_expenses_egp;
+            $allocationItems = $savedPlan->items->map(function (AllocationPlanItem $item): array {
+                $bucketName = $item->bucket?->name ?? 'Unassigned bucket';
+                $assetName = $item->asset_target ?: ($item->asset?->name ?? null);
+
+                return [
+                    'planItemId' => $item->id,
+                    'bucketId' => $item->bucket_id,
+                    'label' => $assetName ? $assetName.' → '.$bucketName : $bucketName,
+                    'amount' => (float) $item->planned_amount_egp,
+                    'actual' => (float) $item->actual_amount_egp,
+                    'kind' => $item->bucket?->goal_id !== null ? 'goal' : ($item->bucket?->purpose_type ?? 'other'),
+                    'assetId' => $item->asset_id,
+                    'assetName' => $item->asset?->name,
+                    'assetTarget' => $item->asset_target,
+                    'allocationPercent' => $item->allocation_percent !== null ? (float) $item->allocation_percent : null,
+                ];
+            })->values();
+            $planSource = 'saved_plan';
+        } else {
+            $plannedExpenseCategories = $this->budgetRules->templateExpenseSuggestions($template, $plannedIncome)->map(fn (array $item): array => [
+                'categoryId' => $item['categoryId'],
+                'label' => $item['categoryName'],
+                'planned' => (float) $item['planned'],
+                'actual' => 0.0,
+            ])->values();
+            $plannedExpenses = round((float) $plannedExpenseCategories->sum('planned'), 2);
+            $allocationItems = $this->budgetRules->templateAllocationSuggestions($template, $plannedIncome, $plannedExpenses);
+            $planSource = 'plan_template';
+        }
+
+        $plannedFreeCashFlow = round($plannedIncome - $plannedExpenses, 2);
         $plannedTotal = round((float) $allocationItems->sum('amount'), 2);
 
         return [
             'incomeSources' => $incomeSources,
             'expenseCategories' => $expenseCategories,
+            'incomeRules' => $incomeRules,
+            'plannedIncomeSources' => $plannedIncomeSources,
+            'plannedExpenseCategories' => $plannedExpenseCategories,
             'income' => round($income, 2),
             'expenses' => round($expenses, 2),
-            'plannedIncome' => $savedPlan ? (float) $savedPlan->planned_income_egp : round($income, 2),
-            'plannedExpenses' => $savedPlan ? (float) $savedPlan->planned_expenses_egp : round($expenses, 2),
+            'plannedIncome' => round($plannedIncome, 2),
+            'plannedExpenses' => round($plannedExpenses, 2),
+            'plannedFreeCashFlow' => $plannedFreeCashFlow,
             'freeCashFlow' => $freeCashFlow,
             'emergencyTarget' => $emergencyTarget,
             'emergencyGap' => $emergencyGap,
             'allocationItems' => $allocationItems,
             'plannedTotal' => $plannedTotal,
-            'unallocated' => round(max(0, $freeCashFlow - $plannedTotal), 2),
+            'unallocated' => round(max(0, $plannedFreeCashFlow - $plannedTotal), 2),
+            'templateId' => $template->id,
+            'templateName' => $template->name,
+            'planStatus' => $savedPlan?->status,
             'source' => $planSource,
         ];
     }
@@ -1034,11 +1108,7 @@ class FinanceService
     private function monthlyFlowPayload(
         float $income,
         float $expenses,
-        float $essentialExpenses,
-        float $lifestyleExpenses,
         float $recordedCommitments,
-        float $oneTimeExpenses,
-        float $manualAdjustment,
         float $recordedDebtPayments,
         float $invested,
         array $monthlyPlan,
@@ -1054,9 +1124,13 @@ class FinanceService
         $plannedFreeCashFlow = round($plannedIncome - $plannedExpenses, 2);
         $freeCashFlow = round($income - $expenses, 2);
         $plannedAllocations = collect($monthlyPlan['allocationItems'] ?? []);
+        $plannedExpenseItems = collect($monthlyPlan['plannedExpenseCategories'] ?? []);
         $plannedTotal = round((float) $plannedAllocations->sum('amount'), 2);
-        $unassigned = round(max(0, $freeCashFlow - $plannedTotal), 2);
-        $overAllocated = round(max(0, $plannedTotal - $freeCashFlow), 2);
+        $plannedUnassigned = round(max(0, $plannedFreeCashFlow - $plannedTotal), 2);
+        $plannedOverAllocated = round(max(0, $plannedTotal - $plannedFreeCashFlow), 2);
+        $actualAllocationTotal = round((float) $plannedAllocations->sum('actual'), 2);
+        $actualUnassigned = round(max(0, $freeCashFlow - $actualAllocationTotal), 2);
+        $actualOverAllocated = round(max(0, $actualAllocationTotal - $freeCashFlow), 2);
         $commitmentVariance = round($recordedCommitments - $configuredCommitments, 2);
         $debtVariance = round($recordedDebtPayments - $configuredDebtPayments, 2);
         $planIncomeVariance = round($income - $plannedIncome, 2);
@@ -1069,9 +1143,29 @@ class FinanceService
         $investmentMinimum = max(0, min(100, (float) ($thresholds['investment_minimum_percent'] ?? 80)));
         $incomeVariancePercent = $plannedIncome > 0 ? round(abs($planIncomeVariance) / $plannedIncome * 100, 1) : ($income > 0 ? 100.0 : 0.0);
         $expenseVariancePercent = $plannedExpenses > 0 ? round(abs($planExpensesVariance) / $plannedExpenses * 100, 1) : ($expenses > 0 ? 100.0 : 0.0);
-        $investmentTargetPercent = (float) data_get($policy, 'monthlyAllocationTargets.investing', 15);
+        $investmentTargetPercent = $plannedIncome > 0 && $plannedAllocations->isNotEmpty()
+            ? round((float) $plannedAllocations->where('kind', 'investment')->sum('amount') / $plannedIncome * 100, 1)
+            : 0.0;
         $investmentRate = $income > 0 ? round($invested / $income * 100, 1) : 0.0;
         $investmentFloorPercent = round($investmentTargetPercent * $investmentMinimum / 100, 1);
+        $linkedActualOutflow = round((float) $plannedExpenseItems->sum('actual'), 2);
+        $trackedUnmappedOutflow = (float) data_get($monthlyPlan, 'actualTracking.unmappedExpenseAmount', 0);
+        $unmappedOutflow = round(max(0, $trackedUnmappedOutflow ?: $expenses - $linkedActualOutflow), 2);
+        $dynamicOutflows = $plannedExpenseItems->map(fn (array $item): array => [
+            'key' => 'plan_expense_'.((string) ($item['categoryId'] ?? $item['label'] ?? 'unmapped')),
+            'label' => (string) ($item['label'] ?? 'Uncategorized plan expense'),
+            'amount' => round((float) ($item['actual'] ?? 0), 2),
+            'expected' => round((float) ($item['planned'] ?? 0), 2),
+            'kind' => 'plan_category',
+        ])->filter(fn (array $item): bool => $item['amount'] !== 0 || $item['expected'] !== 0)->values();
+        if ($unmappedOutflow > 0.01) {
+            $dynamicOutflows->push([
+                'key' => 'unmapped_actual_outflow',
+                'label' => 'Actual outflow not linked to this plan',
+                'amount' => $unmappedOutflow,
+                'kind' => 'unmapped',
+            ]);
+        }
         $varianceAlerts = array_values(array_filter([
             $incomeVariancePercent >= $incomeThreshold && abs($planIncomeVariance) > 0.01 ? [
                 'code' => 'income_variance',
@@ -1108,8 +1202,10 @@ class FinanceService
             abs($debtVariance) > 0.01 ? 'The review does not match the monthly payments on your active liabilities.' : null,
             abs($planIncomeVariance) > 0.01 ? 'Actual income differs from the income used in the monthly plan.' : null,
             abs($planExpensesVariance) > 0.01 ? 'Actual outflow differs from the outflow used in the monthly plan.' : null,
-            $overAllocated > 0.01 ? 'Your planned allocations are higher than this month’s free cash flow.' : null,
-            $unassigned > 0.01 ? 'Some free cash flow still has no assigned purpose.' : null,
+            $plannedOverAllocated > 0.01 ? 'Your planned allocations are higher than the planned free cash flow.' : null,
+            $plannedUnassigned > 0.01 ? 'The current plan still has free cash flow with no assigned purpose.' : null,
+            $actualOverAllocated > 0.01 ? 'Actual linked allocations are higher than actual free cash flow.' : null,
+            $actualUnassigned > 0.01 ? 'Actual free cash flow still has no linked allocation.' : null,
             (float) ($monthlyPlan['emergencyGap'] ?? 0) <= 0 && $emergencyAllocation > 0 ? 'Your emergency reserve is already at target; consider redirecting this contribution.' : null,
             ...array_map(fn (array $alert): string => match ($alert['code']) {
                 'income_variance' => sprintf('Income is %.1f%% different from the plan.', $alert['variancePercent']),
@@ -1118,9 +1214,9 @@ class FinanceService
             }, $varianceAlerts),
         ]));
 
-        $status = $overAllocated > 0.01
+        $status = max($plannedOverAllocated, $actualOverAllocated) > 0.01
             ? 'over_allocated'
-            : ($unassigned > 0.01 ? 'needs_direction' : ($hasLinkageMismatch ? 'needs_sync' : (count($warnings) > 0 ? 'needs_direction' : 'balanced')));
+            : ($hasLinkageMismatch ? 'needs_sync' : ($plannedUnassigned > 0.01 || $actualUnassigned > 0.01 ? 'needs_direction' : (count($warnings) > 0 ? 'needs_direction' : 'balanced')));
 
         return [
             'source' => $source,
@@ -1128,14 +1224,7 @@ class FinanceService
             'income' => round($income, 2),
             'expenses' => round($expenses, 2),
             'freeCashFlow' => $freeCashFlow,
-            'outflows' => [
-                ['key' => 'essential', 'label' => 'Essential living', 'amount' => round($essentialExpenses, 2), 'kind' => 'actual'],
-                ['key' => 'lifestyle', 'label' => 'Lifestyle', 'amount' => round($lifestyleExpenses, 2), 'kind' => 'actual'],
-                ['key' => 'commitments', 'label' => 'Recurring commitments', 'amount' => round($recordedCommitments, 2), 'expected' => $configuredCommitments, 'kind' => 'linked'],
-                ['key' => 'one_time', 'label' => 'One-time expenses', 'amount' => round($oneTimeExpenses, 2), 'kind' => 'actual'],
-                ['key' => 'adjustment', 'label' => 'Other adjustment', 'amount' => round($manualAdjustment, 2), 'kind' => 'actual'],
-                ['key' => 'debt', 'label' => 'Debt payments', 'amount' => round($recordedDebtPayments, 2), 'expected' => $configuredDebtPayments, 'kind' => 'linked'],
-            ],
+            'outflows' => $dynamicOutflows->all(),
             'planned' => [
                 'income' => round($plannedIncome, 2),
                 'expenses' => round($plannedExpenses, 2),
@@ -1156,8 +1245,13 @@ class FinanceService
                 'variance' => round((float) $item['actual'] - (float) $item['amount'], 2),
             ])->values()->all(),
             'allocationTotal' => $plannedTotal,
-            'unassigned' => $unassigned,
-            'overAllocated' => $overAllocated,
+            'actualAllocationTotal' => $actualAllocationTotal,
+            'plannedUnassigned' => $plannedUnassigned,
+            'actualUnassigned' => $actualUnassigned,
+            'unassigned' => $plannedUnassigned,
+            'plannedOverAllocated' => $plannedOverAllocated,
+            'actualOverAllocated' => $actualOverAllocated,
+            'overAllocated' => max($plannedOverAllocated, $actualOverAllocated),
             'varianceAlerts' => $varianceAlerts,
             'warnings' => $warnings,
         ];
@@ -1249,43 +1343,56 @@ class FinanceService
     }
 
     /**
-     * Turn the current month into a simple income allocation view. The values
-     * are deliberately descriptive; target percentages are personal rules,
-     * not universal financial advice.
+     * Turn the current month into a plan-owned comparison view.
+     *
+     * Rows come from the selected month plan. This method deliberately does
+     * not manufacture semantic groups from labels such as "essential" or
+     * "investment"; those are user-owned categories and purpose buckets.
      *
      * @param  array<string, mixed>  $monthlyPlan
-     * @param  array<string, mixed>  $policy
      * @return array<string, mixed>
      */
     private function monthlyRatios(
         float $income,
-        float $essentialExpenses,
-        float $lifestyleExpenses,
-        float $recurringCommitments,
-        float $debtPayments,
-        float $oneTimeExpenses,
+        float $expenses,
         float $invested,
         array $monthlyPlan,
-        array $policy,
     ): array {
-        $items = collect($monthlyPlan['allocationItems'] ?? []);
-        $plannedEmergency = (float) $items->where('kind', 'emergency')->sum('amount');
-        $plannedGoals = (float) $items->where('kind', 'goal')->sum('amount');
-        $plannedInvesting = (float) $items->where('kind', 'investment')->sum('amount');
-        $freeCashFlow = max(0, $income - ($essentialExpenses + $lifestyleExpenses + $recurringCommitments + $debtPayments + $oneTimeExpenses));
-        $unallocated = max(0, $freeCashFlow - $plannedEmergency - $plannedGoals - $plannedInvesting);
-        $targets = is_array($policy['monthlyAllocationTargets'] ?? null)
-            ? $policy['monthlyAllocationTargets']
-            : FinancialSetting::defaultMonthlyAllocationTargets();
-        $rows = [
-            ['key' => 'essentials', 'label' => 'Essentials & commitments', 'amount' => $essentialExpenses + $recurringCommitments, 'target' => $targets['essentials'] ?? 0],
-            ['key' => 'lifestyle', 'label' => 'Lifestyle & one-time', 'amount' => $lifestyleExpenses + $oneTimeExpenses, 'target' => $targets['lifestyle'] ?? 0],
-            ['key' => 'debt', 'label' => 'Debt payments', 'amount' => $debtPayments, 'target' => $targets['debt'] ?? 0],
-            ['key' => 'emergency', 'label' => 'Emergency fund', 'amount' => $plannedEmergency, 'target' => $targets['emergency'] ?? 0],
-            ['key' => 'goals', 'label' => 'Goals', 'amount' => $plannedGoals, 'target' => $targets['goals'] ?? 0],
-            ['key' => 'investing', 'label' => 'Investments', 'amount' => $plannedInvesting ?: $invested, 'target' => $targets['investing'] ?? 0],
-            ['key' => 'unallocated', 'label' => 'Not assigned', 'amount' => $unallocated, 'target' => 0],
-        ];
+        $freeCashFlow = max(0, $income - $expenses);
+        $plannedIncome = max(0, (float) ($monthlyPlan['plannedIncome'] ?? $income));
+        $plannedExpenses = collect($monthlyPlan['plannedExpenseCategories'] ?? []);
+        $allocationItems = collect($monthlyPlan['allocationItems'] ?? []);
+        $plannedFreeCashFlow = max(0, $plannedIncome - (float) $plannedExpenses->sum('planned'));
+        $plannedTotal = (float) $allocationItems->sum('amount');
+        $plannedUnallocated = max(0, $plannedFreeCashFlow - $plannedTotal);
+        $targetPercent = static fn (float $amount): ?float => $plannedIncome > 0 ? round($amount / $plannedIncome * 100, 1) : null;
+        $rows = [];
+        foreach ($plannedExpenses as $item) {
+            $planned = (float) ($item['planned'] ?? 0);
+            $rows[] = [
+                'key' => 'expense_'.((string) ($item['categoryId'] ?? $item['label'] ?? 'unmapped')),
+                'label' => (string) ($item['label'] ?? 'Uncategorized plan expense'),
+                'amount' => (float) ($item['actual'] ?? 0),
+                'target' => $targetPercent($planned),
+            ];
+        }
+        foreach ($allocationItems as $item) {
+            $planned = (float) ($item['amount'] ?? 0);
+            $rows[] = [
+                'key' => 'allocation_'.((string) ($item['planItemId'] ?? $item['bucketId'] ?? $item['label'] ?? 'unmapped')),
+                'label' => (string) ($item['label'] ?? 'Unassigned allocation row'),
+                'amount' => (float) ($item['actual'] ?? 0),
+                'target' => $targetPercent($planned),
+            ];
+        }
+        $actualTracking = is_array($monthlyPlan['actualTracking'] ?? null) ? $monthlyPlan['actualTracking'] : [];
+        if ((float) ($actualTracking['unmappedExpenseAmount'] ?? 0) > 0) {
+            $rows[] = ['key' => 'unmapped_expenses', 'label' => 'Unmapped actual expenses', 'amount' => (float) $actualTracking['unmappedExpenseAmount'], 'target' => null];
+        }
+        if ((float) ($actualTracking['unmappedPurposeAmount'] ?? 0) > 0) {
+            $rows[] = ['key' => 'unmapped_allocations', 'label' => 'Unlinked actual allocations', 'amount' => (float) $actualTracking['unmappedPurposeAmount'], 'target' => null];
+        }
+        $rows[] = ['key' => 'planned_unallocated', 'label' => 'Planned unassigned remainder', 'amount' => 0.0, 'target' => $targetPercent($plannedUnallocated)];
 
         return [
             'income' => round($income, 2),
@@ -1300,7 +1407,7 @@ class FinanceService
                     'label' => $row['label'],
                     'amount' => $amount,
                     'percent' => $income > 0 ? round($amount / $income * 100, 1) : 0,
-                    'targetPercent' => (float) $row['target'],
+                    'targetPercent' => $row['target'] !== null ? (float) $row['target'] : null,
                 ];
             })->values()->all(),
             'source' => 'current_month_review_or_confirmed_ledger',

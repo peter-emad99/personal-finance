@@ -32,7 +32,7 @@ class LedgerService
     {
         return LedgerTransaction::confirmed()
             ->whereBetween('occurred_on', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()])
-            ->with(['category', 'splits.category'])
+            ->with(['category.budgetCategory', 'splits.category.budgetCategory'])
             ->orderBy('occurred_on')
             ->orderBy('id')
             ->get();
@@ -67,6 +67,7 @@ class LedgerService
             'oneTimeExpenses' => round((float) $legacy->where('type', 'expense')->where('category', '!=', 'essential')->sum('amount_egp'), 2),
             'debtPayments' => round((float) $legacy->where('type', 'obligation')->sum('amount_egp'), 2),
             'invested' => 0.0,
+            'totalOutflow' => round((float) $legacy->whereIn('type', ['expense', 'obligation'])->sum('amount_egp'), 2),
             'source' => 'legacy_cash_flow',
             'sourceTransactionCount' => 0,
             'legacyFallbackUsed' => true,
@@ -79,18 +80,21 @@ class LedgerService
      */
     private function summarizeTransactions(Collection $transactions): array
     {
-        $income = $essential = $lifestyle = $recurring = $oneTime = $debt = $invested = 0.0;
+        $income = $essential = $lifestyle = $recurring = $oneTime = $debt = $invested = $totalOutflow = 0.0;
         foreach ($transactions as $transaction) {
             if ($transaction->isTransfer()) {
                 continue;
             }
             $parts = $transaction->splits->isNotEmpty()
-                ? $transaction->splits->map(fn ($split): array => ['amount' => (float) $split->amount_egp, 'type' => (string) $split->transaction_type, 'category' => strtolower((string) ($split->category->name ?? ''))])
-                : collect([['amount' => (float) $transaction->amount_egp, 'type' => (string) $transaction->transaction_type, 'category' => strtolower((string) ($transaction->category->name ?? ''))]]);
+                ? $transaction->splits->map(fn ($split): array => ['amount' => (float) $split->amount_egp, 'type' => (string) $split->transaction_type, 'category' => $this->categoryLabel($split->category ?? $transaction->category)])
+                : collect([['amount' => (float) $transaction->amount_egp, 'type' => (string) $transaction->transaction_type, 'category' => $this->categoryLabel($transaction->category)]]);
             foreach ($parts as $part) {
                 $amount = $part['amount'];
                 $type = $part['type'];
                 $category = $part['category'];
+                if (in_array($type, ['expense', 'fee', 'tax', 'withdrawal', 'debt_payment', 'obligation'], true)) {
+                    $totalOutflow += $amount;
+                }
                 if (in_array($type, ['income', 'interest', 'dividend', 'withdrawal_reversal'], true)) {
                     $income += $amount;
 
@@ -128,7 +132,17 @@ class LedgerService
             'oneTimeExpenses' => round($oneTime, 2),
             'debtPayments' => round($debt, 2),
             'invested' => round($invested, 2),
+            // The dashboard uses this exact transaction-type total. The
+            // named fields above remain only for legacy review compatibility.
+            'totalOutflow' => round($totalOutflow, 2),
         ];
+    }
+
+    private function categoryLabel(mixed $category): string
+    {
+        $parent = $category?->budgetCategory?->name;
+
+        return strtolower(trim(($parent ? $parent.' ' : '').((string) ($category?->name ?? ''))));
     }
 
     /** @return array<string, mixed> */
@@ -137,7 +151,7 @@ class LedgerService
         return [
             'income' => 0.0, 'essentialExpenses' => 0.0, 'lifestyleExpenses' => 0.0,
             'recurringCommitments' => 0.0, 'oneTimeExpenses' => 0.0, 'debtPayments' => 0.0,
-            'invested' => 0.0, 'source' => $source, 'sourceTransactionCount' => 0,
+            'invested' => 0.0, 'totalOutflow' => 0.0, 'source' => $source, 'sourceTransactionCount' => 0,
             'legacyFallbackUsed' => false,
         ];
     }

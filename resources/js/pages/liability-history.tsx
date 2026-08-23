@@ -9,6 +9,7 @@ import {
     CardHeader,
     PageHeader,
 } from '@/components/app-shell';
+import { DatePicker } from '@/components/date-picker';
 import { FormModal } from '@/components/form';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -194,14 +195,11 @@ export default function LiabilityHistory({
                                 <FieldLabel htmlFor="liability-history-date">
                                     As of
                                 </FieldLabel>
-                                <Input
+                                <DatePicker
                                     id="liability-history-date"
-                                    type="date"
                                     required
                                     value={form.as_of}
-                                    onChange={(event) =>
-                                        update('as_of', event.target.value)
-                                    }
+                                    onChange={(value) => update('as_of', value)}
                                 />
                             </Field>
                             <Field>

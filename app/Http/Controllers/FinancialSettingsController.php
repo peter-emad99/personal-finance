@@ -62,8 +62,6 @@ class FinancialSettingsController extends Controller
             'emergency_reserve_months' => ['required', 'integer', 'between:1,36'],
             'emergency_eligible_liquidity' => ['required', 'in:immediate,within_3_days'],
             'policy' => ['nullable', 'array'],
-            'policy.monthly_allocation_targets' => ['nullable', 'array'],
-            'policy.monthly_allocation_targets.*' => ['required', 'numeric', 'between:0,100'],
             'policy.financial_freedom' => ['nullable', 'array'],
             'policy.financial_freedom.withdrawal_rate_percent' => ['nullable', 'numeric', 'between:1,10'],
             'policy.financial_freedom.annual_spending_override_egp' => ['nullable', 'numeric', 'min:0'],
@@ -98,14 +96,6 @@ class FinancialSettingsController extends Controller
         }
 
         $data['asset_class_targets'] = $targets;
-
-        if (isset($data['policy']['monthly_allocation_targets'])) {
-            $allocationTargets = array_map('floatval', $data['policy']['monthly_allocation_targets']);
-            if (abs(array_sum($allocationTargets) - 100) > 0.01) {
-                throw ValidationException::withMessages(['policy.monthly_allocation_targets' => 'Monthly allocation targets must add up to 100%.']);
-            }
-            $data['policy']['monthly_allocation_targets'] = $allocationTargets;
-        }
 
         if (isset($data['policy']['financial_freedom']['withdrawal_rate_percent'])) {
             $data['policy']['financial_freedom']['withdrawal_rate_percent'] = (float) $data['policy']['financial_freedom']['withdrawal_rate_percent'];

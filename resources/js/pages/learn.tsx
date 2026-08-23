@@ -8,12 +8,14 @@ import {
     CreditCard,
     Database,
     Flag,
+    FileClock,
     Gauge,
     Landmark,
     Leaf,
     ListChecks,
     RefreshCw,
     ShieldCheck,
+    SlidersHorizontal,
     Sparkles,
     TrendingUp,
     WalletCards,
@@ -71,39 +73,75 @@ type HabitCard = {
 const gettingStarted: GuideStep[] = [
     {
         number: '01',
+        title: 'Set your policy first',
+        description:
+            'Choose your base currency, emergency reserve months, liquidity rule, alert thresholds, and whether closing a review may prepare the next month automatically. The safe default is manual confirmation.',
+        href: '/settings/financial',
+        action: 'Set financial policy',
+        icon: ShieldCheck,
+    },
+    {
+        number: '02',
         title: 'Add what you own',
         description:
-            'Start with cash, USD, gold, funds, shares, and any other asset you can value today.',
+            'Start with cash, USD, gold, funds, shares, and any other asset you can value today. Add purpose buckets when you know what each amount is for.',
         href: '/assets',
         action: 'Add assets',
         icon: WalletCards,
     },
     {
-        number: '02',
+        number: '03',
+        title: 'Record commitments and debt',
+        description:
+            'Add subscriptions, recurring obligations, liabilities, balances, rates, and required payments. These reduce future free cash flow and make warnings meaningful.',
+        href: '/commitments',
+        action: 'Add commitments',
+        icon: CreditCard,
+    },
+    {
+        number: '04',
         title: 'Set your monthly flow',
         description:
-            'Record each income source and your monthly expenses. USD entries keep their original value and an EGP equivalent.',
+            'Record each income source and monthly expense. Use budget categories for planned outflows; USD entries keep their original value and an EGP equivalent.',
         href: '/cash-flow',
         action: 'Add income & expenses',
         icon: Gauge,
     },
     {
-        number: '03',
+        number: '05',
+        title: 'Define your monthly rules',
+        description:
+            'Create reusable income, expense, and allocation rules in a plan template. Percentages use income for income and expenses, then available cash for allocations.',
+        href: '/monthly-rules',
+        action: 'Set plan rules',
+        icon: SlidersHorizontal,
+    },
+    {
+        number: '06',
         title: 'Give the surplus a job',
         description:
-            'Use the monthly plan to reserve emergency cash, fund goals, and invest what remains.',
+            'Choose a template for the month, review its expense categories, and adjust the allocation snapshot before saving.',
         href: '/allocations',
         action: 'Make a monthly plan',
         icon: ListChecks,
     },
     {
-        number: '04',
+        number: '07',
         title: 'Connect a real goal',
         description:
             'Create a phone, car, or other goal, then link its contribution to the assets or buckets that hold the money.',
         href: '/goals',
         action: 'Create a goal',
         icon: Flag,
+    },
+    {
+        number: '08',
+        title: 'Review and protect the snapshot',
+        description:
+            'Compare planned with actual results, then close the month when you want that history protected from future template edits.',
+        href: '/monthly-plans',
+        action: 'View plan history',
+        icon: RefreshCw,
     },
 ];
 
@@ -296,6 +334,68 @@ const moneyFormulas: LearningBlock[] = [
     },
 ];
 
+const dashboardFormulas: LearningBlock[] = [
+    {
+        title: 'Current position',
+        description:
+            'The top summary cards describe what exists today, not a historical net-worth statement.',
+        icon: Landmark,
+        points: [
+            'Total assets = the sum of each asset current_value_egp. Net worth = total assets − active liability balances.',
+            'Directly controlled assets = total assets minus assets classified as receivables or held elsewhere.',
+            'Available now and within 3 days use each asset’s explicit liquidity tier. They are not the same as total net worth.',
+            'Emergency fund uses assets assigned to an emergency bucket and allowed by your emergency liquidity policy.',
+        ],
+    },
+    {
+        title: 'Monthly actuals',
+        description:
+            'The dashboard chooses the most reliable source available for the selected month.',
+        icon: Gauge,
+        points: [
+            'Confirmed ledger rows are preferred when they exist for the month.',
+            'Otherwise an open or closed monthly review is used; if there is no review, the dashboard falls back to cash-flow entries.',
+            'Income and outflow produce free cash flow = income − total outflow. The total includes every confirmed non-transfer outflow; the plan comparison only assigns it to a category when the source record is explicitly linked.',
+            'A review or ledger source changes actuals; it does not rewrite the plan snapshot.',
+        ],
+    },
+    {
+        title: 'Plan calculation',
+        description:
+            'The plan explains what you intended to do with the month before reality is compared with it.',
+        icon: ListChecks,
+        points: [
+            'A saved monthly plan is the source for its month. Without one, the dashboard evaluates the active template live.',
+            'Planned income comes from fixed income rules or percentages of the month’s income. Planned expenses are summed by budget category from fixed or percentage rules.',
+            'Planned free cash flow = planned income − planned expenses. Allocation rules take a percentage of that post-expense amount.',
+            'The dashboard card renders the exact expense categories and allocation rows from the current month plan. It does not create universal Essentials, Lifestyle, Debt, Emergency, Goals, or Investments rows.',
+            'An expense actual matches a plan category only through the linked budget category on the transaction category. An allocation actual matches only through the explicitly selected purpose bucket.',
+            'Descriptions and names are never used to guess a category or purpose. Unlinked expenses and allocations are shown separately so you can fix the source record.',
+            'Planned unassigned remainder = max(0, planned free cash flow − the plan’s allocation rows). Actual values do not rewrite the saved plan.',
+        ],
+    },
+    {
+        title: 'Goals, safety, and warnings',
+        description:
+            'The lower dashboard cards turn the numbers into decisions without pretending to decide for you.',
+        icon: ShieldCheck,
+        points: [
+            'Emergency target = essential monthly base × configured reserve months. Coverage months = eligible emergency amount ÷ that monthly base.',
+            'Savings rate = free cash flow ÷ income. Investment rate = actual investing ÷ income. Both are 0 when income is 0.',
+            'Goal funding is processed in priority order from the remaining monthly cash flow, so one pound is not promised to every goal at once.',
+            'Variance alerts compare actual income/outflow with plan using your thresholds. Commitment and debt warnings compare recorded payments with active configuration.',
+        ],
+    },
+];
+
+const dashboardReadOrder = [
+    ['1', 'Check the source', 'Read data freshness, valuation freshness, and whether actuals come from the confirmed ledger, a review, or cash-flow fallback.'],
+    ['2', 'Read current position', 'Use net worth, controlled assets, liquidity, emergency coverage, and liabilities to understand today.'],
+    ['3', 'Read the month', 'Compare actual income and outflow with the saved plan or the active template, then inspect free cash flow.'],
+    ['4', 'Follow the attention queue', 'Resolve over-allocation, unassigned cash, changed commitments, debt mismatches, or stale values before optimising.'],
+    ['5', 'Take one action', 'Open the linked page, make the smallest useful correction, and return to the dashboard to confirm the result.'],
+];
+
 const learningQuestions = [
     {
         question: 'What is Kakeibo exactly?',
@@ -340,12 +440,12 @@ const learningQuestions = [
     {
         question: 'What do the dashboard warning thresholds mean?',
         answer:
-            'They are personal prompts. Income and outflow thresholds compare the current month with the saved plan. The investment threshold compares your actual investment pace with the investing percentage configured in Monthly allocation rules. Lowering a threshold makes the app more sensitive; raising it reduces noise. The warnings do not block you or make a decision for you.',
+            'They are personal prompts. Income and outflow thresholds compare the current month with the saved plan. The investment threshold compares actual investing with the investment amount planned for this month. Lowering a threshold makes the app more sensitive; raising it reduces noise. The warnings do not block you or make a decision for you.',
     },
     {
         question: 'What happens when I confirm next month’s plan?',
         answer:
-            'The app proposes income from the closed review, current recurring obligations, debt payments, emergency funding, goals, and investments. You see the numbers before saving. If the emergency target is already complete, one click redirects the suggested reserve slice to goals or investments. Your lesson is stored with the new plan so the next review starts with context.',
+            'The app carries forward the selected plan template when the closed month has one. It recalculates income rules, expense rules, commitment-linked outflows, and allocation percentages using the new month’s income. Without a source template, it uses the review-based fallback. You see the numbers before saving, and your lesson is stored with the new plan.',
     },
     {
         question: 'How should I record a lender payment?',
@@ -355,7 +455,22 @@ const learningQuestions = [
     {
         question: 'What does automatic preparation on close do?',
         answer:
-            'It is an optional shortcut in Financial policy. When enabled, closing a review prepares the next month only if no plan exists for that month. It uses the same safe generator as the confirmation flow and never replaces a plan you already created. Leave it disabled if you want to review every proposal manually.',
+            'It is an optional shortcut in Financial policy and is off by default. When enabled, closing a review prepares the next month only if no plan exists for that month. It uses the same safe generator as the confirmation flow and never replaces a plan you already created.',
+    },
+    {
+        question: 'How do income, expense, and allocation rules work?',
+        answer:
+            'Income rules can be fixed EGP amounts or percentages of the month’s income. Expense rules roll up by budget category and can also be fixed or percentage-based. Allocation rules use percentages of the cash left after planned expenses, then connect that amount to an asset target and purpose bucket. The total allocation percentage cannot exceed 100%.',
+    },
+    {
+        question: 'What is the difference between a template and a monthly plan?',
+        answer:
+            'A template is reusable policy for future months. A monthly plan is the snapshot for one month: it stores the income, expense categories, allocation rows, and actuals you reviewed. Editing a template does not rewrite an existing saved or closed monthly snapshot.',
+    },
+    {
+        question: 'Why do budget categories matter?',
+        answer:
+            'Categories make expense rules and actual ledger spending comparable. A custom category is preserved in the monthly snapshot, while the default categories give you a useful starting structure. The category describes the outflow; the purpose bucket describes what saved or invested money is for.',
     },
     {
         question: 'How do I read the twelve-month history?',
@@ -373,11 +488,12 @@ const basicSections: GuideSection[] = [
         icon: Landmark,
         fields: [
             'Net worth: everything you own minus what you owe.',
-            'This month’s breathing room: income after expenses.',
+            'Current month plan versus actual: a saved plan when one exists, otherwise a live template preview beside actual month data.',
+            'This month’s breathing room: actual income after actual expenses.',
             'Emergency coverage: how many months your reserve can cover.',
         ],
         relation:
-            'It reads from assets, income & expenses, monthly plans, buckets, and goals. It is the best place to decide what to do next—not the place where every record is created.',
+            'It reads from assets, income & expenses, the saved monthly plan or active template, buckets, and goals. It is the best place to decide what to do next—not the place where every record is created.',
         outcome:
             'You can see your position, spot the next important action, and jump directly to the right page.',
     },
@@ -415,19 +531,70 @@ const basicSections: GuideSection[] = [
     },
     {
         title: 'Monthly plan',
-        description: 'How the remaining money is divided before it disappears.',
+        description: 'A month-specific snapshot generated from reusable rules.',
         href: '/allocations',
         page: 'Monthly plan',
         icon: ListChecks,
         fields: [
-            'Monthly income and expenses: the plan’s available cash calculation.',
-            'Purpose bucket and amount: where each piece of the surplus should go.',
-            'Plan total: must stay within your free cash flow.',
+            'Template and income: the rules selected for this month and their calculated EGP result.',
+            'Expense categories: the planned outflow snapshot, including commitment-linked rules.',
+            'Allocation rows: percentages of the cash left after expenses, linked to an asset and purpose bucket.',
+            'Actuals: manual or confirmed-ledger values that do not rewrite the planned snapshot.',
         ],
         relation:
-            'The plan funds emergency reserves, goals, and investments through purpose buckets. It is a plan; asset allocations show where the money actually sits.',
+            'The plan applies a template once, then stores the result for the selected month. It funds emergency reserves, goals, and investments through purpose buckets; asset allocations show where the money actually sits.',
         outcome:
-            'Every remaining pound gets a clear job before the month is over.',
+            'Every planned pound has a category, purpose, or an explicit unallocated remainder.',
+    },
+    {
+        title: 'Plan templates & rules',
+        description: 'Reusable monthly policy for income, expenses, and allocations.',
+        href: '/monthly-rules',
+        page: 'Plan templates',
+        icon: SlidersHorizontal,
+        fields: [
+            'Income rules: fixed amounts or percentages of income; multiple sources are allowed.',
+            'Expense rules: fixed amounts or percentages, grouped by a budget category.',
+            'Allocation rules: a percentage of post-expense cash, linked to an asset target and purpose bucket.',
+            'Template actions: duplicate, set a default, edit, or create one from a monthly snapshot.',
+        ],
+        relation:
+            'Templates are the reusable source of truth for future plans. Commitment-linked rules stay connected to active commitments, while a saved monthly plan remains a historical snapshot.',
+        outcome:
+            'Your dashboard and new monthly plans use the same visible rules instead of hidden fallback percentages.',
+    },
+    {
+        title: 'Budget categories',
+        description: 'The labels that make planned and actual expenses comparable.',
+        href: '/budget-categories',
+        page: 'Budget categories',
+        icon: Database,
+        fields: [
+            'Categories are user-owned labels for planned outflows; the app does not assume what a name means.',
+            'Custom categories: add a category when your real spending needs a clearer label.',
+            'Monthly snapshot: category amounts are copied into the plan for the month.',
+            'Actual matching: link transaction categories to the same budget category. Unlinked transactions remain unmapped.',
+        ],
+        relation:
+            'Budget categories describe outflows. They are separate from purpose buckets, which describe why surplus money is reserved or invested.',
+        outcome:
+            'You can see which rule or category caused a plan number and compare it with actual ledger spending.',
+    },
+    {
+        title: 'Monthly snapshots & history',
+        description: 'A safe record of what you intended and what happened.',
+        href: '/monthly-plans',
+        page: 'Monthly plans & history',
+        icon: RefreshCw,
+        fields: [
+            'Open plan: still editable for the month.',
+            'Closed plan: protected from template changes and normal edits.',
+            'Actuals: synced from confirmed ledger transactions or entered manually.',
+        ],
+        relation:
+            'A template can evolve while past months stay honest. Use “save as template” when a real month teaches you a better repeatable rule.',
+        outcome:
+            'You can learn from history without accidentally rewriting it.',
     },
     {
         title: 'Goals',
@@ -450,15 +617,48 @@ const basicSections: GuideSection[] = [
 
 const advancedSections: GuideSection[] = [
     {
+        title: 'Commitments',
+        description: 'Recurring costs that are already spoken for.',
+        href: '/commitments',
+        page: 'Commitments',
+        icon: RefreshCw,
+        fields: [
+            'Name, amount, currency, frequency, and active status.',
+            'Monthly equivalent: the amount used in monthly cash-flow checks.',
+            'Change history: what was added, removed, renamed, or repriced since the last closed review.',
+        ],
+        relation:
+            'Active commitments are synchronised into templates and monthly reviews, then reduce free cash flow before allocations.',
+        outcome:
+            'You see the recurring costs that future months must carry before you make new promises.',
+    },
+    {
+        title: 'Monthly review',
+        description: 'The close-of-month feedback loop.',
+        href: '/monthly-review',
+        page: 'Monthly review',
+        icon: BookOpen,
+        fields: [
+            'Actual income and expense totals, including commitments and debt payments.',
+            'Plan versus actual differences, obligation changes, and the lesson for next month.',
+            'Close and prepare-next actions: close protects the review and confirmation carries a proposal forward.',
+        ],
+        relation:
+            'The review turns evidence into a dated decision. When a ledger month is confirmed, its rows become the preferred actual source on the dashboard.',
+        outcome:
+            'You finish the month with an explanation, a protected snapshot, and a better next plan.',
+    },
+    {
         title: 'Purpose buckets',
         description: 'Labels for why money exists.',
         href: '/buckets',
         page: 'Purpose buckets',
         icon: Database,
         fields: [
-            'Name: for example Emergency reserve, Car, or Long-term investing.',
-            'Type: safety, goal, investment, or another purpose.',
+            'Name and purpose: describe the job you choose for the money; the label is not interpreted as a type.',
+            'Policy purpose: explicitly choose emergency reserve, investment, goal-linked, or other when a policy calculation needs that meaning.',
             'Target: an optional amount that makes progress measurable.',
+            'Monthly actual matching: explicitly select this bucket on contribution or investment transactions.',
         ],
         relation:
             'Buckets connect plans, goals, and asset allocations. They answer “what is this money for?” while assets answer “where is it held?”',
@@ -466,28 +666,88 @@ const advancedSections: GuideSection[] = [
             'You can separate money for different jobs without pretending it must live in separate accounts.',
     },
     {
-        title: 'Financial policy & monthly review',
-        description: 'Your rules and your monthly feedback loop.',
-        href: '/settings/financial',
-        page: 'Financial policy',
-        icon: ShieldCheck,
+        title: 'Liabilities',
+        description: 'Balances and required payments that affect the plan.',
+        href: '/liabilities',
+        page: 'Liabilities',
+        icon: CreditCard,
         fields: [
-            'Emergency reserve months: normally 3–6 months of essential expenses.',
-            'Monthly limits: guardrails for debt and decisions.',
-            'Monthly review: save what actually happened and the decision you made.',
-            'Change watch: compare each active commitment and liability with the last closed review.',
-            'Debt payoff picture: estimated interest, principal, and remaining months from the current payment.',
-            'Warning thresholds: choose how large a plan difference should be before the dashboard prompts you, and how close investment pace must be to target.',
-            'Next-month confirmation: review the proposal, choose goals or investments when the reserve is complete, and carry one spending lesson forward.',
+            'Current balance, annual interest rate, minimum monthly payment, and active status.',
+            'Record payment: statement total, principal, interest, fees, date, and balance after payment.',
+            'Payoff estimate and extra-payment scenarios are planning estimates, separate from lender facts.',
         ],
         relation:
-            'Policy sets the emergency target shown on the dashboard. Monthly reviews compare the plan with actual confirmed activity, while the closed snapshot gives the next review a baseline for obligation changes.',
+            'Liability balances reduce net worth. Required payments reduce monthly free cash flow and are compared with review and ledger totals.',
         outcome:
-            'Your system becomes consistent across months instead of reacting to every new expense, and you can see when a changed obligation reduces your free cash flow.',
+            'The dashboard shows debt impact without confusing a projection with a lender statement.',
     },
     {
-        title: 'Ledger, categories & imports',
-        description: 'A precise record for people who want reconciliation.',
+        title: 'Reconciliation',
+        description: 'Check account totals and monthly evidence.',
+        href: '/reconciliation',
+        page: 'Reconciliation',
+        icon: ListChecks,
+        fields: [
+            'Account balances: what the ledger says each account contains.',
+            'Confirmed income and commitment payments for the month.',
+            'Pending import rows and review status.',
+        ],
+        relation:
+            'Reconciliation validates the ledger source before it becomes the dashboard’s preferred actual source.',
+        outcome:
+            'You know whether a total is complete, pending review, or needs an account-level correction.',
+    },
+    {
+        title: 'Allocation reconciliation',
+        description: 'Check that purpose allocations are backed by real assets.',
+        href: '/allocation-reconciliation',
+        page: 'Allocation reconciliation',
+        icon: ListChecks,
+        fields: [
+            'Asset value versus amounts allocated to purpose buckets.',
+            'Over-allocated assets and allocations without a clear purpose.',
+            'Goal and emergency funding coverage.',
+        ],
+        relation:
+            'It protects the distinction between a physical asset and the jobs assigned to it.',
+        outcome:
+            'You avoid counting the same money twice across goals, emergency savings, and investments.',
+    },
+    {
+        title: 'Purchase scenarios',
+        description: 'Test a purchase before committing real money.',
+        href: '/scenarios',
+        page: 'Purchase scenarios',
+        icon: Gauge,
+        fields: [
+            'Price, down payment, financing, and monthly payment assumptions.',
+            'Cash remaining after purchase and the minimum-cash policy check.',
+            'Debt burden and emergency reserve impact.',
+        ],
+        relation:
+            'Scenarios read the dashboard’s current liquidity, free cash flow, liabilities, and financial policy.',
+        outcome:
+            'You can compare a decision with your safety rules before it becomes a transaction.',
+    },
+    {
+        title: 'Snapshots',
+        description: 'Dated checkpoints for your financial position.',
+        href: '/snapshots',
+        page: 'Snapshots',
+        icon: RefreshCw,
+        fields: [
+            'Snapshot date, asset values, liabilities, and position summary.',
+            'Current checkpoints for progress reviews.',
+            'Historical accuracy depends on dated valuations, liability histories, and ledger rows.',
+        ],
+        relation:
+            'Snapshots preserve a point-in-time view; current asset values alone cannot recreate the past.',
+        outcome:
+            'You can compare real checkpoints without treating today’s values as historical facts.',
+    },
+    {
+        title: 'Ledger & imports',
+        description: 'The precise transaction source.',
         href: '/ledger',
         page: 'Ledger & imports',
         icon: BookOpen,
@@ -502,36 +762,117 @@ const advancedSections: GuideSection[] = [
             'You get auditable totals and can reconcile them with your accounts.',
     },
     {
-        title: 'Valuations, FX & reconciliation',
-        description: 'Keep mixed-currency and investment values trustworthy.',
+        title: 'Ledger categories',
+        description: 'Labels that make transaction summaries meaningful.',
+        href: '/transaction-categories',
+        page: 'Transaction categories',
+        icon: Database,
+        fields: [
+            'Names and types used by ledger transactions.',
+            'Consistent labels for essentials, lifestyle, commitments, debt, and investing.',
+            'Archive or restore categories without deleting transaction history.',
+        ],
+        relation:
+            'Ledger categories explain actual rows; budget categories explain planned outflows. Similar names help comparison, but they are separate systems.',
+        outcome:
+            'Your actual monthly totals remain understandable when transactions come from imports or multiple accounts.',
+    },
+    {
+        title: 'Asset valuations',
+        description: 'Keep asset values dated and explainable.',
         href: '/valuations',
         page: 'Valuation history',
         icon: Coins,
         fields: [
             'Valuation: a dated current value for an asset.',
-            'FX rate: converts USD and other currencies into EGP reporting.',
-            'Reconciliation: finds gaps between purposes, assets, and records.',
+            'Source and method: how the value was obtained.',
+            'Freshness: compare the latest valuation age with your policy window.',
         ],
         relation:
-            'These tools keep the dashboard’s EGP totals, net worth trend, and asset-purpose backing reliable over time.',
+            'The dashboard uses the asset current value for today and shows valuation freshness so you can judge confidence.',
         outcome:
-            'You can trust the numbers even when values move or currencies change.',
+            'You can distinguish contributions, price movement, and stale information over time.',
     },
     {
-        title: 'Debt statements & payoff scenarios',
-        description: 'Turn a balance into a lender-aware repayment picture.',
-        href: '/liabilities',
-        page: 'Liabilities',
-        icon: CreditCard,
+        title: 'FX rates',
+        description: 'Explain mixed-currency EGP reporting.',
+        href: '/fx-rates',
+        page: 'FX rates',
+        icon: Coins,
         fields: [
-            'Payment record: total payment, principal, interest, fees, date, and balance after payment.',
-            'Recorded totals: what your lender statements actually say over time.',
-            'Extra monthly payment scenarios: compare payoff dates and interest savings without changing the real liability.',
+            'Currency pair and effective date.',
+            'Rate used to convert native amounts into the base EGP report.',
+            'Historical rates for explaining why converted values changed.',
         ],
         relation:
-            'The current balance and rate drive the estimate; statement records add evidence. Scenarios are decisions to review, not automatic payments.',
+            'Cash-flow and asset records keep their native currency while the dashboard reports comparable EGP totals.',
         outcome:
-            'You can see whether extra debt capacity is worth using and keep the estimate separate from lender facts.',
+            'You can explain an EGP number without losing the original USD or other-currency amount.',
+    },
+    {
+        title: 'Liability history',
+        description: 'Track debt balances from dated statements.',
+        href: '/liability-history',
+        page: 'Liability history',
+        icon: FileClock,
+        fields: [
+            'Statement date and balance for each liability.',
+            'Progress across dates, separate from the current liability record.',
+            'Archived history remains available for review.',
+        ],
+        relation:
+            'Historical balances let you tell whether debt is falling; the dashboard’s current balance remains the live position.',
+        outcome:
+            'You can see debt direction instead of inferring history from one current number.',
+    },
+    {
+        title: 'Financial policy',
+        description: 'The personal rules that drive dashboard guardrails.',
+        href: '/settings/financial',
+        page: 'Financial policy',
+        icon: ShieldCheck,
+        fields: [
+            'Base currency, emergency reserve months, eligible liquidity, and minimum cash after a purchase.',
+            'Allocation targets, debt limits, valuation freshness, and goal funding policy.',
+            'Income/outflow variance thresholds, investment minimum, and optional auto-prepare setting.',
+            'Financial-freedom withdrawal-rate and spending assumptions.',
+        ],
+        relation:
+            'Policy supplies the thresholds and assumptions used by the dashboard, reviews, and purchase scenarios.',
+        outcome:
+            'The app reflects your rules instead of applying one universal percentage to everyone.',
+    },
+    {
+        title: 'Decision journal',
+        description: 'Record assumptions so outcomes become learning.',
+        href: '/decision-journal',
+        page: 'Decision journal',
+        icon: BookOpen,
+        fields: [
+            'Decision, reason, assumptions, alternatives, and expected outcome.',
+            'Review date and result after reality is known.',
+            'Open or completed status for decisions still needing attention.',
+        ],
+        relation:
+            'Monthly review lessons and purchase decisions become a visible feedback loop instead of disappearing from memory.',
+        outcome:
+            'You improve the rule behind the next plan, not only the number on the current dashboard.',
+    },
+    {
+        title: 'Operations',
+        description: 'Protect the workspace and its data.',
+        href: '/operations',
+        page: 'Operations',
+        icon: Database,
+        fields: [
+            'Create and verify backups before important changes.',
+            'Run integrity checks to find broken references or inconsistent records.',
+            'Download, restore, or archive backups deliberately.',
+        ],
+        relation:
+            'Operations does not change your financial logic; it protects the records that make every other page trustworthy.',
+        outcome:
+            'You can recover from mistakes and check the workspace before relying on it for decisions.',
     },
 ];
 
@@ -559,7 +900,7 @@ export default function Learn() {
                             becomes your daily and monthly starting point.
                         </CardDescription>
                         <CardAction>
-                            <Badge variant="secondary">4 steps</Badge>
+                            <Badge variant="secondary">8 steps</Badge>
                         </CardAction>
                     </CardHeader>
                     <CardContent className="flex flex-col gap-3">
@@ -621,14 +962,48 @@ export default function Learn() {
                             label="What happens this month?"
                             detail="Income, expenses, and plan"
                         />
+                        <ModelLine
+                            label="What actually happened?"
+                            detail="Ledger, cash flow, and monthly review"
+                        />
+                        <ModelLine
+                            label="What should I improve?"
+                            detail="Dashboard attention and decision journal"
+                        />
                     </CardContent>
                     <CardFooter className="flex-col items-start gap-2 text-sm text-muted-foreground">
                         <CircleHelp className="text-primary" />
                         Goals sit across the model: they have a purpose, a
-                        monthly plan, and real assets backing them.
+                        monthly plan, actual progress, and real assets backing
+                        them. A purpose allocation does not create new money.
                     </CardFooter>
                 </Card>
             </div>
+
+            <section className="mt-8">
+                <SectionHeading
+                    badge="DASHBOARD · READ IT IN 60 SECONDS"
+                    title="The main dashboard, in the right order"
+                    description="The dashboard is a decision screen. First check where its numbers came from, then understand today, then act on the month. The links in the cards take you to the page that owns the data."
+                />
+                <Card>
+                    <CardContent className="grid gap-4 p-5 md:grid-cols-5">
+                        {dashboardReadOrder.map(([number, title, detail]) => (
+                            <div key={number} className="flex gap-3 md:flex-col">
+                                <div className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                                    {number}
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold">{title}</p>
+                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                        {detail}
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
+                    </CardContent>
+                </Card>
+            </section>
 
             <section className="mt-8">
                 <SectionHeading
@@ -639,12 +1014,14 @@ export default function Learn() {
                 <Card>
                     <CardContent className="grid gap-3 p-5 md:grid-cols-6">
                         {[
-                            ['1', 'Know', 'Assets, debts, commitments'],
-                            ['2', 'Measure', 'Income and actual outflows'],
-                            ['3', 'Protect', 'Emergency reserve and minimums'],
-                            ['4', 'Direct', 'Goals and investments'],
-                            ['5', 'Review', 'Plan versus actual'],
-                            ['6', 'Improve', 'Next month and one lesson'],
+                            ['1', 'Configure', 'Policy, categories, and reusable rules'],
+                            ['2', 'Know', 'Assets, buckets, debts, and commitments'],
+                            ['3', 'Measure', 'Income and actual outflows'],
+                            ['4', 'Plan', 'Template rules become a month snapshot'],
+                            ['5', 'Protect', 'Emergency reserve and required minimums'],
+                            ['6', 'Direct', 'Goals, investments, and unallocated cash'],
+                            ['7', 'Review', 'Plan versus actual evidence'],
+                            ['8', 'Improve', 'Close, learn, and prepare next month'],
                         ].map(([number, title, detail]) => (
                             <div
                                 key={number}
@@ -678,11 +1055,16 @@ export default function Learn() {
 
             <section className="mt-8">
                 <SectionHeading
-                    badge="THE NUMBERS"
-                    title="The rules behind the cards"
-                    description="These are transparent planning formulas. They explain the dashboard; they are not universal financial advice."
+                    badge="DASHBOARD FORMULAS"
+                    title="How the dashboard data is calculated"
+                    description="These are the current calculation rules behind the main cards, monthly flow, allocations, emergency coverage, goals, and warnings. They are transparent planning formulas, not universal financial advice."
                 />
-                <LearningBlockGrid blocks={moneyFormulas} />
+                <div className="flex flex-col gap-4">
+                    <LearningBlockGrid blocks={dashboardFormulas} />
+                    <Separator />
+                    <p className="text-sm font-medium">Supporting planning formulas</p>
+                    <LearningBlockGrid blocks={moneyFormulas} />
+                </div>
             </section>
 
             <section className="mt-8">
@@ -731,16 +1113,16 @@ export default function Learn() {
                 <SectionHeading
                     badge="BASIC"
                     title="Use these pages first"
-                    description="This is the complete everyday workflow. You can run your financial life from these pages and the dashboard."
+                    description="These pages create the records that feed the dashboard: current position, monthly inputs, reusable rules, a month snapshot, and goal progress."
                 />
                 <GuideList sections={basicSections} defaultOpen />
             </section>
 
             <section className="mt-8">
                 <SectionHeading
-                    badge="ADVANCED"
-                    title="Add control when you need it"
-                    description="Use these tools for detailed tracking, historical accuracy, and reviewing financial decisions."
+                    badge="EVERY OTHER PAGE"
+                    title="The complete page-by-page reference"
+                    description="Open these when you need recurring-cost control, ledger evidence, historical accuracy, decision checks, reconciliation, or workspace protection. Each page explains its inputs, connections, and result."
                 />
                 <GuideList sections={advancedSections} />
             </section>

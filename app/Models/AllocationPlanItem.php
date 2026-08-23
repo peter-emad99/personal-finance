@@ -17,6 +17,7 @@ class AllocationPlanItem extends Model
         return [
             'planned_amount_egp' => 'decimal:2',
             'actual_amount_egp' => 'decimal:2',
+            'allocation_percent' => 'decimal:3',
             'actual_synced_at' => 'datetime',
         ];
     }
@@ -25,5 +26,11 @@ class AllocationPlanItem extends Model
     public function bucket(): BelongsTo
     {
         return $this->belongsTo(Bucket::class);
+    }
+
+    /** @return BelongsTo<Asset, $this> */
+    public function asset(): BelongsTo
+    {
+        return $this->belongsTo(Asset::class);
     }
 }

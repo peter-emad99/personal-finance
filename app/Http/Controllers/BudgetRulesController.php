@@ -124,7 +124,7 @@ class BudgetRulesController extends Controller
     public function setDefault(PlanTemplate $template): RedirectResponse
     {
         DB::transaction(function () use ($template): void {
-            PlanTemplate::query()->update(['is_default' => false]);
+            PlanTemplate::query()->get()->each->update(['is_default' => false]);
             $template->update(['is_default' => true]);
         });
 
@@ -178,7 +178,7 @@ class BudgetRulesController extends Controller
                 $rule->fill(['name' => $item['name'], 'direction' => 'income', 'amount_egp' => $item['amount'] ?? null, 'percent_of_income' => $item['percent'] ?? null, 'frequency' => 'monthly', 'is_active' => true])->save();
                 $incomeIds[] = $rule->id;
             }
-            $template->budgetRules()->where('direction', 'income')->whereNotIn('id', $incomeIds ?: [0])->update(['is_active' => false]);
+            $template->budgetRules()->where('direction', 'income')->whereNotIn('id', $incomeIds ?: [0])->get()->each->update(['is_active' => false]);
 
             $expenseIds = [];
             foreach ($data['expense_rules'] ?? [] as $item) {
@@ -191,7 +191,7 @@ class BudgetRulesController extends Controller
                 $rule->fill(['budget_category_id' => $item['category_id'], 'name' => $item['name'], 'direction' => 'expense', 'amount_egp' => $item['amount'] ?? null, 'percent_of_income' => $item['percent'] ?? null, 'frequency' => 'monthly', 'is_active' => true])->save();
                 $expenseIds[] = $rule->id;
             }
-            $template->budgetRules()->where('direction', 'expense')->whereNull('recurring_commitment_id')->whereNotIn('id', $expenseIds ?: [0])->update(['is_active' => false]);
+            $template->budgetRules()->where('direction', 'expense')->whereNull('recurring_commitment_id')->whereNotIn('id', $expenseIds ?: [0])->get()->each->update(['is_active' => false]);
 
             $allocationIds = [];
             foreach ($data['allocation_rules'] ?? [] as $index => $item) {
@@ -207,7 +207,7 @@ class BudgetRulesController extends Controller
                 }
                 $allocationIds[] = $rule->id;
             }
-            $template->allocationRules()->whereNotIn('id', $allocationIds ?: [0])->delete();
+            $template->allocationRules()->whereNotIn('id', $allocationIds ?: [0])->get()->each->delete();
         });
 
         return back()->with('success', 'Template rules saved.');

@@ -6,6 +6,11 @@ use App\Models\Concerns\BelongsToUser;
 use Illuminate\Database\Eloquent\Model;
 use LogicException;
 
+/**
+ * @property array<string, mixed>|null $before_state
+ * @property array<string, mixed>|null $after_state
+ * @property string|null $channel
+ */
 class AuditLog extends Model
 {
     use BelongsToUser;

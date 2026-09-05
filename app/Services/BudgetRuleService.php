@@ -206,7 +206,7 @@ class BudgetRuleService
             ->where('direction', 'expense')
             ->whereNotNull('recurring_commitment_id')
             ->when($activeIds !== [], fn ($query) => $query->whereNotIn('recurring_commitment_id', $activeIds))
-            ->update(['is_active' => false]);
+            ->get()->each->update(['is_active' => false]);
     }
 
     private function seedDefaultRules(PlanTemplate $template, Collection $categories, float $fallbackIncome): void

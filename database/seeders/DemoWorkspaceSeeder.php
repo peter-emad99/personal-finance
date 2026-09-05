@@ -26,6 +26,7 @@ use App\Models\Snapshot;
 use App\Models\TransactionCategory;
 use App\Models\User;
 use App\Services\AllocationActualService;
+use App\Services\AuditLogger;
 use App\Services\BudgetRuleService;
 use App\Support\OwnerContext;
 use Illuminate\Database\Seeder;
@@ -52,6 +53,22 @@ class DemoWorkspaceSeeder extends Seeder
         }
 
         $this->run();
+        $demo = User::query()->where('email', config('finance.demo_email'))->firstOrFail();
+        OwnerContext::set($demo);
+        try {
+            AuditLogger::recordEvent(
+                'demo_reset',
+                'demo_workspace',
+                null,
+                null,
+                ['demo_email' => $demo->email, 'reseeded' => true],
+                'demo_workspace_reset',
+                app()->bound('request') && request()->route() !== null ? 'web' : 'cli',
+                (int) $demo->id,
+            );
+        } finally {
+            OwnerContext::clear();
+        }
     }
 
     public function run(): void

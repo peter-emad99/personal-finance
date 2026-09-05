@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Asset;
 use App\Models\Bucket;
+use App\Services\AuditLogger;
 use App\Services\FinanceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -86,7 +87,16 @@ class BucketController extends Controller
         }
 
         $syncData = $requested->map(fn (float $amount): array => ['amount_egp' => $amount])->all();
+        $before = $bucket->assets()->get()->map(fn (Asset $asset): array => [
+            'asset_id' => $asset->id,
+            'amount_egp' => (float) data_get($asset, 'pivot.amount_egp', 0),
+        ])->values()->all();
         DB::transaction(fn (): array => $bucket->assets()->sync($syncData));
+        $after = $bucket->fresh('assets')?->assets->map(fn (Asset $asset): array => [
+            'asset_id' => $asset->id,
+            'amount_egp' => (float) data_get($asset, 'pivot.amount_egp', 0),
+        ])->values()->all() ?? [];
+        AuditLogger::record('allocation_sync', $bucket, ['asset_allocations' => $before], ['asset_allocations' => $after]);
 
         return back()->with('success', 'Bucket funding updated.');
     }

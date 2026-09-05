@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AllocationController;
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\AssetValuationController;
 use App\Http\Controllers\AuthController;
@@ -46,6 +47,7 @@ Route::put('/password', [PasswordController::class, 'update'])->middleware(['aut
 Route::middleware('auth')->group(function (): void {
     Route::get('/', DashboardController::class)->name('dashboard');
     Route::get('/api/market-rates', [MarketRateController::class, 'index'])->name('api.market-rates');
+    Route::post('/market-rates/sync', [MarketRateController::class, 'sync'])->name('market-rates.sync');
     Route::post('/demo/reset', [DemoWorkspaceController::class, 'reset'])->name('demo.reset');
     Route::get('/learn', fn () => Inertia\Inertia::render('learn'))->name('learn.index');
     Route::get('/assets', [AssetController::class, 'index'])->name('assets.index');
@@ -171,6 +173,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/fx-rates/{fxRate}/restore', [FxRateController::class, 'restore'])->name('fx-rates.restore');
     Route::get('/reconciliation', ReconciliationController::class)->name('reconciliation.index');
     Route::get('/operations', [OperationsController::class, 'index'])->name('operations.index');
+    Route::get('/activity-log', [ActivityLogController::class, 'index'])->name('activity-log.index');
     Route::post('/operations/backups', [OperationsController::class, 'createBackup'])->name('operations.backups.create');
     Route::post('/operations/backups/{backup}/verify', [OperationsController::class, 'verify'])->name('operations.backups.verify');
     Route::get('/operations/backups/{backup}/download', [OperationsController::class, 'download'])->name('operations.backups.download');

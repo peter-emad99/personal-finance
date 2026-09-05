@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Services\AuditLogger;
 use App\Services\MarketDataService;
 use App\Support\OwnerContext;
 use Illuminate\Console\Command;
@@ -20,6 +21,21 @@ class UpdateMarketRatesCommand extends Command
         foreach (User::query()->orderBy('id')->get() as $owner) {
             OwnerContext::set($owner);
             $result = $marketData->syncForOwner();
+            AuditLogger::recordEvent(
+                'market_sync',
+                'market_rates',
+                null,
+                null,
+                [
+                    'fxUpdated' => (bool) ($result['fxUpdated'] ?? false),
+                    'goldUpdated' => (bool) ($result['goldUpdated'] ?? false),
+                    'assetsUpdated' => (int) ($result['assetsUpdated'] ?? 0),
+                    'errors' => $result['errors'] ?? [],
+                ],
+                'finance:update-market-rates',
+                'cli',
+                (int) $owner->id,
+            );
             $this->line(sprintf(
                 'Owner %s: FX %s, gold %s, assets updated %d.',
                 $owner->email,

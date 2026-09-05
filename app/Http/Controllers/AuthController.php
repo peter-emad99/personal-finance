@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AuditLogger;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -41,12 +42,34 @@ class AuthController extends Controller
         }
 
         $request->session()->regenerate();
+        AuditLogger::recordEvent(
+            'login',
+            'user',
+            (int) $request->user()->id,
+            null,
+            ['email' => $request->user()->email],
+            'web_login',
+            'web',
+            (int) $request->user()->id,
+        );
 
         return redirect()->intended(route('dashboard'));
     }
 
     public function logout(Request $request): RedirectResponse
     {
+        if ($request->user() !== null) {
+            AuditLogger::recordEvent(
+                'logout',
+                'user',
+                (int) $request->user()->id,
+                ['authenticated' => true],
+                ['authenticated' => false],
+                'web_logout',
+                'web',
+                (int) $request->user()->id,
+            );
+        }
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
@@ -84,6 +107,16 @@ class AuthController extends Controller
 
         $status = Password::reset($data, function ($user) use ($data): void {
             $user->forceFill(['password' => Hash::make($data['password']), 'remember_token' => Str::random(60)])->save();
+            AuditLogger::recordEvent(
+                'password_reset',
+                'user',
+                (int) $user->id,
+                null,
+                ['changed' => true],
+                'password_reset',
+                'web',
+                (int) $user->id,
+            );
             event(new PasswordReset($user));
         });
 

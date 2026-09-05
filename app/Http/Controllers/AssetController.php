@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Asset;
 use App\Models\Bucket;
+use App\Services\AuditLogger;
 use App\Services\FinanceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -79,7 +80,16 @@ class AssetController extends Controller
             $total += $amount;
         }
         abort_if($total > (float) $asset->current_value_egp, 422, 'Bucket allocations cannot exceed the asset value.');
+        $before = $asset->buckets()->get()->map(fn (Bucket $bucket): array => [
+            'bucket_id' => $bucket->id,
+            'amount_egp' => (float) data_get($bucket, 'pivot.amount_egp', 0),
+        ])->values()->all();
         DB::transaction(fn (): bool => (bool) $asset->buckets()->sync($syncData));
+        $after = $asset->fresh('buckets')?->buckets->map(fn (Bucket $bucket): array => [
+            'bucket_id' => $bucket->id,
+            'amount_egp' => (float) data_get($bucket, 'pivot.amount_egp', 0),
+        ])->values()->all() ?? [];
+        AuditLogger::record('allocation_sync', $asset, ['bucket_allocations' => $before], ['bucket_allocations' => $after]);
 
         return back()->with('success', 'Bucket allocations updated.');
     }

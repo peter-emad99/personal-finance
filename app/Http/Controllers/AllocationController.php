@@ -148,7 +148,7 @@ class AllocationController extends Controller
                 : $template;
             $plan->fill(['month' => $month, 'plan_template_id' => $effectiveTemplate->id, 'planned_income_egp' => $data['planned_income_egp'], 'planned_expenses_egp' => $data['planned_expenses_egp'], 'generation_method' => $plan->exists ? $plan->generation_method : 'from_template', 'status' => $plan->exists ? $plan->status : 'open'])->save();
             if (array_key_exists('income_items', $data)) {
-                $plan->incomeItems()->delete();
+                $plan->incomeItems()->get()->each->delete();
                 foreach ($data['income_items'] as $item) {
                     $budgetRule = isset($item['budget_rule_id']) ? BudgetRule::findOrFail($item['budget_rule_id']) : null;
                     $plan->incomeItems()->create([
@@ -161,7 +161,7 @@ class AllocationController extends Controller
             } elseif (! $plan->incomeItems()->exists()) {
                 $plan->incomeItems()->create(['name' => 'Monthly income', 'planned_amount_egp' => $data['planned_income_egp']]);
             }
-            $plan->items()->delete();
+            $plan->items()->get()->each->delete();
             foreach ($data['items'] ?? [] as $item) {
                 $asset = isset($item['asset_id']) ? Asset::findOrFail($item['asset_id']) : null;
                 if ($asset !== null && ! $asset->buckets()->whereKey($item['bucket_id'])->exists()) {
@@ -172,7 +172,7 @@ class AllocationController extends Controller
                     : (float) $item['planned_amount_egp'];
                 $plan->items()->create(['bucket_id' => $item['bucket_id'], 'asset_id' => $item['asset_id'] ?? null, 'planned_amount_egp' => $amount, 'actual_amount_egp' => $item['actual_amount_egp'] ?? 0, 'asset_target' => $item['asset_target'] ?? $asset?->name, 'allocation_percent' => $item['allocation_percent'] ?? null]);
             }
-            $plan->expenseItems()->delete();
+            $plan->expenseItems()->get()->each->delete();
             foreach ($expenseItems as $item) {
                 $plan->expenseItems()->create(['budget_category_id' => $item['category_id'], 'planned_amount_egp' => $item['planned_amount_egp'], 'actual_amount_egp' => $item['actual_amount_egp'] ?? 0]);
             }

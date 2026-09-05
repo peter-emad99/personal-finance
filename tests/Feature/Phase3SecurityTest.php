@@ -40,6 +40,13 @@ class Phase3SecurityTest extends TestCase
         $this->assertNotSame($sessionId, session()->getId());
         $this->assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
         $this->assertSame('strict-origin-when-cross-origin', $response->headers->get('Referrer-Policy'));
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'login',
+            'entity_type' => 'user',
+            'entity_id' => $owner->id,
+            'channel' => 'web',
+            'tool_name' => 'web_login',
+        ]);
     }
 
     public function test_financial_records_are_isolated_between_users(): void
@@ -91,6 +98,35 @@ class Phase3SecurityTest extends TestCase
 
         $this->expectException(LogicException::class);
         $audit->update(['action' => 'tampered']);
+    }
+
+    public function test_activity_log_page_filters_and_exposes_before_after_details(): void
+    {
+        $data = [
+            'name' => 'Tracked cash',
+            'type' => 'Cash',
+            'currency' => 'EGP',
+            'current_value_egp' => 100,
+            'liquidity' => 'immediate',
+        ];
+        $this->post(route('assets.store'), $data)->assertRedirect();
+        $asset = Asset::query()->where('name', 'Tracked cash')->firstOrFail();
+        $this->put(route('assets.update', $asset), [...$data, 'current_value_egp' => 125])->assertRedirect();
+
+        $this->get(route('activity-log.index', [
+            'action' => 'update',
+            'channel' => 'web',
+            'entity' => Asset::class,
+            'search' => 'Tracked',
+        ]))->assertOk()->assertInertia(function ($page): void {
+            $page->component('activity-log')
+                ->where('entries.0.action', 'update')
+                ->where('entries.0.channel', 'web')
+                ->where('entries.0.entityLabel', 'Tracked cash')
+                ->where('entries.0.changedFields.0.field', 'current_value_egp')
+                ->where('filters.action', 'update')
+                ->where('filters.channel', 'web');
+        });
     }
 
     public function test_encrypted_backup_can_be_created_and_verified(): void

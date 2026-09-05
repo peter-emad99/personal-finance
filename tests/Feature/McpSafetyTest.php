@@ -69,7 +69,12 @@ class McpSafetyTest extends TestCase
         $this->assertSame(1000.0, $data['dashboard_delta']['summary']['availableNow']);
         $this->assertNotEmpty($data['audit_id']);
         $this->assertNotEmpty($data['dashboard_version']);
-        $this->assertDatabaseHas('audit_logs', ['action' => 'create', 'tool_name' => 'create_asset']);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'create',
+            'tool_name' => 'create_asset',
+            'channel' => 'mcp',
+            'agent_id' => 'local-owner-agent',
+        ]);
     }
 
     public function test_mcp_templates_and_commitments_share_the_same_rule_model(): void

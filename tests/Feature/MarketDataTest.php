@@ -51,6 +51,14 @@ class MarketDataTest extends TestCase
 
         $this->artisan('finance:update-market-rates')->assertSuccessful();
 
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'market_sync',
+            'entity_type' => 'market_rates',
+            'channel' => 'cli',
+            'tool_name' => 'finance:update-market-rates',
+            'user_id' => auth()->id(),
+        ]);
+
         $this->assertDatabaseHas('fx_rates', [
             'base_currency' => 'USD',
             'quote_currency' => 'EGP',

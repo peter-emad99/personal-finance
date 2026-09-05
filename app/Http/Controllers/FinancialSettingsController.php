@@ -120,7 +120,7 @@ class FinancialSettingsController extends Controller
     private function activate(FinancialSetting $settings): void
     {
         DB::transaction(function () use ($settings): void {
-            FinancialSetting::query()->whereKeyNot($settings->id)->update(['is_active' => false]);
+            FinancialSetting::query()->whereKeyNot($settings->id)->get()->each->update(['is_active' => false]);
             $settings->updateQuietly(['is_active' => true]);
         });
     }

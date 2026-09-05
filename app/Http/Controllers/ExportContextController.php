@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Services\AuditLogger;
 use App\Services\FinanceService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -32,16 +33,19 @@ class ExportContextController extends Controller
                 'liquidity' => array_map(fn (array $row): array => ['label' => $row['label']], $context['liquidity']),
             ];
         }
-        AuditLog::create([
-            'user_id' => $request->user()->id,
-            'action' => 'export',
-            'entity_type' => 'financial_context',
-            'tool_name' => 'web_export_context',
-            'agent_id' => 'web-session',
-            'request_id' => $request->attributes->get('request_id'),
-            'after_state' => ['scope' => $scope, 'format' => $request->string('format')->toString() ?: 'json'],
-            'dashboard_version' => $context['dashboard_version'] ?? null,
-        ]);
+        $audit = AuditLogger::recordEvent(
+            'export',
+            'financial_context',
+            null,
+            null,
+            ['scope' => $scope, 'format' => $request->string('format')->toString() ?: 'json'],
+            'web_export_context',
+            'web',
+            (int) $request->user()->id,
+        );
+        if ($audit !== null && isset($context['dashboard_version'])) {
+            AuditLog::allowMaintenanceChanges(fn (): bool => (bool) $audit->update(['dashboard_version' => $context['dashboard_version']]));
+        }
         if ($request->string('format')->toString() === 'markdown') {
             return response($this->markdown($context), 200, ['Content-Type' => 'text/markdown; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="decision-context.md"']);
         }

@@ -1,5 +1,6 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
+    Activity,
     BookOpen,
     Calculator,
     CircleHelp,
@@ -218,6 +219,11 @@ const pageHints: Record<string, { title: string; description: string }> = {
         description:
             'Use backups and integrity checks before relying on the system for important decisions. Keep exported financial context private and deliberate.',
     },
+    'Activity log': {
+        title: 'A traceable workspace',
+        description:
+            'Every tracked create, update, archive, restore, export, sync, and bulk operation shows its source channel and the before/after state that was recorded.',
+    },
 };
 
 const navigationGroups: NavigationGroup[] = [
@@ -312,6 +318,7 @@ const navigationGroups: NavigationGroup[] = [
                 icon: FileClock,
             },
             { href: '/operations', label: 'Operations', icon: Settings },
+            { href: '/activity-log', label: 'Activity log', icon: Activity },
         ],
     },
 ];

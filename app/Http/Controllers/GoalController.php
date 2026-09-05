@@ -61,11 +61,13 @@ class GoalController extends Controller
         ]);
         DB::transaction(function () use ($goal, $data): void {
             $goal->update($data);
-            $goal->buckets()->update([
-                'name' => $goal->name.' Fund',
-                'purpose' => 'Reserved for '.$goal->name,
-                'target_amount_egp' => $goal->target_amount_egp,
-            ]);
+            $goal->buckets()->get()->each(function (Bucket $bucket) use ($goal): void {
+                $bucket->update([
+                    'name' => $goal->name.' Fund',
+                    'purpose' => 'Reserved for '.$goal->name,
+                    'target_amount_egp' => $goal->target_amount_egp,
+                ]);
+            });
         });
 
         return back()->with('success', 'Goal updated.');
@@ -74,7 +76,7 @@ class GoalController extends Controller
     public function destroy(Goal $goal): RedirectResponse
     {
         DB::transaction(function () use ($goal): void {
-            $goal->buckets()->delete();
+            $goal->buckets()->get()->each->delete();
             $goal->delete();
         });
 
@@ -86,7 +88,7 @@ class GoalController extends Controller
         DB::transaction(function () use ($goal): void {
             $model = Goal::withTrashed()->findOrFail($goal);
             $model->restore();
-            Bucket::withTrashed()->where('goal_id', $model->id)->restore();
+            Bucket::withTrashed()->where('goal_id', $model->id)->get()->each->restore();
         });
 
         return back()->with('success', 'Goal and its dedicated bucket restored.');

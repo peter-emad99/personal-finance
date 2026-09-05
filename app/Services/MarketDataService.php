@@ -9,6 +9,7 @@ use App\Models\GoldPrice;
 use App\Support\OwnerContext;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -170,11 +171,34 @@ final class MarketDataService
             throw new RuntimeException('A market-data provider URL is not configured.');
         }
 
-        $response = Http::acceptJson()
-            ->connectTimeout(5)
-            ->timeout(15)
-            ->retry(2, 500)
-            ->get($url);
+        try {
+            $response = Http::acceptJson()
+                ->connectTimeout(5)
+                ->timeout(15)
+                ->retry(2, 500)
+                ->get($url);
+        } catch (RequestException $exception) {
+            if ($exception->response?->status() === 429) {
+                $retryAfter = $exception->response->header('Retry-After');
+                $retryMessage = is_numeric($retryAfter) ? " Try again in {$retryAfter} seconds." : ' Try again later.';
+
+                throw new RuntimeException('The market-data provider rate limit was reached.'.$retryMessage, previous: $exception);
+            }
+
+            throw $exception;
+        }
+
+        if ($response->status() === 429) {
+            $retryAfter = $response->header('Retry-After');
+            $retryMessage = is_numeric($retryAfter) ? " Try again in {$retryAfter} seconds." : ' Try again later.';
+
+            throw new RuntimeException('The market-data provider rate limit was reached.'.$retryMessage);
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException("The market-data provider returned HTTP {$response->status()}.");
+        }
+
         $response->throw();
         $payload = $response->json();
 
@@ -235,10 +259,12 @@ final class MarketDataService
             }
 
             $value = round($quantity * $price, 2);
+            $previousValue = (float) $asset->current_value_egp;
             $asset->update([
                 'current_value_egp' => $value,
                 'unit_price_egp' => round($price, 6),
             ]);
+            $this->scaleBucketAllocations($asset, $previousValue, $value);
             $valuation = AssetValuation::query()
                 ->where('asset_id', $asset->id)
                 ->whereDate('valued_on', $date)
@@ -263,5 +289,26 @@ final class MarketDataService
         }
 
         return $updated;
+    }
+
+    private function scaleBucketAllocations(Asset $asset, float $previousValue, float $currentValue): void
+    {
+        if ($previousValue <= 0 || $asset->buckets()->doesntExist()) {
+            return;
+        }
+
+        $ratio = $currentValue / $previousValue;
+        $before = [];
+        $after = [];
+        foreach ($asset->buckets()->get() as $bucket) {
+            $amount = (float) data_get($bucket, 'pivot.amount_egp', 0);
+            $before[] = ['bucket_id' => $bucket->id, 'amount_egp' => $amount];
+            $newAmount = round($amount * $ratio, 2);
+            $asset->buckets()->updateExistingPivot($bucket->id, [
+                'amount_egp' => $newAmount,
+            ]);
+            $after[] = ['bucket_id' => $bucket->id, 'amount_egp' => $newAmount];
+        }
+        AuditLogger::record('market_revaluation', $asset, ['bucket_allocations' => $before], ['bucket_allocations' => $after]);
     }
 }

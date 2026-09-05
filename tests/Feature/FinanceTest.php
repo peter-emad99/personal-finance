@@ -58,6 +58,13 @@ class FinanceTest extends TestCase
             'name' => 'Home renovation fund',
             'target_amount_egp' => 180000,
         ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'user_id' => $demo->id,
+            'action' => 'demo_reset',
+            'entity_type' => 'demo_workspace',
+            'channel' => 'web',
+            'tool_name' => 'demo_workspace_reset',
+        ]);
     }
 
     public function test_context_export_contains_summary_and_assets(): void

@@ -14,6 +14,7 @@ import {
     LockKeyhole,
     Plus,
     ReceiptText,
+    RefreshCw,
     RotateCcw,
     ShieldCheck,
     Sparkles,
@@ -1012,6 +1013,7 @@ function DemoWorkspaceCard({
 }
 
 function MarketRatesCard({ marketRates }: { marketRates?: MarketRates }) {
+    const [syncing, setSyncing] = useState(false);
     const statusLabel =
         marketRates?.status === 'current'
             ? 'Updated'
@@ -1030,7 +1032,7 @@ function MarketRatesCard({ marketRates }: { marketRates?: MarketRates }) {
                     Daily reference prices used to mark matching USD and gold
                     assets in EGP.
                 </CardDescription>
-                <CardAction>
+                <CardAction className="flex items-center gap-2">
                     <Badge
                         variant={
                             marketRates?.status === 'current'
@@ -1040,6 +1042,26 @@ function MarketRatesCard({ marketRates }: { marketRates?: MarketRates }) {
                     >
                         {statusLabel}
                     </Badge>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={syncing}
+                        onClick={() => {
+                            setSyncing(true);
+                            router.post(
+                                '/market-rates/sync',
+                                {},
+                                {
+                                    preserveScroll: true,
+                                    onFinish: () => setSyncing(false),
+                                },
+                            );
+                        }}
+                    >
+                        <RefreshCw data-icon="inline-start" />
+                        {syncing ? 'Refreshing…' : 'Refresh rates'}
+                    </Button>
                 </CardAction>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
@@ -1084,8 +1106,9 @@ function MarketRatesCard({ marketRates }: { marketRates?: MarketRates }) {
             <CardFooter className="flex-col items-start gap-2 border-t bg-muted/20 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs leading-5 text-muted-foreground">
                     {marketRates?.disclaimer ??
-                        'Prices are loaded server-side and cached locally.'}
-                    {' '}
+                        'Prices are loaded server-side and cached locally.'}{' '}
+                    Refreshing revalues matching USD and gold assets; bucket
+                    totals follow their assigned share of those assets.{' '}
                     <a
                         href="https://www.exchangerate-api.com"
                         target="_blank"

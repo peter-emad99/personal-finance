@@ -234,7 +234,12 @@ class FinancialMcpServer
             if (! is_array($arguments)) {
                 throw new \InvalidArgumentException('Tool arguments must be an object.');
             }
-            $data = $this->dispatch($name, $arguments);
+            $data = AuditLogger::withContext([
+                'channel' => 'mcp',
+                'tool' => $name,
+                'agent_id' => 'local-owner-agent',
+                'request_id' => $this->requestId(),
+            ], fn (): mixed => $this->dispatch($name, $arguments));
 
             return $this->success($id, ['content' => [['type' => 'text', 'text' => $this->encode($data)]], 'structuredContent' => ['data' => $data]]);
         } catch (Throwable $exception) {
@@ -538,11 +543,13 @@ class FinancialMcpServer
     {
         $goal = Goal::findOrFail($id);
         $goal->update($data);
-        $goal->buckets()->update([
-            'name' => $goal->name.' Fund',
-            'purpose' => 'Reserved for '.$goal->name,
-            'target_amount_egp' => $goal->target_amount_egp,
-        ]);
+        $goal->buckets()->get()->each(function (Bucket $bucket) use ($goal): void {
+            $bucket->update([
+                'name' => $goal->name.' Fund',
+                'purpose' => 'Reserved for '.$goal->name,
+                'target_amount_egp' => $goal->target_amount_egp,
+            ]);
+        });
 
         return $goal;
     }
@@ -578,7 +585,7 @@ class FinancialMcpServer
                 throw new \InvalidArgumentException('Goal buckets are managed by archiving or restoring the goal.');
             }
             if ($resource === 'goal') {
-                Goal::query()->findOrFail($id)->buckets()->delete();
+                Goal::query()->findOrFail($id)->buckets()->get()->each->delete();
             }
             $model->delete();
             if ($resource === 'commitment') {
@@ -635,12 +642,28 @@ class FinancialMcpServer
         // by sync/update operations performed during the mutation.
         /** @var array<string, mixed>|null $beforeState */
         $beforeState = $before?->toArray();
-        [$model, $audit] = DB::transaction(function () use ($callback, $tool, $action, $beforeState): array {
-            $model = AuditLogger::muteAutomaticLogging($callback);
-            $audit = AuditLog::create(['action' => $action, 'entity_type' => $model::class, 'entity_id' => $model->getKey(), 'tool_name' => $tool, 'agent_id' => 'local-owner-agent', 'request_id' => $this->requestId(), 'before_state' => $beforeState, 'after_state' => $model->toArray()]);
+        $requestId = $this->requestId();
+        [$model, $audit] = DB::transaction(function () use ($callback, $tool, $action, $beforeState, $requestId): array {
+            $model = AuditLogger::withContext([
+                'channel' => 'mcp',
+                'tool' => $tool,
+                'agent_id' => 'local-owner-agent',
+                'request_id' => $requestId,
+            ], $callback);
+            $audit = AuditLog::query()
+                ->where('action', $action)
+                ->where('entity_type', $model::class)
+                ->where('entity_id', $model->getKey())
+                ->where('request_id', $requestId)
+                ->latest('id')
+                ->first();
+            $audit ??= AuditLogger::recordEvent($action, $model::class, $model->getKey(), $beforeState, $model->toArray(), $tool, 'mcp', OwnerContext::id());
 
             return [$model, $audit];
         });
+        if ($audit === null) {
+            throw new \LogicException('A mutation must produce an audit record.');
+        }
         $afterDashboard = $this->finance->dashboard();
         $version = hash('sha256', $this->encode($afterDashboard));
         AuditLog::allowMaintenanceChanges(fn (): bool => (bool) $audit->update(['dashboard_version' => $version]));
@@ -711,14 +734,7 @@ class FinancialMcpServer
     {
         $this->assertArguments($arguments, ['scope']);
         $scope = Validator::make($arguments, ['scope' => 'sometimes|in:dashboard_summary,full_financial_context,decision_context,redacted_context'])->validate()['scope'] ?? 'full_financial_context';
-        AuditLog::create([
-            'action' => 'export',
-            'entity_type' => 'financial_context',
-            'tool_name' => 'get_full_financial_context',
-            'agent_id' => 'local-owner-agent',
-            'request_id' => $this->requestId(),
-            'after_state' => ['scope' => $scope],
-        ]);
+        AuditLogger::recordEvent('export', 'financial_context', null, null, ['scope' => $scope], 'get_full_financial_context', 'mcp', OwnerContext::id());
         if ($scope === 'redacted_context') {
             return $this->redactedContext();
         }
@@ -740,14 +756,7 @@ class FinancialMcpServer
     private function redactedTool(array $arguments): array
     {
         $this->assertArguments($arguments, []);
-        AuditLog::create([
-            'action' => 'export',
-            'entity_type' => 'financial_context',
-            'tool_name' => 'get_redacted_context',
-            'agent_id' => 'local-owner-agent',
-            'request_id' => $this->requestId(),
-            'after_state' => ['scope' => 'redacted_context'],
-        ]);
+        AuditLogger::recordEvent('export', 'financial_context', null, null, ['scope' => 'redacted_context'], 'get_redacted_context', 'mcp', OwnerContext::id());
 
         return $this->redactedContext();
     }
@@ -1123,7 +1132,7 @@ class FinancialMcpServer
             'notes' => $data['notes'] ?? $plan->notes,
         ])->save();
         if (array_key_exists('income_items', $data)) {
-            $plan->incomeItems()->delete();
+            $plan->incomeItems()->get()->each->delete();
             foreach ($data['income_items'] ?? [] as $item) {
                 Validator::make($item, ['budget_rule_id' => 'nullable|exists:budget_rules,id', 'name' => 'required|string|max:120', 'planned_amount_egp' => 'required|numeric|min:0', 'actual_amount_egp' => 'nullable|numeric|min:0'])->validate();
                 $plan->incomeItems()->create([
@@ -1135,7 +1144,7 @@ class FinancialMcpServer
             }
         }
         if (array_key_exists('items', $data)) {
-            $plan->items()->delete();
+            $plan->items()->get()->each->delete();
             $allocationKeys = [];
             $available = max(0, (float) $data['planned_income_egp'] - (float) $data['planned_expenses_egp']);
             $percentTotal = 0.0;
@@ -1168,7 +1177,7 @@ class FinancialMcpServer
             }
         }
         if (array_key_exists('expenses', $data)) {
-            $plan->expenseItems()->delete();
+            $plan->expenseItems()->get()->each->delete();
             foreach ($data['expenses'] ?? [] as $item) {
                 Validator::make($item, ['category_id' => 'required|exists:budget_categories,id', 'planned_amount_egp' => 'required|numeric|min:0', 'actual_amount_egp' => 'nullable|numeric|min:0'])->validate();
                 $plan->expenseItems()->create(['budget_category_id' => $item['category_id'], 'planned_amount_egp' => $item['planned_amount_egp'], 'actual_amount_egp' => $item['actual_amount_egp'] ?? 0]);
@@ -1202,7 +1211,7 @@ class FinancialMcpServer
     /** @param array<string, mixed> $data */
     private function createSettings(array $data): FinancialSetting
     {
-        FinancialSetting::query()->update(['is_active' => false]);
+        FinancialSetting::query()->get()->each->update(['is_active' => false]);
 
         return FinancialSetting::create(array_replace([
             'asset_class_targets' => FinancialSetting::defaultAssetClassTargets(),
@@ -1273,7 +1282,7 @@ class FinancialMcpServer
     private function syncTransactionSplits(LedgerTransaction $transaction, array $splits): void
     {
         if ($splits === []) {
-            $transaction->splits()->delete();
+            $transaction->splits()->get()->each->delete();
 
             return;
         }
@@ -1290,7 +1299,7 @@ class FinancialMcpServer
         if (abs($total - (float) $transaction->amount_egp) > 0.005) {
             throw new \InvalidArgumentException('Transaction splits must add up to the parent EGP amount.');
         }
-        $transaction->splits()->delete();
+        $transaction->splits()->get()->each->delete();
         foreach ($rows as $row) {
             $transaction->splits()->create($row);
         }
@@ -1330,7 +1339,7 @@ class FinancialMcpServer
             'allocation_rule' => tap(AllocationRule::withTrashed()->findOrFail($id), fn (AllocationRule $model) => $model->restore()),
             'goal' => tap(Goal::withTrashed()->findOrFail($id), function (Goal $model): void {
                 $model->restore();
-                Bucket::withTrashed()->where('goal_id', $model->id)->restore();
+                Bucket::withTrashed()->where('goal_id', $model->id)->get()->each->restore();
             }),
             'cash_flow' => tap(CashFlow::withTrashed()->findOrFail($id), fn (CashFlow $model) => $model->restore()),
             'monthly_review' => tap(MonthlyFinancialReview::withTrashed()->findOrFail($id), fn (MonthlyFinancialReview $model) => $model->restore()),
@@ -1341,7 +1350,7 @@ class FinancialMcpServer
             'snapshot' => tap(Snapshot::withTrashed()->findOrFail($id), fn (Snapshot $model) => $model->restore()),
             'decision_journal_entry' => tap(DecisionJournalEntry::withTrashed()->findOrFail($id), fn (DecisionJournalEntry $model) => $model->restore()),
             'financial_settings' => tap(FinancialSetting::withTrashed()->findOrFail($id), function (FinancialSetting $model): void {
-                FinancialSetting::query()->update(['is_active' => false]);
+                FinancialSetting::query()->get()->each->update(['is_active' => false]);
                 $model->restore();
                 $model->update(['is_active' => true]);
             }),
@@ -1889,10 +1898,14 @@ class FinancialMcpServer
             throw new \InvalidArgumentException('Bucket allocations cannot exceed the asset value.');
         }
 
-        return $this->mutate('set_asset_allocations', 'update', $before, function () use ($asset, $data): Model {
-            $asset->buckets()->sync($data);
+        $beforeState = $before->toArray();
 
-            return $asset->load('buckets');
+        return $this->mutate('set_asset_allocations', 'update', $before, function () use ($asset, $data, $beforeState): Model {
+            $asset->buckets()->sync($data);
+            $after = $asset->fresh(['buckets']) ?? $asset;
+            AuditLogger::recordEvent('update', $asset::class, $asset->getKey(), $beforeState, $after->toArray(), 'set_asset_allocations', 'mcp', OwnerContext::id());
+
+            return $after;
         });
     }
 
@@ -2002,10 +2015,14 @@ class FinancialMcpServer
             throw new \InvalidArgumentException('This bucket cannot exceed its target amount.');
         }
 
-        return $this->mutate('set_bucket_allocations', 'update', $before, function () use ($bucket, $requested): Model {
-            $bucket->assets()->sync(collect($requested)->map(fn (float $amount): array => ['amount_egp' => $amount])->all());
+        $beforeState = $before->toArray();
 
-            return $bucket->fresh(['assets']) ?? $bucket;
+        return $this->mutate('set_bucket_allocations', 'update', $before, function () use ($bucket, $requested, $beforeState): Model {
+            $bucket->assets()->sync(collect($requested)->map(fn (float $amount): array => ['amount_egp' => $amount])->all());
+            $after = $bucket->fresh(['assets']) ?? $bucket;
+            AuditLogger::recordEvent('update', $bucket::class, $bucket->getKey(), $beforeState, $after->toArray(), 'set_bucket_allocations', 'mcp', OwnerContext::id());
+
+            return $after;
         });
     }
 

@@ -188,6 +188,83 @@ class AllocationController extends Controller
         return back()->with('success', $result['synced'] ? 'Actual amounts synced from confirmed ledger transactions.' : 'No confirmed ledger transactions were available for this month.');
     }
 
+    public function refreshFromTemplate(AllocationPlan $allocationPlan, BudgetRuleService $budgetRules, AllocationActualService $actuals): RedirectResponse
+    {
+        abort_if($allocationPlan->status === 'closed', 422, 'This monthly plan is closed and cannot be refreshed from its template.');
+        abort_if($allocationPlan->plan_template_id === null, 422, 'This monthly plan has no template to refresh from.');
+
+        $existingIncomeActuals = $allocationPlan->incomeItems()->get()->mapWithKeys(function (AllocationPlanIncome $item): array {
+            $key = $item->budget_rule_id !== null
+                ? 'rule:'.$item->budget_rule_id
+                : 'name:'.$item->name;
+
+            return [$key => [
+                'amount' => (float) $item->actual_amount_egp,
+                'source' => $item->actual_source,
+                'syncedAt' => $item->actual_synced_at,
+            ]];
+        })->all();
+
+        $template = $budgetRules->template((int) $allocationPlan->plan_template_id, (float) $allocationPlan->planned_income_egp);
+        $plannedIncome = $budgetRules->templateIncome($template, (float) $allocationPlan->planned_income_egp);
+        $incomeItems = $budgetRules->templateIncomeSuggestions($template, (float) $allocationPlan->planned_income_egp);
+        $expenseItems = $budgetRules->templateExpenseSuggestions($template, $plannedIncome);
+        $allocationItems = $budgetRules->templateAllocationSuggestions(
+            $template,
+            $plannedIncome,
+            (float) $expenseItems->sum('planned'),
+        );
+
+        DB::transaction(function () use ($allocationPlan, $plannedIncome, $expenseItems, $incomeItems, $allocationItems, $existingIncomeActuals): void {
+            $allocationPlan->update([
+                'planned_income_egp' => $plannedIncome,
+                'planned_expenses_egp' => round((float) $expenseItems->sum('planned'), 2),
+                'generation_method' => 'from_template',
+                'generated_at' => now(),
+            ]);
+
+            $allocationPlan->incomeItems()->get()->each->delete();
+            foreach ($incomeItems as $item) {
+                $existingActual = $existingIncomeActuals['rule:'.$item['id']]
+                    ?? $existingIncomeActuals['name:'.$item['label']]
+                    ?? ['amount' => 0.0, 'source' => 'manual', 'syncedAt' => null];
+                $allocationPlan->incomeItems()->create([
+                    'budget_rule_id' => $item['id'],
+                    'name' => $item['label'],
+                    'planned_amount_egp' => $item['amount'],
+                    'actual_amount_egp' => $existingActual['amount'],
+                    'actual_source' => $existingActual['source'],
+                    'actual_synced_at' => $existingActual['syncedAt'],
+                ]);
+            }
+
+            $allocationPlan->expenseItems()->get()->each->delete();
+            foreach ($expenseItems as $item) {
+                $allocationPlan->expenseItems()->create([
+                    'budget_category_id' => $item['categoryId'],
+                    'planned_amount_egp' => $item['planned'],
+                    'actual_amount_egp' => 0,
+                ]);
+            }
+
+            $allocationPlan->items()->get()->each->delete();
+            foreach ($allocationItems as $item) {
+                $allocationPlan->items()->create([
+                    'bucket_id' => $item['bucketId'],
+                    'asset_id' => $item['assetId'],
+                    'asset_target' => $item['assetTarget'],
+                    'allocation_percent' => $item['allocationPercent'],
+                    'planned_amount_egp' => $item['amount'],
+                    'actual_amount_egp' => 0,
+                ]);
+            }
+        });
+
+        $actuals->sync($allocationPlan->fresh());
+
+        return back()->with('success', 'The current monthly plan was refreshed from its template and confirmed actuals were re-synced.');
+    }
+
     public function close(AllocationPlan $allocationPlan): RedirectResponse
     {
         abort_if($allocationPlan->status === 'closed', 422, 'This monthly plan is already closed.');

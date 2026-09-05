@@ -24,7 +24,7 @@ import {
     WalletCards,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { AppShell, Button, PageHeader, Progress } from '@/components/app-shell';
@@ -48,9 +48,29 @@ import {
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { formatCompactEGP, formatEGP, labelize } from '@/types/finance';
-import type { Asset, Goal, Summary } from '@/types/finance';
+import type { Goal, Summary } from '@/types/finance';
 
 type Allocation = { label: string; value: number; percent: number };
+type WealthGroup = {
+    key: string;
+    label: string;
+    detail: string;
+    valueEgp: number;
+    percent: number;
+    nativeAmount: number | null;
+    nativeCurrency: string | null;
+};
+type WealthBreakdown = {
+    groups: WealthGroup[];
+    usdToEgp: number | null;
+};
+type LiquiditySummary = {
+    grossImmediateLiquidAssets: number;
+    reservedCash: number;
+    controllableCashBeforeLiabilities: number;
+    activeLiabilities: number;
+    controllableCashAfterLiabilities: number;
+};
 type MarketRatePoint = {
     rate?: number;
     price?: number;
@@ -269,7 +289,6 @@ const chartColors = [
 
 export default function Dashboard({
     summary,
-    assets,
     assetAllocation,
     currencyExposure,
     goals,
@@ -285,9 +304,10 @@ export default function Dashboard({
     obligationChanges,
     debtSummary,
     monthlyHistory,
+    wealthBreakdown,
+    liquiditySummary,
 }: {
     summary: Summary;
-    assets: Asset[];
     assetAllocation: Allocation[];
     currencyExposure: Allocation[];
     goals: Goal[];
@@ -307,9 +327,11 @@ export default function Dashboard({
     obligationChanges?: ObligationChanges;
     debtSummary?: DebtSummary;
     monthlyHistory?: MonthlyHistoryItem[];
+    wealthBreakdown?: WealthBreakdown;
+    liquiditySummary?: LiquiditySummary;
 }) {
     const [showNetWorthDetail, setShowNetWorthDetail] = useState(false);
-    const wealthGroups = useMemo(() => buildWealthGroups(assets), [assets]);
+    const wealthGroups = wealthBreakdown?.groups ?? [];
     const emergencyTarget =
         monthlyPlan?.emergencyTarget ??
         summary.expenses * (summary.emergencyReserveMonths ?? 6);
@@ -434,8 +456,11 @@ export default function Dashboard({
                                         />
                                         {group.label}
                                     </div>
-                                    <p className="mt-1 text-sm font-semibold">
-                                        {formatCompactEGP(group.value)}
+                                    <p className="mt-1 text-sm font-semibold tabular-nums">
+                                        {formatCompactEGP(group.valueEgp)}
+                                    </p>
+                                    <p className="mt-1 text-[11px] leading-4 text-hero-foreground/60">
+                                        {wealthGroupNativeLabel(group)}
                                     </p>
                                 </div>
                             ))}
@@ -469,9 +494,10 @@ export default function Dashboard({
 
                 <Card className="[--card-spacing:--spacing(6)]">
                     <CardHeader>
-                        <CardTitle>This month's breathing room</CardTitle>
+                        <CardTitle>Actual vs planned breathing room</CardTitle>
                         <CardDescription>
-                            What remains after expenses and obligations
+                            Actual activity is separate from the saved monthly
+                            plan
                         </CardDescription>
                         <CardAction>
                             <Badge
@@ -482,8 +508,8 @@ export default function Dashboard({
                                 }
                             >
                                 {hasPositiveSurplus
-                                    ? 'Available'
-                                    : 'Over budget'}
+                                    ? 'Actual surplus'
+                                    : 'Actual deficit'}
                             </Badge>
                         </CardAction>
                     </CardHeader>
@@ -497,21 +523,43 @@ export default function Dashboard({
                             {formatEGP(summary.freeCashFlow)}
                         </p>
                         <p className="mt-2 text-sm text-muted-foreground">
-                            {summary.income > 0
-                                ? `Free-cash-flow rate: ${Math.max(0, summary.savingsRate ?? (summary.freeCashFlow / summary.income) * 100).toFixed(1)}%`
-                                : 'Add an income source to start planning this month.'}
+                            Actual free cash flow · confirmed income{' '}
+                            {formatCompactEGP(summary.income)} · recorded
+                            expenses {formatCompactEGP(summary.expenses)}
                         </p>
                         <div className="mt-7 grid grid-cols-2 gap-3">
                             <SmallMetric
                                 icon={CircleDollarSign}
-                                label="Income"
+                                label="Actual income"
                                 value={formatCompactEGP(summary.income)}
                             />
                             <SmallMetric
                                 icon={ReceiptText}
-                                label="Expenses"
+                                label="Actual expenses"
                                 value={formatCompactEGP(summary.expenses)}
                             />
+                        </div>
+                        <div className="mt-3 rounded-lg border p-3">
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                                <span className="font-medium">
+                                    Planned free cash flow
+                                </span>
+                                <span className="font-semibold tabular-nums">
+                                    {formatCompactEGP(
+                                        monthlyPlan?.plannedFreeCashFlow ?? 0,
+                                    )}
+                                </span>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                Planned income{' '}
+                                {formatCompactEGP(
+                                    monthlyPlan?.plannedIncome ?? 0,
+                                )}{' '}
+                                minus planned expenses{' '}
+                                {formatCompactEGP(
+                                    monthlyPlan?.plannedExpenses ?? 0,
+                                )}
+                            </p>
                         </div>
                     </CardContent>
                     <CardFooter>
@@ -522,6 +570,8 @@ export default function Dashboard({
                     </CardFooter>
                 </Card>
             </div>
+
+            <LiquidityOverviewCard summary={liquiditySummary} />
 
             <section className="mt-6">
                 <SectionHeading
@@ -544,9 +594,12 @@ export default function Dashboard({
                                 : []
                             ).map((source) => ({
                                 label: source.label,
-                                value: 'percent' in source && source.percent !== null && source.percent !== undefined
-                                    ? `${source.percent}% · ${formatCompactEGP(source.amount)}`
-                                    : formatCompactEGP(source.amount),
+                                value:
+                                    'percent' in source &&
+                                    source.percent !== null &&
+                                    source.percent !== undefined
+                                        ? `${source.percent}% · ${formatCompactEGP(source.amount)}`
+                                        : formatCompactEGP(source.amount),
                             }))}
                             empty="Create the monthly plan and add income sources"
                         />
@@ -554,10 +607,22 @@ export default function Dashboard({
                         <FlowStep
                             icon={ReceiptText}
                             label="Planned expenses"
-                            value={monthlyPlan?.plannedExpenses ?? monthlyPlan?.expenses ?? summary.expenses}
-                            items={(monthlyPlan?.plannedExpenseCategories?.length ? monthlyPlan.plannedExpenseCategories : monthlyPlan?.expenseCategories ?? []).map((expense) => ({
+                            value={
+                                monthlyPlan?.plannedExpenses ??
+                                monthlyPlan?.expenses ??
+                                summary.expenses
+                            }
+                            items={(monthlyPlan?.plannedExpenseCategories
+                                ?.length
+                                ? monthlyPlan.plannedExpenseCategories
+                                : (monthlyPlan?.expenseCategories ?? [])
+                            ).map((expense) => ({
                                 label: expense.label,
-                                value: formatCompactEGP('planned' in expense ? expense.planned : expense.amount),
+                                value: formatCompactEGP(
+                                    'planned' in expense
+                                        ? expense.planned
+                                        : expense.amount,
+                                ),
                             }))}
                             empty="Add your recurring and flexible expenses"
                         />
@@ -582,9 +647,10 @@ export default function Dashboard({
                             items={[
                                 {
                                     label: 'Current plan',
-                                    value: monthlyPlan?.source === 'saved_plan'
-                                        ? 'Saved for this month'
-                                        : 'Preview from template',
+                                    value:
+                                        monthlyPlan?.source === 'saved_plan'
+                                            ? 'Saved for this month'
+                                            : 'Preview from template',
                                 },
                             ]}
                             empty="The plan is fully assigned"
@@ -605,7 +671,9 @@ export default function Dashboard({
             <div className="mt-6 grid items-start gap-4 xl:grid-cols-[1.1fr_0.9fr]">
                 <MonthlyPlanComparisonCard
                     monthlyPlan={monthlyPlan}
-                    actualSource={monthlyFlow?.source ?? dataFreshness?.cashFlowSource}
+                    actualSource={
+                        monthlyFlow?.source ?? dataFreshness?.cashFlowSource
+                    }
                 />
                 <WealthJourneyCard
                     stage={wealthStage}
@@ -680,7 +748,9 @@ export default function Dashboard({
                         </CardDescription>
                         <CardAction>
                             <Badge variant="outline">
-                                {monthlyPlan?.source === 'saved_plan' ? 'Saved snapshot' : 'Template rules'}
+                                {monthlyPlan?.source === 'saved_plan'
+                                    ? 'Saved snapshot'
+                                    : 'Template rules'}
                             </Badge>
                         </CardAction>
                     </CardHeader>
@@ -695,7 +765,9 @@ export default function Dashboard({
                                         : 0;
 
                                 return (
-                                    <div key={`${item.bucketId ?? item.label}-${item.label}`}>
+                                    <div
+                                        key={`${item.bucketId ?? item.label}-${item.label}`}
+                                    >
                                         <div className="mb-2 flex items-start justify-between gap-3">
                                             <div className="flex items-center gap-2">
                                                 <span
@@ -714,9 +786,9 @@ export default function Dashboard({
                                                     </p>
                                                     <p className="text-xs text-muted-foreground">
                                                         {item.allocationPercent !==
-                                                        null &&
+                                                            null &&
                                                         item.allocationPercent !==
-                                                        undefined
+                                                            undefined
                                                             ? `${item.allocationPercent}% of post-expense cash`
                                                             : 'Fixed plan amount'}
                                                     </p>
@@ -1089,9 +1161,7 @@ function MarketRatesCard({ marketRates }: { marketRates?: MarketRates }) {
                     label="24K gold / gram"
                     value={
                         marketRates?.gold24kPerGram
-                            ? formatEGP(
-                                  marketRates.gold24kPerGram.price ?? 0,
-                              )
+                            ? formatEGP(marketRates.gold24kPerGram.price ?? 0)
                             : 'No price yet'
                     }
                     meta={
@@ -1188,51 +1258,85 @@ function DemoAction({
     );
 }
 
-function buildWealthGroups(assets: Asset[]) {
-    const total = Math.max(
-        1,
-        assets.reduce((sum, asset) => sum + asset.currentValue, 0),
-    );
-    const heldElsewhere = assets
-        .filter((asset) => asset.type.toLowerCase().includes('receivable'))
-        .reduce((sum, asset) => sum + asset.currentValue, 0);
-    const controlledAssets = assets.filter(
-        (asset) => !asset.type.toLowerCase().includes('receivable'),
-    );
-    const cashEgp = controlledAssets
-        .filter(
-            (asset) =>
-                asset.currency === 'EGP' &&
-                asset.type.toLowerCase().includes('cash'),
-        )
-        .reduce((sum, asset) => sum + asset.currentValue, 0);
-    const usd = controlledAssets
-        .filter((asset) => asset.currency === 'USD')
-        .reduce((sum, asset) => sum + asset.currentValue, 0);
-    const gold = controlledAssets
-        .filter(
-            (asset) =>
-                asset.currency.toLowerCase() === 'gold' ||
-                asset.type.toLowerCase().includes('gold'),
-        )
-        .reduce((sum, asset) => sum + asset.currentValue, 0);
-    const investments = Math.max(
-        0,
-        total - heldElsewhere - cashEgp - usd - gold,
-    );
+function wealthGroupNativeLabel(group: WealthGroup) {
+    if (group.nativeAmount === null || group.nativeCurrency === null) {
+        return group.detail;
+    }
 
-    return [
-        { label: 'EGP cash', value: cashEgp },
-        { label: 'US dollars', value: usd },
-        { label: 'Gold', value: gold },
-        { label: 'Investments', value: investments },
-        { label: 'Held elsewhere', value: heldElsewhere },
-    ]
-        .filter((group) => group.value > 0)
-        .map((group) => ({
-            ...group,
-            percent: (group.value / total) * 100,
-        }));
+    const amount = group.nativeAmount.toLocaleString('en-EG', {
+        maximumFractionDigits: 2,
+    });
+
+    return `${amount} ${group.nativeCurrency} · ${group.detail}`;
+}
+
+function LiquidityOverviewCard({ summary }: { summary?: LiquiditySummary }) {
+    if (!summary) {
+        return null;
+    }
+
+    return (
+        <Card className="mt-4">
+            <CardHeader>
+                <CardTitle>Liquidity at a glance</CardTitle>
+                <CardDescription>
+                    What is liquid now, what is reserved, and what remains after
+                    active liabilities
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <LiquidityMetric
+                    label="Gross immediate liquid"
+                    value={summary.grossImmediateLiquidAssets}
+                    detail="Includes reserved cash"
+                />
+                <LiquidityMetric
+                    label="Reserved cash"
+                    value={summary.reservedCash}
+                    detail="Not available for normal spending"
+                />
+                <LiquidityMetric
+                    label="Controllable before liabilities"
+                    value={summary.controllableCashBeforeLiabilities}
+                    detail="Gross liquid less reserved cash"
+                />
+                <LiquidityMetric
+                    label="Controllable after liabilities"
+                    value={summary.controllableCashAfterLiabilities}
+                    detail={`Less ${formatCompactEGP(summary.activeLiabilities)} active liabilities`}
+                />
+            </CardContent>
+            <CardFooter className="border-t bg-muted/20">
+                <p className="text-xs leading-5 text-muted-foreground">
+                    Liabilities are subtracted in this liquidity view only to
+                    show spendable capacity. Net worth independently remains
+                    total assets minus active liabilities.
+                </p>
+            </CardFooter>
+        </Card>
+    );
+}
+
+function LiquidityMetric({
+    label,
+    value,
+    detail,
+}: {
+    label: string;
+    value: number;
+    detail: string;
+}) {
+    return (
+        <div className="rounded-lg bg-muted p-4">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="mt-2 text-xl font-semibold tabular-nums">
+                {formatEGP(value)}
+            </p>
+            <p className="mt-1 text-xs leading-4 text-muted-foreground">
+                {detail}
+            </p>
+        </div>
+    );
 }
 
 function sourceLabel(source?: string) {
@@ -1749,7 +1853,8 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                                 <Progress value={allocationPercent} />
                             </div>
                             <p className="mt-2 text-xs text-muted-foreground">
-                                Actual linked: {formatCompactEGP(flow.actualAllocationTotal)} ·
+                                Actual linked:{' '}
+                                {formatCompactEGP(flow.actualAllocationTotal)} ·
                                 actual free cash without a linked allocation:{' '}
                                 {formatCompactEGP(flow.actualUnassigned)}
                             </p>
@@ -1939,7 +2044,7 @@ function MonthlyPlanComparisonCard({
                             </div>
                             {monthlyPlan.plannedIncomeSources.length > 0 && (
                                 <div className="mt-3 flex flex-col gap-1.5 border-t pt-3">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                    <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                         Plan sources
                                     </p>
                                     {monthlyPlan.plannedIncomeSources.map(
@@ -1960,8 +2065,8 @@ function MonthlyPlanComparisonCard({
                                 Plan expense categories
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                                These rows come directly from the current
-                                month plan. Actuals appear only when a ledger
+                                These rows come directly from the current month
+                                plan. Actuals appear only when a ledger
                                 transaction is linked to the same category.
                             </p>
                             <div className="mt-3 flex flex-col gap-3">
@@ -1975,8 +2080,7 @@ function MonthlyPlanComparisonCard({
                                 ))}
                                 {!planExpenses.length && (
                                     <p className="text-sm text-muted-foreground">
-                                        No expense categories are in this
-                                        plan.
+                                        No expense categories are in this plan.
                                     </p>
                                 )}
                             </div>
@@ -1984,7 +2088,9 @@ function MonthlyPlanComparisonCard({
                                 actualTracking.unmappedExpenseAmount > 0 && (
                                     <UnmappedRow
                                         label="Unmapped actual expenses"
-                                        amount={actualTracking.unmappedExpenseAmount}
+                                        amount={
+                                            actualTracking.unmappedExpenseAmount
+                                        }
                                         detail="No matching plan category"
                                     />
                                 )}
@@ -2024,7 +2130,9 @@ function MonthlyPlanComparisonCard({
                                 actualTracking.unmappedPurposeAmount > 0 && (
                                     <UnmappedRow
                                         label="Unlinked actual allocations"
-                                        amount={actualTracking.unmappedPurposeAmount}
+                                        amount={
+                                            actualTracking.unmappedPurposeAmount
+                                        }
                                         detail="No purpose bucket selected"
                                     />
                                 )}
@@ -2034,7 +2142,9 @@ function MonthlyPlanComparisonCard({
                             <SmallMetric
                                 icon={CircleDollarSign}
                                 label="Planned unassigned remainder"
-                                value={formatCompactEGP(monthlyPlan.unallocated)}
+                                value={formatCompactEGP(
+                                    monthlyPlan.unallocated,
+                                )}
                             />
                             <SmallMetric
                                 icon={TrendingUp}
@@ -2045,8 +2155,8 @@ function MonthlyPlanComparisonCard({
 
                         <p className="text-xs text-muted-foreground">
                             Actual source: {actualSourceLabel}. Linked expense
-                            actuals total {formatCompactEGP(actualExpenseTotal)};
-                            unlinked transactions stay separate instead of
+                            actuals total {formatCompactEGP(actualExpenseTotal)}
+                            ; unlinked transactions stay separate instead of
                             being classified by name.
                         </p>
                     </div>
@@ -2088,7 +2198,8 @@ function PlanActualRow({
     actual: number;
     detail?: string;
 }) {
-    const progress = planned > 0 ? (actual / planned) * 100 : actual > 0 ? 100 : 0;
+    const progress =
+        planned > 0 ? (actual / planned) * 100 : actual > 0 ? 100 : 0;
     const variance = actual - planned;
 
     return (

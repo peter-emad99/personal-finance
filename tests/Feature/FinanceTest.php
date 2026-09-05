@@ -440,6 +440,54 @@ class FinanceTest extends TestCase
         $this->assertNotNull($plan->fresh());
     }
 
+    public function test_open_monthly_plan_can_be_refreshed_from_its_template(): void
+    {
+        $template = app(BudgetRuleService::class)->ensureDefaultTemplate(100000);
+        $commitment = RecurringCommitment::create([
+            'name' => 'Internet',
+            'category' => 'utilities',
+            'amount_egp' => 500,
+            'frequency' => 'monthly',
+            'is_active' => true,
+        ]);
+        $essentials = BudgetCategory::query()->where('name', 'Essentials')->firstOrFail();
+        $plan = AllocationPlan::create([
+            'month' => now()->startOfMonth(),
+            'plan_template_id' => $template->id,
+            'planned_income_egp' => 1,
+            'planned_expenses_egp' => 2,
+            'status' => 'open',
+        ]);
+        $incomeRule = $template->budgetRules()->where('direction', 'income')->firstOrFail();
+        $plan->incomeItems()->create([
+            'budget_rule_id' => $incomeRule->id,
+            'name' => 'Old income label',
+            'planned_amount_egp' => 1,
+            'actual_amount_egp' => 1234,
+        ]);
+        $plan->expenseItems()->create(['budget_category_id' => $essentials->id, 'planned_amount_egp' => 2]);
+
+        $this->post(route('allocations.refresh-from-template', $plan))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $plan->refresh();
+        $this->assertSame(100000.0, (float) $plan->planned_income_egp);
+        $this->assertSame('from_template', $plan->generation_method);
+        $this->assertSame('Primary monthly income', $plan->incomeItems()->firstOrFail()->name);
+        $this->assertSame(1234.0, (float) $plan->incomeItems()->firstOrFail()->actual_amount_egp);
+        $this->assertDatabaseHas('budget_rules', [
+            'id' => BudgetRule::query()->where('recurring_commitment_id', $commitment->id)->value('id'),
+            'amount_egp' => 500,
+        ]);
+        $this->assertSame(18598.33, (float) $plan->expenseItems()->sum('planned_amount_egp'));
+        $this->assertDatabaseHas('allocation_plan_expenses', [
+            'allocation_plan_id' => $plan->id,
+            'budget_category_id' => BudgetCategory::query()->where('name', 'Commitments')->value('id'),
+            'planned_amount_egp' => 500,
+        ]);
+    }
+
     public function test_monthly_ratio_rows_use_actual_values_and_keep_plan_targets_separate(): void
     {
         $goal = Goal::create([
@@ -615,6 +663,8 @@ class FinanceTest extends TestCase
         $plan = AllocationPlan::query()->whereDate('month', '2026-08-01')->firstOrFail();
         $this->post(route('allocations.close', $plan))->assertRedirect();
         $this->assertDatabaseHas('allocation_plans', ['id' => $plan->id, 'status' => 'closed']);
+
+        $this->post(route('allocations.refresh-from-template', $plan))->assertStatus(422);
 
         $this->post(route('allocations.store'), [
             'month' => '2026-08-01',

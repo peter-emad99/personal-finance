@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Asset;
+use App\Models\Bucket;
 use App\Models\FxRate;
 use App\Models\GoldPrice;
 use App\Services\FinanceService;
@@ -101,6 +102,56 @@ class MarketDataTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.usdToEgp.rate', 50.88)
             ->assertJsonPath('data.gold24kPerGram.price', 7532.12);
+    }
+
+    public function test_manual_dashboard_sync_revalues_bucket_allocations_with_the_asset(): void
+    {
+        $usd = Asset::create([
+            'name' => 'USD reserve',
+            'type' => 'Cash',
+            'quantity' => 100,
+            'currency' => 'USD',
+            'current_value_egp' => 5000,
+            'unit_price_egp' => 50,
+            'liquidity' => 'immediate',
+        ]);
+        $bucket = Bucket::create([
+            'name' => 'Brother reserve',
+            'purpose_type' => 'other',
+            'color' => '#000000',
+        ]);
+        $usd->buckets()->attach($bucket, ['amount_egp' => 5000]);
+
+        Http::fake([
+            config('finance.market_rates.fx_url') => Http::response([
+                'result' => 'success',
+                'base_code' => 'USD',
+                'rates' => ['EGP' => 40],
+            ]),
+            config('finance.market_rates.gold_url') => Http::response([
+                'symbol' => 'XAU',
+                'currency' => 'USD',
+                'price' => 4604.399902,
+                'updatedAt' => now()->toIso8601String(),
+            ]),
+        ]);
+
+        $this->post(route('market-rates.sync'))->assertRedirect()->assertSessionHas('success');
+
+        $this->assertEqualsWithDelta(4000, (float) $usd->fresh()->current_value_egp, 0.01);
+        $this->assertEqualsWithDelta(4000, (float) $usd->fresh()->buckets()->first()->pivot->amount_egp, 0.01);
+    }
+
+    public function test_manual_dashboard_sync_explains_provider_rate_limits(): void
+    {
+        Http::fake([
+            config('finance.market_rates.fx_url') => Http::response([], 429, ['Retry-After' => '60']),
+            '*' => Http::response([], 503),
+        ]);
+
+        $this->post(route('market-rates.sync'))
+            ->assertRedirect()
+            ->assertSessionHas('error', fn (string $message): bool => str_contains($message, 'rate limit was reached'));
     }
 
     public function test_failed_provider_does_not_create_market_data(): void

@@ -25,6 +25,14 @@ export type Asset = {
     id: number;
     name: string;
     type: string;
+    classification?:
+        | 'cash'
+        | 'reserved_cash'
+        | 'gold'
+        | 'investment'
+        | 'certificate'
+        | 'receivable'
+        | 'other';
     quantity: number | null;
     currency: string;
     costBasis: number;

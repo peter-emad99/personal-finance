@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
     AppShell,
@@ -174,6 +174,19 @@ export default function Allocations({
         () => items.reduce((sum, item) => sum + Number(item.allocationPercent ?? 0), 0),
         [items],
     );
+    const refreshFromTemplate = () => {
+        if (!plan || plan.status === 'closed') {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Refresh the current month from “${plan.templateName ?? 'the linked template'}”?\n\nThis will replace this month’s planned income sources, expense categories, and savings allocations with the template values. Confirmed ledger actuals will be preserved and synced again. Any custom planned changes in this month will be overwritten.`,
+        );
+
+        if (confirmed) {
+            router.post(`/allocations/${plan.id}/refresh-from-template`);
+        }
+    };
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
         router.post('/allocations', {
@@ -345,20 +358,40 @@ export default function Allocations({
                             title="This month's plan"
                             meta="Review expenses and assign the remaining cash"
                             action={
-                                plan && actualTracking?.source === 'confirmed_ledger' ? (
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() =>
-                                            router.post(
-                                                `/allocations/${plan.id}/sync-actuals`,
-                                            )
-                                        }
-                                    >
-                                        <RefreshCw data-icon="inline-start" />
-                                        Sync actuals
-                                    </Button>
+                                plan ? (
+                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={plan.status === 'closed'}
+                                            title={
+                                                plan.status === 'closed'
+                                                    ? 'Closed plans are protected.'
+                                                    : 'Replace this month with the current template values.'
+                                            }
+                                            onClick={refreshFromTemplate}
+                                        >
+                                            <RotateCcw data-icon="inline-start" />
+                                            Refresh from template
+                                        </Button>
+                                        {actualTracking?.source === 'confirmed_ledger' && (
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={plan.status === 'closed'}
+                                                onClick={() =>
+                                                    router.post(
+                                                        `/allocations/${plan.id}/sync-actuals`,
+                                                    )
+                                                }
+                                            >
+                                                <RefreshCw data-icon="inline-start" />
+                                                Sync actuals
+                                            </Button>
+                                        )}
+                                    </div>
                                 ) : undefined
                             }
                         />

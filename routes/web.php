@@ -76,6 +76,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/monthly-review/{review}/prepare-next', [MonthlyReviewController::class, 'prepareNext'])->name('monthly-review.prepare-next');
     Route::post('/monthly-review/{review}/reopen', [MonthlyReviewController::class, 'reopen'])->name('monthly-review.reopen');
     Route::post('/allocations/{allocationPlan}/sync-actuals', [AllocationController::class, 'syncActuals'])->name('allocations.sync-actuals');
+    Route::post('/allocations/{allocationPlan}/refresh-from-template', [AllocationController::class, 'refreshFromTemplate'])->name('allocations.refresh-from-template');
     Route::get('/cash-flow', [CashFlowController::class, 'index'])->name('cash-flow.index');
     Route::post('/cash-flow', [CashFlowController::class, 'store'])->name('cash-flow.store');
     Route::put('/cash-flow/{cashFlow}', [CashFlowController::class, 'update'])->name('cash-flow.update');

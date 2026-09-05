@@ -107,12 +107,19 @@ class FinanceService
             $buckets,
             (string) $policy['emergencyEligibleLiquidity'],
         );
-        // Confirmed ledger rows do not carry a universal "essential" type.
-        // Use total recorded outflow as the conservative policy base unless
-        // the user has supplied an explicit monthly-review base.
-        $monthlyBase = $useManualReview
-            ? (float) $review->essential_expenses_egp + (float) $review->recurring_commitments_egp + (float) $review->debt_payments_egp
-            : $expenses;
+        // Emergency coverage should be measured against the user's configured
+        // monthly plan when one exists. The confirmed ledger can be partial
+        // during the current month (for example, it may contain only one
+        // purchase), so using actual outflow here would understate the reserve
+        // target and make the dashboard misleading.
+        $savedPlan = AllocationPlan::query()
+            ->whereDate('month', $monthStart->toDateString())
+            ->first();
+        $monthlyBase = $savedPlan !== null
+            ? (float) $savedPlan->planned_expenses_egp
+            : ($useManualReview
+                ? (float) $review->essential_expenses_egp + (float) $review->recurring_commitments_egp + (float) $review->debt_payments_egp
+                : $expenses);
         $invested = $useManualReview ? (float) $review->invested_egp : (float) $ledgerSummary['invested'];
         $recurringMonthly = $useManualReview
             ? (float) $review->recurring_commitments_egp
@@ -269,6 +276,8 @@ class FinanceService
             'assetAllocation' => $this->allocation($assets),
             'currencyExposure' => $this->currencyExposure($assets),
             'liquidity' => $this->liquidity($assets),
+            'wealthBreakdown' => $this->wealthBreakdown($assets, $marketRates),
+            'liquiditySummary' => $this->liquiditySummary($assets, $totalLiabilities),
             'buckets' => $buckets->map(fn (Bucket $bucket) => [
                 'id' => $bucket->id,
                 'name' => $bucket->name,
@@ -1268,6 +1277,7 @@ class FinanceService
             'id' => $asset->id,
             'name' => $asset->name,
             'type' => $asset->type,
+            'classification' => $this->assetClassification($asset),
             'quantity' => $asset->quantity !== null ? (float) $asset->quantity : null,
             'currency' => $asset->currency,
             'costBasis' => (float) $asset->cost_basis_egp,
@@ -1292,6 +1302,135 @@ class FinanceService
                 'amount' => (float) data_get($bucket, 'pivot.amount_egp', 0),
             ])->values(),
         ];
+    }
+
+    private function assetClassification(Asset $asset): string
+    {
+        $type = strtolower(trim((string) $asset->type));
+        $currency = strtoupper(trim((string) $asset->currency));
+
+        return match (true) {
+            str_contains($type, 'receivable') => 'receivable',
+            $type === 'cash reserve' || (str_contains($type, 'reserve') && str_contains($type, 'cash')) => 'reserved_cash',
+            str_contains($type, 'gold') || $currency === 'GOLD' => 'gold',
+            $type === 'certificate' || str_contains($type, 'certificate') => 'certificate',
+            $type === 'cash' || $type === 'usd' => 'cash',
+            $type === 'etf'
+                || str_contains($type, 'fund')
+                || str_contains($type, 'equity')
+                || str_contains($type, 'equities')
+                || str_contains($type, 'stock') => 'investment',
+            default => 'other',
+        };
+    }
+
+    /**
+     * Explicit wealth groups for the dashboard. This intentionally does not
+     * infer investments from whatever remains after subtracting other groups.
+     *
+     * @param  Collection<int, Asset>  $assets
+     * @param  array<string, mixed>  $marketRates
+     * @return array<string, mixed>
+     */
+    private function wealthBreakdown(Collection $assets, array $marketRates): array
+    {
+        $total = max(1, $this->sumMoney($assets, fn (Asset $asset): string => (string) $asset->current_value_egp));
+        $usdRate = (float) data_get($marketRates, 'usdToEgp.rate', 0);
+        $groups = [
+            ['key' => 'cash_egp', 'label' => 'EGP cash', 'detail' => 'Bank accounts and wallet money available now', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'cash' && strtoupper((string) $asset->currency) === 'EGP'],
+            ['key' => 'cash_usd', 'label' => 'USD cash', 'detail' => 'USD cash balance, shown in USD and EGP', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'cash' && strtoupper((string) $asset->currency) === 'USD'],
+            ['key' => 'reserved_cash', 'label' => 'Reserved cash', 'detail' => 'Held for your brother; not available for normal spending', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'reserved_cash'],
+            ['key' => 'gold', 'label' => 'Gold', 'detail' => '24K physical gold', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'gold'],
+            ['key' => 'investment_egp', 'label' => 'EGP investments', 'detail' => 'Egyptian equities and EGP funds', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'investment' && strtoupper((string) $asset->currency) !== 'USD'],
+            ['key' => 'investment_usd', 'label' => 'USD investments', 'detail' => 'USD-denominated investments such as VOO', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'investment' && strtoupper((string) $asset->currency) === 'USD'],
+            ['key' => 'certificate', 'label' => 'NBE certificate', 'detail' => 'Long-term / locked asset', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'certificate'],
+            ['key' => 'receivables', 'label' => 'Loans receivable', 'detail' => 'Money owed to you; not cash now', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'receivable'],
+        ];
+
+        $payload = collect($groups)->map(function (array $group) use ($assets, $total, $usdRate): array {
+            /** @var Collection<int, Asset> $items */
+            $items = $assets->filter($group['filter']);
+            $value = round((float) $items->sum('current_value_egp'), 2);
+            $nativeCurrency = null;
+            $nativeAmount = null;
+
+            if (in_array($group['key'], ['cash_usd', 'reserved_cash', 'investment_usd'], true)) {
+                $nativeCurrency = 'USD';
+                $nativeAmount = $usdRate > 0
+                    ? round((float) $items->sum(function (Asset $asset) use ($usdRate): float {
+                        if ($asset->quantity !== null && strtoupper((string) $asset->currency) === 'USD') {
+                            return (float) $asset->quantity;
+                        }
+
+                        return (float) $asset->current_value_egp / $usdRate;
+                    }), 2)
+                    : null;
+            } elseif ($group['key'] === 'gold') {
+                $nativeCurrency = 'g';
+                $nativeAmount = round((float) $items->sum('quantity'), 2);
+            }
+
+            $detail = $group['detail'];
+            if ($group['key'] === 'certificate') {
+                $maturityDate = $items->map(fn (Asset $asset): ?string => $this->maturityDateFromNotes($asset))->filter()->first();
+                if ($maturityDate !== null) {
+                    $detail .= ' · matures '.$maturityDate;
+                }
+            }
+
+            return [
+                'key' => $group['key'],
+                'label' => $group['label'],
+                'detail' => $detail,
+                'valueEgp' => $value,
+                'percent' => round($value / $total * 100, 1),
+                'nativeAmount' => $nativeAmount,
+                'nativeCurrency' => $nativeCurrency,
+            ];
+        })->filter(fn (array $group): bool => $group['valueEgp'] > 0)->values()->all();
+
+        return [
+            'groups' => $payload,
+            'usdToEgp' => $usdRate > 0 ? $usdRate : null,
+        ];
+    }
+
+    /**
+     * Liquidity is a separate lens from net worth. Liabilities are subtracted
+     * here only for the after-liabilities cash figure; net worth subtracts
+     * them independently exactly once.
+     *
+     * @param  Collection<int, Asset>  $assets
+     * @return array<string, mixed>
+     */
+    private function liquiditySummary(Collection $assets, float $totalLiabilities): array
+    {
+        $grossImmediate = round((float) $assets
+            ->filter(fn (Asset $asset): bool => (string) $asset->liquidity === 'immediate')
+            ->sum('current_value_egp'), 2);
+        $reservedCash = round((float) $assets
+            ->filter(fn (Asset $asset): bool => $this->assetClassification($asset) === 'reserved_cash' && (string) $asset->liquidity === 'immediate')
+            ->sum('current_value_egp'), 2);
+        $controllableBeforeLiabilities = round($grossImmediate - $reservedCash, 2);
+
+        return [
+            'grossImmediateLiquidAssets' => $grossImmediate,
+            'reservedCash' => $reservedCash,
+            'controllableCashBeforeLiabilities' => $controllableBeforeLiabilities,
+            'activeLiabilities' => round($totalLiabilities, 2),
+            'controllableCashAfterLiabilities' => round($controllableBeforeLiabilities - $totalLiabilities, 2),
+        ];
+    }
+
+    private function maturityDateFromNotes(Asset $asset): ?string
+    {
+        if (! is_string($asset->notes)) {
+            return null;
+        }
+
+        preg_match('/\b20\d{2}-\d{2}-\d{2}\b/', $asset->notes, $matches);
+
+        return $matches[0] ?? null;
     }
 
     /**

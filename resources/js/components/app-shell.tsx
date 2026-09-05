@@ -4,6 +4,7 @@ import {
     BookOpen,
     Calculator,
     CircleHelp,
+    CircleDollarSign,
     CreditCard,
     ChevronRight,
     Database,
@@ -249,6 +250,11 @@ const navigationGroups: NavigationGroup[] = [
     {
         label: 'Track',
         items: [
+            {
+                href: '/cash-flow',
+                label: 'Income & expenses',
+                icon: CircleDollarSign,
+            },
             { href: '/ledger', label: 'Ledger & imports', icon: BookOpen },
             { href: '/commitments', label: 'Commitments', icon: Repeat2 },
             { href: '/liabilities', label: 'Liabilities', icon: CreditCard },
@@ -296,6 +302,11 @@ const navigationGroups: NavigationGroup[] = [
                 href: '/transaction-categories',
                 label: 'Ledger categories',
                 icon: ListChecks,
+            },
+            {
+                href: '/asset-types',
+                label: 'Asset types',
+                icon: WalletCards,
             },
             {
                 href: '/valuations',

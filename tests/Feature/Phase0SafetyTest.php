@@ -69,7 +69,7 @@ class Phase0SafetyTest extends TestCase
         $this->assertSame(50000.0, $groups['investment_usd']['valueEgp']);
         $this->assertSame(10000.0, $groups['reserved_cash']['valueEgp']);
         $this->assertArrayNotHasKey('usd', $groups);
-        $this->assertStringContainsString('matures 2028-11-23', $groups['certificate']['detail']);
+        $this->assertStringContainsString('matures 2028-11-23', $groups['fixed_income']['detail']);
     }
 
     public function test_liquidity_summary_subtracts_reserved_cash_and_liabilities_once(): void

@@ -46,4 +46,10 @@ class Asset extends Model
     {
         return $this->belongsTo(Account::class);
     }
+
+    /** @return BelongsTo<AssetType, $this> */
+    public function assetType(): BelongsTo
+    {
+        return $this->belongsTo(AssetType::class);
+    }
 }

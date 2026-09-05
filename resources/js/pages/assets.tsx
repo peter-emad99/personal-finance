@@ -8,7 +8,8 @@ import {
     ShieldCheck,
     WalletCards,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import {
     AppShell,
@@ -64,7 +65,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { formatEGP, labelize } from '@/types/finance';
-import type { Asset } from '@/types/finance';
+import type { Asset, AssetType } from '@/types/finance';
 
 type BucketOption = {
     id: number;
@@ -73,43 +74,10 @@ type BucketOption = {
     goalName: string | null;
 };
 
-const assetTypes = [
-    ['Cash', 'Cash', 'EGP notes, bank balance, or wallet money available now.'],
-    [
-        'USD',
-        'Foreign currency',
-        'USD or another currency balance you own. Report its EGP value today.',
-    ],
-    [
-        'Gold',
-        'Gold',
-        'Physical gold or a gold-backed holding. Its value can move with the market.',
-    ],
-    [
-        'Egyptian equities',
-        'Egyptian equities',
-        'Individual shares listed on the Egyptian Exchange.',
-    ],
-    [
-        'Mutual funds',
-        'Mutual funds',
-        'A pooled investment fund. It may invest in shares, bonds, or a mix—check the fund itself.',
-    ],
-    [
-        'Fixed income',
-        'Fixed income',
-        'A certificate, bond, treasury bill, or fixed-income fund. It is an asset you own, not your monthly salary.',
-    ],
-    [
-        'Other',
-        'Other',
-        'Anything valuable that does not fit the options above.',
-    ],
-] as const;
-
 const blank = {
     name: '',
     type: 'Cash',
+    asset_type_id: '',
     quantity: '',
     currency: 'EGP',
     cost_basis_egp: '',
@@ -124,9 +92,11 @@ const blank = {
 export default function Assets({
     assets,
     buckets,
+    assetTypes,
 }: {
     assets: Asset[];
     buckets: BucketOption[];
+    assetTypes: AssetType[];
 }) {
     const [editing, setEditing] = useState<Asset | null>(null);
     const [open, setOpen] = useState(false);
@@ -134,7 +104,53 @@ export default function Assets({
     const [detailAsset, setDetailAsset] = useState<Asset | null>(null);
     const [allocations, setAllocations] = useState<Record<number, string>>({});
     const [form, setForm] = useState(blank);
-    const selectedType = assetTypes.find(([value]) => value === form.type);
+    const [view, setView] = useState<'all' | 'class' | 'type'>('all');
+    const [filter, setFilter] = useState('all');
+    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+    const selectedType = assetTypes.find((type) => String(type.id) === form.asset_type_id);
+    const activeAssets = useMemo(() => assets.filter((asset) => !asset.archived), [assets]);
+    const classSummaries = useMemo(() => {
+        const order = ['cash', 'reserved_cash', 'investment', 'fixed_income', 'gold', 'receivable', 'other'];
+        const grouped = new Map<string, { label: string; value: number; count: number }>();
+
+        activeAssets.forEach((asset) => {
+            const key = asset.assetClass ?? 'other';
+            const current = grouped.get(key) ?? { label: asset.assetClassLabel ?? labelize(key), value: 0, count: 0 };
+            current.value += asset.currentValue;
+            current.count += 1;
+            grouped.set(key, current);
+        });
+
+        return order
+            .filter((key) => grouped.has(key))
+            .map((key) => ({ key, ...grouped.get(key)! }));
+    }, [activeAssets]);
+    const visibleAssets = useMemo(() => assets.filter((asset) => {
+        if (filter === 'all' || view === 'all') {
+            return true;
+        }
+
+        return view === 'class' ? asset.assetClass === filter : asset.assetTypeKey === filter;
+    }), [assets, filter, view]);
+    const groupedAssets = useMemo(() => {
+        if (view === 'all') {
+            return [];
+        }
+
+        const groups = new Map<string, { label: string; assets: Asset[] }>();
+        visibleAssets.forEach((asset) => {
+            const key = view === 'class' ? (asset.assetClass ?? 'other') : (asset.assetTypeKey ?? asset.type);
+            const label = view === 'class' ? (asset.assetClassLabel ?? labelize(key)) : (asset.assetTypeLabel ?? asset.type);
+            const current = groups.get(key) ?? { label, assets: [] };
+            current.assets.push(asset);
+            groups.set(key, current);
+        });
+
+        return [...groups.entries()]
+            .map(([key, group]) => ({ key, ...group, value: group.assets.reduce((sum, asset) => sum + asset.currentValue, 0) }))
+            .sort((a, b) => b.value - a.value);
+    }, [view, visibleAssets]);
+    const typeOptions = useMemo(() => Array.from(new Map(assets.map((asset) => [asset.assetTypeKey ?? asset.type, asset.assetTypeLabel ?? asset.type])).entries()), [assets]);
     const totals = useMemo(
         () => allocationSummary(allocationAsset, allocations),
         [allocationAsset, allocations],
@@ -149,6 +165,7 @@ export default function Assets({
                 ? {
                       name: asset.name,
                       type: asset.type,
+                      asset_type_id: asset.assetTypeId ? String(asset.assetTypeId) : '',
                       quantity:
                           asset.quantity === null ? '' : String(asset.quantity),
                       currency: asset.currency,
@@ -165,7 +182,10 @@ export default function Assets({
                       liquidity: asset.liquidity,
                       notes: asset.notes ?? '',
                   }
-                : blank,
+                : {
+                      ...blank,
+                      asset_type_id: String(assetTypes.find((type) => type.key === 'bank_cash')?.id ?? ''),
+                  },
         );
         setOpen(true);
     };
@@ -251,21 +271,39 @@ export default function Assets({
                 <CardHeader>
                     <CardTitle>Everything you own</CardTitle>
                     <CardDescription>
-                        {assets.length} assets · all values are shown in EGP so
+                        {activeAssets.length} active assets · all values are shown in EGP so
                         you can compare them.
                     </CardDescription>
                     <CardAction>
                         <Badge variant="secondary">
-                            {formatEGP(
-                                assets.reduce(
-                                    (total, asset) =>
-                                        total + asset.currentValue,
-                                    0,
-                                ),
-                            )}
+                            {formatEGP(activeAssets.reduce((sum, asset) => sum + asset.currentValue, 0))}
                         </Badge>
                     </CardAction>
                 </CardHeader>
+                <CardContent className="border-b px-5 py-4">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <Metric title="All assets" value={activeAssets.reduce((sum, asset) => sum + asset.currentValue, 0)} detail={`${activeAssets.length} active assets`} />
+                        {classSummaries.map((summary) => (
+                            <Metric key={summary.key} title={summary.label} value={summary.value} detail={`${summary.count} ${summary.count === 1 ? 'asset' : 'assets'}`} />
+                        ))}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                        <Select
+                            value={view}
+                            onValueChange={(value) => {
+                                setView(value as 'all' | 'class' | 'type');
+                                setFilter('all');
+                            }}
+                        >
+                            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                            <SelectContent><SelectGroup><SelectItem value="all">Flat list</SelectItem><SelectItem value="class">Group by class</SelectItem><SelectItem value="type">Group by type</SelectItem></SelectGroup></SelectContent>
+                        </Select>
+                        {view !== 'all' && <Select value={filter} onValueChange={(value) => setFilter(value ?? 'all')}>
+                            <SelectTrigger className="w-[220px]"><SelectValue placeholder="Filter" /></SelectTrigger>
+                            <SelectContent><SelectGroup><SelectItem value="all">All {view === 'class' ? 'classes' : 'types'}</SelectItem>{(view === 'class' ? classSummaries.map((summary) => [summary.key, summary.label] as const) : typeOptions).map(([value, label]) => value ? <SelectItem key={value} value={value}>{label}</SelectItem> : null)}</SelectGroup></SelectContent>
+                        </Select>}
+                    </div>
+                </CardContent>
                 <CardContent className="px-0">
                     <div className="overflow-x-auto">
                         <Table className="min-w-[980px] text-left text-sm">
@@ -284,200 +322,52 @@ export default function Assets({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {assets.map((asset) => {
-                                    const allocated = (
-                                        asset.bucketAllocations ?? []
-                                    ).reduce(
-                                        (total, item) => total + item.amount,
-                                        0,
-                                    );
-                                    const remaining = Math.max(
-                                        0,
-                                        asset.currentValue - allocated,
-                                    );
+                                {view === 'all'
+                                    ? visibleAssets.map((asset) => (
+                                          <AssetTableRow
+                                              key={asset.id}
+                                              asset={asset}
+                                              begin={begin}
+                                              openAllocations={openAllocations}
+                                              setDetailAsset={setDetailAsset}
+                                          />
+                                      ))
+                                    : groupedAssets.map((group) => {
+                                          const collapsed = collapsedGroups[group.key] ?? false;
 
-                                    return (
-                                        <TableRow
-                                            key={asset.id}
-                                            className={
-                                                asset.archived
-                                                    ? 'opacity-60'
-                                                    : ''
-                                            }
-                                        >
-                                            <TableCell className="py-4 pl-5">
-                                                <div className="flex flex-col gap-1">
-                                                    <Button
-                                                        variant="link"
-                                                        className="h-auto justify-start p-0 font-medium"
-                                                        onClick={() =>
-                                                            setDetailAsset(
-                                                                asset,
-                                                            )
-                                                        }
-                                                    >
-                                                        {asset.name}
-                                                    </Button>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {asset.type} ·{' '}
-                                                        {asset.accountName ??
-                                                            asset.currency}
-                                                    </p>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="py-4">
-                                                <p className="font-medium tabular-nums">
-                                                    {formatEGP(
-                                                        asset.currentValue,
-                                                    )}
-                                                </p>
-                                                {asset.quantity !== null && (
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {asset.quantity}{' '}
-                                                        {asset.currency}
-                                                    </p>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="py-4">
-                                                {asset.costBasis > 0 ? (
-                                                    <p
-                                                        className={cn(
-                                                            'font-medium tabular-nums',
-                                                            asset.gainLoss >= 0
-                                                                ? 'text-primary'
-                                                                : 'text-destructive',
-                                                        )}
-                                                    >
-                                                        {asset.gainLoss >= 0
-                                                            ? '+'
-                                                            : ''}
-                                                        {formatEGP(
-                                                            asset.gainLoss,
-                                                        )}
-                                                    </p>
-                                                ) : (
-                                                    <span className="text-muted-foreground">
-                                                        Not tracked
-                                                    </span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="py-4">
-                                                <Badge variant="outline">
-                                                    {liquidityLabel(
-                                                        asset.liquidity,
-                                                    )}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="py-4">
-                                                <Button
-                                                    variant="outline"
-                                                    className="h-auto w-full max-w-[22rem] justify-start p-3 text-left whitespace-normal"
-                                                    onClick={() =>
-                                                        openAllocations(asset)
-                                                    }
-                                                >
-                                                    <div className="flex w-full min-w-0 flex-col gap-1.5">
-                                                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                                                            <span className="font-medium text-primary">
-                                                                {asset
-                                                                    .bucketAllocations
-                                                                    ?.length
-                                                                    ? `${asset.bucketAllocations.length} ${asset.bucketAllocations.length === 1 ? 'purpose' : 'purposes'}`
-                                                                    : 'Assign a purpose'}
-                                                            </span>
-                                                            {asset
-                                                                .bucketAllocations
-                                                                ?.length ? (
-                                                                <span className="text-xs font-medium text-muted-foreground tabular-nums">
-                                                                    {formatEGP(
-                                                                        allocated,
-                                                                    )}{' '}
-                                                                    assigned
-                                                                </span>
-                                                            ) : null}
-                                                        </div>
-                                                        {asset.bucketAllocations
-                                                            ?.length ? (
-                                                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                                                                {asset.bucketAllocations.map(
-                                                                    (
-                                                                        bucket,
-                                                                    ) => (
-                                                                        <span
-                                                                            key={`${bucket.bucketId}-${bucket.amount}`}
-                                                                            className="whitespace-nowrap"
-                                                                        >
-                                                                            {
-                                                                                bucket.bucketName
-                                                                            }{' '}
-                                                                            <span className="font-medium text-foreground tabular-nums">
-                                                                                {formatEGP(
-                                                                                    bucket.amount,
-                                                                                )}
-                                                                            </span>
-                                                                        </span>
-                                                                    ),
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <span className="text-xs text-muted-foreground">
-                                                                {formatEGP(
-                                                                    remaining,
-                                                                )}{' '}
-                                                                unassigned
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </Button>
-                                            </TableCell>
-                                            <TableCell className="py-4 pr-5 text-right">
-                                                {!asset.archived ? (
-                                                    <div className="flex justify-end gap-1">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                begin(asset)
-                                                            }
-                                                        >
-                                                            <Pencil data-icon="inline-start" />
-                                                            Edit
-                                                        </Button>
-                                                        <Button
-                                                            variant="destructive"
-                                                            size="sm"
-                                                            onClick={() => {
-                                                                if (
-                                                                    confirm(
-                                                                        'Archive this asset?',
-                                                                    )
-                                                                ) {
-                                                                    router.delete(
-                                                                        `/assets/${asset.id}`,
-                                                                    );
-                                                                }
-                                                            }}
-                                                        >
-                                                            Archive
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            router.post(
-                                                                `/assets/${asset.id}/restore`,
-                                                            )
-                                                        }
-                                                    >
-                                                        Restore
-                                                    </Button>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    );
-                                })}
+                                          return (
+                                              <Fragment key={group.key}>
+                                                  <TableRow className="bg-muted/40">
+                                                      <TableCell colSpan={6} className="px-5 py-3">
+                                                          <button
+                                                              type="button"
+                                                              className="flex w-full items-center justify-between gap-3 text-left"
+                                                              aria-expanded={!collapsed}
+                                                              onClick={() => setCollapsedGroups((current) => ({ ...current, [group.key]: !collapsed }))}
+                                                          >
+                                                              <span className="flex min-w-0 items-center gap-2">
+                                                                  <span className="text-sm font-semibold">{group.label}</span>
+                                                                  <Badge variant="secondary">{group.assets.length} {group.assets.length === 1 ? 'asset' : 'assets'}</Badge>
+                                                              </span>
+                                                              <span className="flex shrink-0 items-center gap-2 text-sm font-semibold tabular-nums">
+                                                                  {formatEGP(group.value)}
+                                                                  <span className="text-muted-foreground">{collapsed ? 'Show' : 'Hide'}</span>
+                                                              </span>
+                                                          </button>
+                                                      </TableCell>
+                                                  </TableRow>
+                                                  {!collapsed && group.assets.map((asset) => (
+                                                      <AssetTableRow
+                                                          key={asset.id}
+                                                          asset={asset}
+                                                          begin={begin}
+                                                          openAllocations={openAllocations}
+                                                          setDetailAsset={setDetailAsset}
+                                                      />
+                                                  ))}
+                                              </Fragment>
+                                          );
+                                      })}
                             </TableBody>
                         </Table>
                     </div>
@@ -528,10 +418,11 @@ export default function Assets({
                                     <Help text="Type describes what the asset is. It does not decide its purpose; the purpose split comes after saving." />
                                 </FieldLabel>
                                 <Select
-                                    value={form.type}
-                                    onValueChange={(value) =>
-                                        update('type', String(value ?? ''))
-                                    }
+                                    value={form.asset_type_id}
+                                    onValueChange={(value) => {
+                                        const selected = assetTypes.find((type) => String(type.id) === value);
+                                        setForm((current) => ({ ...current, asset_type_id: value ?? '', type: selected?.label ?? current.type, liquidity: selected?.defaultLiquidity ?? current.liquidity }));
+                                    }}
                                 >
                                     <SelectTrigger id="asset-type">
                                         <SelectValue placeholder="Select asset type" />
@@ -541,14 +432,12 @@ export default function Assets({
                                             <SelectLabel>
                                                 Cash & hard assets
                                             </SelectLabel>
-                                            {assetTypes
-                                                .slice(0, 3)
-                                                .map(([value, label]) => (
+                                            {assetTypes.filter((type) => ['cash', 'reserved_cash', 'gold'].includes(type.class)).map((type) => (
                                                     <SelectItem
-                                                        key={value}
-                                                        value={value}
+                                                        key={type.id}
+                                                        value={String(type.id)}
                                                     >
-                                                        {label}
+                                                        {type.label} <span className="text-muted-foreground">· {type.classLabel}</span>
                                                     </SelectItem>
                                                 ))}
                                         </SelectGroup>
@@ -557,27 +446,23 @@ export default function Assets({
                                             <SelectLabel>
                                                 Investments
                                             </SelectLabel>
-                                            {assetTypes
-                                                .slice(3, 6)
-                                                .map(([value, label]) => (
+                                            {assetTypes.filter((type) => ['investment', 'fixed_income'].includes(type.class)).map((type) => (
                                                     <SelectItem
-                                                        key={value}
-                                                        value={value}
+                                                        key={type.id}
+                                                        value={String(type.id)}
                                                     >
-                                                        {label}
+                                                        {type.label} <span className="text-muted-foreground">· {type.classLabel}</span>
                                                     </SelectItem>
                                                 ))}
                                         </SelectGroup>
                                         <SelectSeparator />
                                         <SelectGroup>
-                                            <SelectItem value="Other">
-                                                Other
-                                            </SelectItem>
+                                            {assetTypes.filter((type) => !['cash', 'reserved_cash', 'gold', 'investment', 'fixed_income'].includes(type.class)).map((type) => <SelectItem key={type.id} value={String(type.id)}>{type.label} <span className="text-muted-foreground">· {type.classLabel}</span></SelectItem>)}
                                         </SelectGroup>
                                     </SelectContent>
                                 </Select>
                                 <FieldDescription>
-                                    {selectedType?.[2]}
+                                    {selectedType ? `Rollup: ${selectedType.classLabel}. Pricing: ${selectedType.pricingBehavior}.` : 'Choose a catalog type. Legacy records remain compatible.'}
                                 </FieldDescription>
                             </Field>
                             <Field>
@@ -1012,36 +897,43 @@ export default function Assets({
                             )}
                         </div>
                         <Separator />
-                        <div className="grid gap-2 text-sm sm:grid-cols-2">
-                            <p>
-                                <span className="text-muted-foreground">
-                                    Type
-                                </span>
-                                <br />
-                                {detailAsset.type}
+                        <AssetDetailSection title="Identity & classification">
+                            <AssetDetailGrid>
+                                <AssetDetailField label="Asset name" value={detailAsset.name} />
+                                <AssetDetailField label="Asset type" value={detailAsset.assetTypeLabel ?? detailAsset.type} />
+                                <AssetDetailField label="Asset class" value={detailAsset.assetClassLabel ?? 'Other'} />
+                                <AssetDetailField label="Catalog key" value={detailAsset.assetTypeKey ?? 'Legacy / not assigned'} />
+                                <AssetDetailField label="Pricing behavior" value={detailAsset.assetType?.pricingBehavior ? labelize(detailAsset.assetType.pricingBehavior) : 'Manual / legacy'} />
+                                <AssetDetailField label="Status" value={detailAsset.archived ? 'Archived' : 'Active'} />
+                            </AssetDetailGrid>
+                        </AssetDetailSection>
+                        <AssetDetailSection title="Value & performance">
+                            <AssetDetailGrid>
+                                <AssetDetailField label="Current value" value={formatEGP(detailAsset.currentValue)} />
+                                <AssetDetailField label="Cost basis" value={detailAsset.costBasis > 0 ? formatEGP(detailAsset.costBasis) : 'Not provided'} />
+                                <AssetDetailField
+                                    label="Gain / loss"
+                                    value={`${detailAsset.gainLoss >= 0 ? '+' : ''}${formatEGP(detailAsset.gainLoss)}`}
+                                    valueClassName={detailAsset.gainLoss >= 0 ? 'text-primary' : 'text-destructive'}
+                                />
+                                <AssetDetailField label="Native currency" value={detailAsset.currency} />
+                                <AssetDetailField label="Quantity" value={detailAsset.quantity !== null ? `${detailAsset.quantity} ${detailAsset.currency}` : 'Not tracked'} />
+                                <AssetDetailField label="Unit price" value={detailAsset.unitPrice !== null ? formatEGP(detailAsset.unitPrice) : 'Not tracked'} />
+                            </AssetDetailGrid>
+                        </AssetDetailSection>
+                        <AssetDetailSection title="Access & location">
+                            <AssetDetailGrid>
+                                <AssetDetailField label="Account / location" value={detailAsset.accountName ?? 'Not specified'} />
+                                <AssetDetailField label="Liquidity" value={liquidityLabel(detailAsset.liquidity)} />
+                                <AssetDetailField label="Liquid under policy" value={detailAsset.isLiquid ? 'Yes' : 'No'} />
+                                <AssetDetailField label="Acquired on" value={detailAsset.acquiredOn ?? 'Not specified'} />
+                            </AssetDetailGrid>
+                        </AssetDetailSection>
+                        <AssetDetailSection title="Notes">
+                            <p className="text-sm leading-6 whitespace-pre-wrap text-muted-foreground">
+                                {detailAsset.notes?.trim() || 'No notes recorded.'}
                             </p>
-                            <p>
-                                <span className="text-muted-foreground">
-                                    Access
-                                </span>
-                                <br />
-                                {liquidityLabel(detailAsset.liquidity)}
-                            </p>
-                            <p>
-                                <span className="text-muted-foreground">
-                                    Location
-                                </span>
-                                <br />
-                                {detailAsset.accountName ?? 'Not specified'}
-                            </p>
-                            <p>
-                                <span className="text-muted-foreground">
-                                    Native currency
-                                </span>
-                                <br />
-                                {detailAsset.currency}
-                            </p>
-                        </div>
+                        </AssetDetailSection>
                     </div>
                 </FormModal>
             )}
@@ -1066,6 +958,197 @@ function ConceptCard({
                 <CardDescription>{description}</CardDescription>
             </CardHeader>
         </Card>
+    );
+}
+
+function AssetDetailSection({
+    title,
+    children,
+}: {
+    title: string;
+    children: ReactNode;
+}) {
+    return (
+        <section className="flex flex-col gap-3">
+            <h3 className="text-sm font-semibold">{title}</h3>
+            {children}
+        </section>
+    );
+}
+
+function AssetDetailGrid({ children }: { children: ReactNode }) {
+    return <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2">{children}</div>;
+}
+
+function AssetDetailField({
+    label,
+    value,
+    valueClassName,
+}: {
+    label: string;
+    value: string;
+    valueClassName?: string;
+}) {
+    return (
+        <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className={cn('mt-1 break-words text-sm font-medium', valueClassName)}>{value}</p>
+        </div>
+    );
+}
+
+function AssetTableRow({
+    asset,
+    begin,
+    openAllocations,
+    setDetailAsset,
+}: {
+    asset: Asset;
+    begin: (asset?: Asset) => void;
+    openAllocations: (asset: Asset) => void;
+    setDetailAsset: (asset: Asset) => void;
+}) {
+    const allocated = (asset.bucketAllocations ?? []).reduce(
+        (total, item) => total + item.amount,
+        0,
+    );
+    const remaining = Math.max(0, asset.currentValue - allocated);
+
+    return (
+        <TableRow className={asset.archived ? 'opacity-60' : ''}>
+            <TableCell className="py-4 pl-5">
+                <div className="flex flex-col gap-1">
+                    <Button
+                        variant="link"
+                        className="h-auto justify-start p-0 font-medium"
+                        onClick={() => setDetailAsset(asset)}
+                    >
+                        {asset.name}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                        {asset.assetTypeLabel ?? asset.type} ·{' '}
+                        {asset.assetClassLabel ?? 'Other'} ·{' '}
+                        {asset.accountName ?? asset.currency}
+                    </p>
+                </div>
+            </TableCell>
+            <TableCell className="py-4">
+                <p className="font-medium tabular-nums">
+                    {formatEGP(asset.currentValue)}
+                </p>
+                {asset.quantity !== null && (
+                    <p className="text-xs text-muted-foreground">
+                        {asset.quantity} {asset.currency}
+                    </p>
+                )}
+            </TableCell>
+            <TableCell className="py-4">
+                {asset.costBasis > 0 ? (
+                    <p
+                        className={cn(
+                            'font-medium tabular-nums',
+                            asset.gainLoss >= 0
+                                ? 'text-primary'
+                                : 'text-destructive',
+                        )}
+                    >
+                        {asset.gainLoss >= 0 ? '+' : ''}
+                        {formatEGP(asset.gainLoss)}
+                    </p>
+                ) : (
+                    <span className="text-muted-foreground">Not tracked</span>
+                )}
+            </TableCell>
+            <TableCell className="py-4">
+                <Badge variant="outline">
+                    {liquidityLabel(asset.liquidity)}
+                </Badge>
+            </TableCell>
+            <TableCell className="py-4">
+                <Button
+                    variant="outline"
+                    className="h-auto w-full max-w-[22rem] justify-start p-3 text-left whitespace-normal"
+                    onClick={() => openAllocations(asset)}
+                >
+                    <div className="flex w-full min-w-0 flex-col gap-1.5">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <span className="font-medium text-primary">
+                                {asset.bucketAllocations?.length
+                                    ? `${asset.bucketAllocations.length} ${asset.bucketAllocations.length === 1 ? 'purpose' : 'purposes'}`
+                                    : 'Assign a purpose'}
+                            </span>
+                            {asset.bucketAllocations?.length ? (
+                                <span className="text-xs font-medium text-muted-foreground tabular-nums">
+                                    {formatEGP(allocated)} assigned
+                                </span>
+                            ) : null}
+                        </div>
+                        {asset.bucketAllocations?.length ? (
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                {asset.bucketAllocations.map((bucket) => (
+                                    <span
+                                        key={`${bucket.bucketId}-${bucket.amount}`}
+                                        className="whitespace-nowrap"
+                                    >
+                                        {bucket.bucketName}{' '}
+                                        <span className="font-medium text-foreground tabular-nums">
+                                            {formatEGP(bucket.amount)}
+                                        </span>
+                                    </span>
+                                ))}
+                            </div>
+                        ) : (
+                            <span className="text-xs text-muted-foreground">
+                                {formatEGP(remaining)} unassigned
+                            </span>
+                        )}
+                    </div>
+                </Button>
+            </TableCell>
+            <TableCell className="py-4 pr-5 text-right">
+                {!asset.archived ? (
+                    <div className="flex justify-end gap-1">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => begin(asset)}
+                        >
+                            <Pencil data-icon="inline-start" />
+                            Edit
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                                if (confirm('Archive this asset?')) {
+                                    router.delete(`/assets/${asset.id}`);
+                                }
+                            }}
+                        >
+                            Archive
+                        </Button>
+                    </div>
+                ) : (
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.post(`/assets/${asset.id}/restore`)}
+                    >
+                        Restore
+                    </Button>
+                )}
+            </TableCell>
+        </TableRow>
+    );
+}
+
+function Metric({ title, value, detail }: { title: string; value: number; detail?: string }) {
+    return (
+        <div className="rounded-lg bg-muted/60 p-3">
+            <p className="text-xs text-muted-foreground">{title}</p>
+            <p className="mt-1 font-medium tabular-nums">{formatEGP(value)}</p>
+            {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
+        </div>
     );
 }
 function AllocationStat({

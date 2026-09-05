@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Asset;
+use App\Models\AssetType;
 use App\Models\Bucket;
 use App\Services\AuditLogger;
 use App\Services\FinanceService;
@@ -17,7 +18,17 @@ class AssetController extends Controller
     public function index(FinanceService $finance): Response
     {
         return Inertia::render('assets', [
-            'assets' => Asset::withTrashed()->with('buckets.goal')->orderByDesc('current_value_egp')->get()->map(fn (Asset $asset) => $finance->assetPayload($asset))->values(),
+            'assets' => Asset::withTrashed()->with(['buckets.goal', 'assetType'])->orderByDesc('current_value_egp')->get()->map(fn (Asset $asset) => $finance->assetPayload($asset))->values(),
+            'assetTypes' => AssetType::query()->availableToOwner()->where('is_active', true)->orderBy('class')->orderBy('label')->get()->map(fn (AssetType $type): array => [
+                'id' => $type->id,
+                'key' => $type->key,
+                'label' => $type->label,
+                'class' => $type->class,
+                'classLabel' => str($type->class)->replace('_', ' ')->title()->toString(),
+                'defaultLiquidity' => $type->default_liquidity,
+                'pricingBehavior' => $type->pricing_behavior,
+                'isSystem' => (bool) $type->is_system,
+            ])->values(),
             'buckets' => Bucket::with('goal:id,name')
                 ->orderBy('name')
                 ->get(['id', 'name', 'purpose', 'goal_id'])
@@ -98,7 +109,7 @@ class AssetController extends Controller
     private function validated(Request $request): array
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'], 'type' => ['required', 'string', 'max:60'],
+            'name' => ['required', 'string', 'max:120'], 'type' => ['required', 'string', 'max:60'], 'asset_type_id' => ['nullable', 'integer'],
             'quantity' => ['nullable', 'numeric', 'min:0'], 'currency' => ['required', 'string', 'max:8'],
             'cost_basis_egp' => ['nullable', 'numeric', 'min:0'], 'current_value_egp' => ['required', 'numeric', 'min:0'],
             'unit_price_egp' => ['nullable', 'numeric', 'min:0'], 'acquired_on' => ['nullable', 'date'],
@@ -106,6 +117,11 @@ class AssetController extends Controller
             'is_liquid' => ['sometimes', 'boolean'], 'notes' => ['nullable', 'string'],
         ]);
         $data['is_liquid'] = in_array($data['liquidity'], ['immediate', 'within_3_days'], true);
+
+        if (! empty($data['asset_type_id'])) {
+            $assetType = AssetType::query()->availableToOwner()->whereKey($data['asset_type_id'])->where('is_active', true)->firstOrFail();
+            $data['type'] = $assetType->label;
+        }
 
         return $data;
     }

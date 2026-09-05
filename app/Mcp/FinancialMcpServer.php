@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\AllocationPlan;
 use App\Models\AllocationRule;
 use App\Models\Asset;
+use App\Models\AssetType;
 use App\Models\AssetValuation;
 use App\Models\AuditLog;
 use App\Models\Backup;
@@ -119,6 +120,9 @@ class FinancialMcpServer
             $this->tool('get_monthly_review', 'Get a monthly review by month (YYYY-MM).', ['month' => ['type' => 'string', 'pattern' => '^\\d{4}-\\d{2}$']]),
             $this->tool('evaluate_purchase', 'Evaluate a purchase against the configured liquidity reserve policy.', ['price' => ['type' => 'number', 'minimum' => 0], 'mode' => ['type' => 'string', 'enum' => ['cash', 'finance']], 'down_payment' => ['type' => 'number', 'minimum' => 0], 'interest_rate' => ['type' => 'number', 'minimum' => 0], 'tenure' => ['type' => 'integer', 'minimum' => 1], 'monthly_savings_after_purchase' => ['type' => 'number'], 'monthly_savings' => ['type' => 'number']], ['price', 'mode']),
             $this->tool('list_assets', 'List assets, optionally including archived records.', ['include_archived' => ['type' => 'boolean']]),
+            $this->tool('list_asset_types', 'List system and owner-scoped asset types available to the current owner.', []),
+            $this->tool('create_asset_type', 'Create an owner-scoped custom asset type. System types cannot be changed.', ['key' => ['type' => 'string'], 'label' => ['type' => 'string'], 'class' => ['type' => 'string'], 'default_liquidity' => ['type' => 'string'], 'pricing_behavior' => ['type' => 'string']], ['key', 'label', 'class', 'default_liquidity', 'pricing_behavior'], false),
+            $this->tool('update_asset_type', 'Update an owner-scoped custom asset type. Numeric asset data is not changed.', ['id' => ['type' => 'integer', 'minimum' => 1], 'label' => ['type' => 'string'], 'class' => ['type' => 'string'], 'default_liquidity' => ['type' => 'string'], 'pricing_behavior' => ['type' => 'string'], 'is_active' => ['type' => 'boolean']], ['id', 'label', 'class', 'default_liquidity', 'pricing_behavior'], false),
             $this->tool('list_buckets', 'List purpose buckets, optionally including archived records.', ['include_archived' => ['type' => 'boolean']]),
             $this->tool('list_goals', 'List goals with portfolio-wide funding feasibility.', ['include_archived' => ['type' => 'boolean']]),
             $this->tool('list_cash_flow', 'List cash-flow entries.', ['include_archived' => ['type' => 'boolean']]),
@@ -258,6 +262,9 @@ class FinancialMcpServer
             'get_monthly_review' => $this->monthlyReviewPayload($arguments),
             'evaluate_purchase' => $this->purchasePayload($arguments),
             'list_assets' => $this->listAssets($this->listFlag($arguments)),
+            'list_asset_types' => $this->listAssetTypes(),
+            'create_asset_type' => $this->createAssetType($arguments),
+            'update_asset_type' => $this->updateAssetType($arguments),
             'list_buckets' => $this->listBuckets($this->listFlag($arguments)),
             'list_goals' => $this->listGoals($this->listFlag($arguments)),
             'list_cash_flow' => $this->listModel(CashFlow::class, $this->listFlag($arguments)),
@@ -333,7 +340,7 @@ class FinancialMcpServer
     private function rules(?string $resource = null): array
     {
         $all = [
-            'asset' => ['name' => 'required|string|max:120', 'type' => 'required|string|max:60', 'quantity' => 'nullable|numeric|min:0', 'currency' => 'required|string|max:8', 'cost_basis_egp' => 'nullable|numeric|min:0', 'current_value_egp' => 'required|numeric|min:0', 'unit_price_egp' => 'nullable|numeric|min:0', 'acquired_on' => 'nullable|date', 'account_name' => 'nullable|string|max:120', 'account_id' => 'nullable|exists:accounts,id', 'liquidity' => 'required|in:immediate,within_3_days,longer_term,illiquid', 'notes' => 'nullable|string'],
+            'asset' => ['name' => 'required|string|max:120', 'type' => 'required|string|max:60', 'asset_type_id' => 'nullable|integer', 'quantity' => 'nullable|numeric|min:0', 'currency' => 'required|string|max:8', 'cost_basis_egp' => 'nullable|numeric|min:0', 'current_value_egp' => 'required|numeric|min:0', 'unit_price_egp' => 'nullable|numeric|min:0', 'acquired_on' => 'nullable|date', 'account_name' => 'nullable|string|max:120', 'account_id' => 'nullable|exists:accounts,id', 'liquidity' => 'required|in:immediate,within_3_days,longer_term,illiquid', 'notes' => 'nullable|string'],
             'bucket' => ['name' => 'required|string|max:120', 'purpose' => 'nullable|string|max:200', 'purpose_type' => 'required|in:emergency,goal,investment,other', 'target_amount_egp' => 'nullable|numeric|min:0', 'color' => 'required|string|max:20', 'goal_id' => 'nullable|exists:goals,id'],
             'goal' => ['name' => 'required|string|max:120', 'target_amount_egp' => 'required|numeric|min:0', 'deadline' => 'nullable|date', 'status' => 'nullable|in:active,completed,paused', 'priority' => 'required|integer|min:1|max:99', 'monthly_contribution_egp' => 'nullable|numeric|min:0', 'notes' => 'nullable|string'],
             'cash_flow' => ['type' => 'required|in:income,expense,obligation', 'category' => 'required|string|max:80', 'amount_egp' => 'required|numeric|min:0', 'occurred_on' => 'required|date', 'notes' => 'nullable|string'],
@@ -969,6 +976,64 @@ class FinancialMcpServer
     }
 
     /** @return array<int, array<string, mixed>> */
+    private function listAssetTypes(): array
+    {
+        return AssetType::query()->availableToOwner()->where('is_active', true)->orderBy('class')->orderBy('label')->get()->map(fn (AssetType $type): array => $this->assetTypePayload($type))->values()->all();
+    }
+
+    /** @param array<string, mixed> $arguments */
+    private function createAssetType(array $arguments): array
+    {
+        $data = Validator::make($arguments, [
+            'key' => 'required|string|max:80|regex:/^[a-z][a-z0-9_]*$/',
+            'label' => 'required|string|max:120',
+            'class' => 'required|in:cash,reserved_cash,investment,gold,fixed_income,receivable,other',
+            'default_liquidity' => 'required|in:immediate,within_3_days,longer_term,illiquid',
+            'pricing_behavior' => 'required|in:manual,fx,gold',
+        ])->validate();
+        if (AssetType::query()->availableToOwner()->where('key', $data['key'])->exists()) {
+            throw new \InvalidArgumentException('That asset type key is already available to this owner.');
+        }
+
+        return $this->mutate('create_asset_type', 'create', null, fn (): Model => AssetType::create($data + ['user_id' => OwnerContext::id(), 'is_system' => false, 'is_active' => true]));
+    }
+
+    /** @param array<string, mixed> $arguments */
+    private function updateAssetType(array $arguments): array
+    {
+        $data = Validator::make($arguments, [
+            'id' => 'required|integer|min:1',
+            'label' => 'required|string|max:120',
+            'class' => 'required|in:cash,reserved_cash,investment,gold,fixed_income,receivable,other',
+            'default_liquidity' => 'required|in:immediate,within_3_days,longer_term,illiquid',
+            'pricing_behavior' => 'required|in:manual,fx,gold',
+            'is_active' => 'sometimes|boolean',
+        ])->validate();
+        $type = AssetType::query()->where('is_system', false)->where('user_id', OwnerContext::id())->findOrFail($data['id']);
+        unset($data['id']);
+
+        return $this->mutate('update_asset_type', 'update', $type, function () use ($type, $data): Model {
+            $type->update($data);
+
+            return $type->fresh();
+        });
+    }
+
+    /** @return array<string, mixed> */
+    private function assetTypePayload(AssetType $type): array
+    {
+        return [
+            'id' => $type->id,
+            'key' => $type->key,
+            'label' => $type->label,
+            'class' => $type->class,
+            'defaultLiquidity' => $type->default_liquidity,
+            'pricingBehavior' => $type->pricing_behavior,
+            'isSystem' => (bool) $type->is_system,
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
     private function listBuckets(bool $includeArchived): array
     {
         $query = $includeArchived ? Bucket::withTrashed() : Bucket::query();
@@ -1014,6 +1079,10 @@ class FinancialMcpServer
     private function assetData(array $data): array
     {
         $data['is_liquid'] = in_array($data['liquidity'], ['immediate', 'within_3_days'], true);
+        if (! empty($data['asset_type_id'])) {
+            $type = AssetType::query()->availableToOwner()->where('is_active', true)->findOrFail((int) $data['asset_type_id']);
+            $data['type'] = $type->label;
+        }
         unset($data['id']);
 
         return $data;
@@ -1370,6 +1439,9 @@ class FinancialMcpServer
     /** @return array<string, mixed> */
     private function payload(Model $model): array
     {
+        if ($model instanceof AssetType) {
+            return $this->assetTypePayload($model);
+        }
         if ($model instanceof Asset) {
             return $this->finance->assetPayload($model->loadMissing('buckets'));
         }

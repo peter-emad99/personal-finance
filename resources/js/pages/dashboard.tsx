@@ -40,6 +40,15 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectLabel,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     Sheet,
     SheetContent,
     SheetDescription,
@@ -64,6 +73,7 @@ type WealthBreakdown = {
     groups: WealthGroup[];
     usdToEgp: number | null;
 };
+type NetWorthView = 'detail' | 'class' | 'type' | 'currency';
 type LiquiditySummary = {
     grossImmediateLiquidAssets: number;
     reservedCash: number;
@@ -290,6 +300,7 @@ const chartColors = [
 export default function Dashboard({
     summary,
     assetAllocation,
+    assetTypeAllocation = [],
     currencyExposure,
     goals,
     asOf,
@@ -309,6 +320,7 @@ export default function Dashboard({
 }: {
     summary: Summary;
     assetAllocation: Allocation[];
+    assetTypeAllocation?: Allocation[];
     currencyExposure: Allocation[];
     goals: Goal[];
     asOf: string;
@@ -331,7 +343,16 @@ export default function Dashboard({
     liquiditySummary?: LiquiditySummary;
 }) {
     const [showNetWorthDetail, setShowNetWorthDetail] = useState(false);
+    const [netWorthView, setNetWorthView] = useState<NetWorthView>('detail');
     const wealthGroups = wealthBreakdown?.groups ?? [];
+    const breakdownGroups =
+        netWorthView === 'detail'
+            ? wealthGroups
+            : netWorthView === 'class'
+              ? allocationToWealthGroups(assetAllocation, 'asset class')
+              : netWorthView === 'type'
+                ? allocationToWealthGroups(assetTypeAllocation, 'asset type')
+                : allocationToWealthGroups(currencyExposure, 'currency');
     const emergencyTarget =
         monthlyPlan?.emergencyTarget ??
         summary.expenses * (summary.emergencyReserveMonths ?? 6);
@@ -415,7 +436,28 @@ export default function Dashboard({
                             Everything you own, minus active liabilities
                         </CardDescription>
                         <CardAction>
-                            <Badge variant="secondary">As of {asOf}</Badge>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                <Select
+                                    value={netWorthView}
+                                    onValueChange={(value) =>
+                                        setNetWorthView(value as NetWorthView)
+                                    }
+                                >
+                                    <SelectTrigger className="w-[150px] border-hero-foreground/20 bg-hero-foreground/10 text-hero-foreground">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            <SelectLabel>Breakdown</SelectLabel>
+                                            <SelectItem value="detail">Detailed</SelectItem>
+                                            <SelectItem value="class">By class</SelectItem>
+                                            <SelectItem value="type">By type</SelectItem>
+                                            <SelectItem value="currency">By currency</SelectItem>
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
+                                <Badge variant="secondary">As of {asOf}</Badge>
+                            </div>
                         </CardAction>
                     </CardHeader>
                     <CardContent className="border-x border-hero-foreground/10 bg-hero">
@@ -427,7 +469,7 @@ export default function Dashboard({
                             {formatEGP(summary.netWorth)}
                         </button>
                         <div className="mt-8 flex h-3 overflow-hidden rounded-full bg-hero-track">
-                            {wealthGroups.map((group, index) => (
+                            {breakdownGroups.map((group, index) => (
                                 <span
                                     key={group.label}
                                     style={{
@@ -441,7 +483,7 @@ export default function Dashboard({
                             ))}
                         </div>
                         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                            {wealthGroups.map((group, index) => (
+                            {breakdownGroups.map((group, index) => (
                                 <div key={group.label}>
                                     <div className="flex items-center gap-2 text-xs text-hero-foreground/60">
                                         <span
@@ -891,10 +933,14 @@ export default function Dashboard({
                             </Button>
                         </CardAction>
                     </CardHeader>
-                    <CardContent className="grid gap-6 md:grid-cols-2">
+                    <CardContent className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                        <AllocationList
+                            title="By asset class"
+                            items={assetAllocation}
+                        />
                         <AllocationList
                             title="By asset type"
-                            items={assetAllocation}
+                            items={assetTypeAllocation}
                         />
                         <AllocationList
                             title="By currency"
@@ -998,6 +1044,30 @@ export default function Dashboard({
                             value={summary.netWorth}
                             total
                         />
+                        <div className="flex flex-col gap-3 border-t pt-4">
+                            <div>
+                                <p className="text-sm font-medium">
+                                    Asset breakdown · {breakdownLabel(netWorthView)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    This is a view of total assets. Liabilities are shown separately above and are not mixed into the composition bars.
+                                </p>
+                            </div>
+                            {breakdownGroups.map((group, index) => (
+                                <div key={group.key} className="flex items-center justify-between gap-3 text-sm">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <span
+                                            className="size-2 shrink-0 rounded-full"
+                                            style={{ backgroundColor: chartColors[index % chartColors.length] }}
+                                        />
+                                        <span className="truncate">{group.label}</span>
+                                    </div>
+                                    <span className="shrink-0 font-medium tabular-nums">
+                                        {formatEGP(group.valueEgp)} · {group.percent}%
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
                         <p className="text-xs leading-5 text-muted-foreground">
                             Net worth includes receivables because they are
                             still owned by you. Directly controlled assets
@@ -1268,6 +1338,30 @@ function wealthGroupNativeLabel(group: WealthGroup) {
     });
 
     return `${amount} ${group.nativeCurrency} · ${group.detail}`;
+}
+
+function allocationToWealthGroups(
+    allocations: Allocation[],
+    dimension: string,
+): WealthGroup[] {
+    return allocations.map((allocation) => ({
+        key: `${dimension}-${allocation.label}`,
+        label: allocation.label,
+        detail: `${allocation.percent}% of total assets · grouped by ${dimension}`,
+        valueEgp: allocation.value,
+        percent: allocation.percent,
+        nativeAmount: null,
+        nativeCurrency: null,
+    }));
+}
+
+function breakdownLabel(view: NetWorthView) {
+    return {
+        detail: 'detail',
+        class: 'asset class',
+        type: 'asset type',
+        currency: 'currency',
+    }[view];
 }
 
 function LiquidityOverviewCard({ summary }: { summary?: LiquiditySummary }) {

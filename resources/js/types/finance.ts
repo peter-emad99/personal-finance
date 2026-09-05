@@ -25,12 +25,26 @@ export type Asset = {
     id: number;
     name: string;
     type: string;
+    assetTypeId?: number | null;
+    assetTypeKey?: string | null;
+    assetTypeLabel?: string | null;
+    assetClass?: string | null;
+    assetClassLabel?: string | null;
+    assetType?: {
+        id: number;
+        key: string;
+        label: string;
+        class: string;
+        classLabel: string;
+        defaultLiquidity: string;
+        pricingBehavior: string;
+    } | null;
     classification?:
         | 'cash'
         | 'reserved_cash'
         | 'gold'
         | 'investment'
-        | 'certificate'
+        | 'fixed_income'
         | 'receivable'
         | 'other';
     quantity: number | null;
@@ -54,6 +68,17 @@ export type Asset = {
         currentAmount?: number;
         amount: number;
     }[];
+};
+
+export type AssetType = {
+    id: number;
+    key: string;
+    label: string;
+    class: string;
+    classLabel: string;
+    defaultLiquidity: string;
+    pricingBehavior: string;
+    isSystem?: boolean;
 };
 
 export type Goal = {

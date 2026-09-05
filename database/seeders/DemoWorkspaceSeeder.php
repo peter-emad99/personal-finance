@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Account;
 use App\Models\AllocationPlan;
 use App\Models\Asset;
+use App\Models\AssetType;
 use App\Models\AssetValuation;
 use App\Models\Bucket;
 use App\Models\BudgetCategory;
@@ -31,6 +32,7 @@ use App\Services\BudgetRuleService;
 use App\Support\OwnerContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
 class DemoWorkspaceSeeder extends Seeder
@@ -83,6 +85,11 @@ class DemoWorkspaceSeeder extends Seeder
         $demo->email_verified_at ??= now();
         $demo->save();
 
+        $authenticatedUser = Auth::user();
+        // The seeder has an explicit demo owner. Temporarily switching the
+        // model owner prevents an authenticated admin session from causing
+        // demo rows to be written into the real workspace.
+        Auth::setUser($demo);
         OwnerContext::set($demo);
         $this->seedPolicy();
 
@@ -117,7 +124,7 @@ class DemoWorkspaceSeeder extends Seeder
             'Emergency Reserve' => Bucket::updateOrCreate(['name' => 'Emergency Reserve'], [
                 'purpose_type' => 'emergency',
                 'purpose' => 'Six months of essential expenses and required payments',
-                'target_amount_egp' => 102000,
+                'target_amount_egp' => self::DEMO_PLANNED_EXPENSES * 6,
                 'color' => '#4ade80',
             ]),
             'Home Office' => Bucket::updateOrCreate(['name' => 'Home Office'], [
@@ -160,36 +167,48 @@ class DemoWorkspaceSeeder extends Seeder
             ]),
         ];
 
+        $assetTypes = AssetType::query()->where('is_system', true)->get()->keyBy('key');
         $assets = [
             'Current account reserve' => [
                 'type' => 'Cash', 'quantity' => 40000, 'currency' => 'EGP',
+                'asset_type_id' => $assetTypes['bank_cash']->id,
                 'cost_basis_egp' => 40000, 'current_value_egp' => 40000,
                 'liquidity' => 'immediate', 'is_liquid' => true, 'account_name' => 'Demo current account',
             ],
             'Money market fund' => [
                 'type' => 'Fixed income', 'quantity' => 80000, 'currency' => 'EGP',
+                'asset_type_id' => $assetTypes['money_market_fund']->id,
                 'cost_basis_egp' => 80000, 'current_value_egp' => 80000,
                 'liquidity' => 'within_3_days', 'is_liquid' => true, 'account_name' => 'Demo money market fund',
             ],
             'USD reserve' => [
                 'type' => 'USD', 'quantity' => 2000, 'currency' => 'USD',
+                'asset_type_id' => $assetTypes['foreign_currency']->id,
                 'cost_basis_egp' => 90000, 'current_value_egp' => 100000, 'unit_price_egp' => 50,
                 'liquidity' => 'immediate', 'is_liquid' => true, 'account_name' => 'Demo USD account',
             ],
             'Gold holdings' => [
                 'type' => 'Gold', 'quantity' => 24, 'currency' => 'Gold',
+                'asset_type_id' => $assetTypes['gold_24k']->id,
                 'cost_basis_egp' => 100000, 'current_value_egp' => 120000, 'unit_price_egp' => 5000,
                 'liquidity' => 'longer_term', 'is_liquid' => true, 'account_name' => 'Demo physical holdings',
             ],
             'Egyptian equity fund' => [
                 'type' => 'Egyptian equities', 'quantity' => null, 'currency' => 'EGP',
+                'asset_type_id' => $assetTypes['mutual_fund']->id,
                 'cost_basis_egp' => 105000, 'current_value_egp' => 120000,
                 'liquidity' => 'longer_term', 'is_liquid' => true, 'account_name' => 'Demo brokerage',
             ],
             'Long-term fixed income' => [
                 'type' => 'Fixed income', 'quantity' => 180000, 'currency' => 'EGP',
+                'asset_type_id' => $assetTypes['certificate']->id,
                 'cost_basis_egp' => 180000, 'current_value_egp' => 180000,
                 'liquidity' => 'longer_term', 'is_liquid' => true, 'account_name' => 'Demo investment account',
+            ],
+            'USD ETF example' => [
+                'type' => 'ETF', 'asset_type_id' => $assetTypes['etf']->id, 'quantity' => 10, 'currency' => 'USD',
+                'cost_basis_egp' => 24000, 'current_value_egp' => 25000, 'unit_price_egp' => 2500,
+                'liquidity' => 'longer_term', 'is_liquid' => true, 'account_name' => 'Demo brokerage',
             ],
         ];
 
@@ -212,6 +231,7 @@ class DemoWorkspaceSeeder extends Seeder
                     ['bucket' => 'Long-Term Investing', 'amount' => 20000],
                 ],
                 'Egyptian equity fund' => [['bucket' => 'Long-Term Investing', 'amount' => 120000]],
+                'USD ETF example' => [['bucket' => 'Long-Term Investing', 'amount' => 25000]],
                 default => [
                     ['bucket' => 'Home Office', 'amount' => 20000],
                     ['bucket' => 'Family Car', 'amount' => 10000],
@@ -266,6 +286,7 @@ class DemoWorkspaceSeeder extends Seeder
         ]);
 
         OwnerContext::clear();
+        Auth::setUser($authenticatedUser);
     }
 
     private function purgeDemoData(int $userId): void

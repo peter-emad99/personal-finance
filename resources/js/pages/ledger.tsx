@@ -45,6 +45,21 @@ type Transaction = {
     purpose_bucket_id?: number | null;
     purpose_bucket?: { name: string } | null;
 };
+
+const transactionTypeOptions = [
+    { value: 'income', label: 'Income' },
+    { value: 'expense', label: 'Expense' },
+    { value: 'transfer', label: 'Internal transfer' },
+    { value: 'contribution', label: 'Investment contribution' },
+    { value: 'withdrawal', label: 'Withdrawal' },
+    { value: 'dividend', label: 'Dividend' },
+    { value: 'interest', label: 'Interest' },
+    { value: 'fee', label: 'Bank fee' },
+    { value: 'tax', label: 'Tax' },
+    { value: 'debt_payment', label: 'Debt payment' },
+    { value: 'obligation', label: 'Obligation' },
+    { value: 'correction', label: 'Correction' },
+] as const;
 type PurposeBucket = { id: number; name: string; goal_id?: number | null; purpose_type?: string };
 type ImportRow = {
     id: number;
@@ -441,16 +456,31 @@ export default function Ledger({
                                 <FieldLabel htmlFor="transaction-type">
                                     Type
                                 </FieldLabel>
-                                <Input
-                                    id="transaction-type"
+                                <Select
                                     value={transaction.transaction_type}
-                                    onChange={(event) =>
+                                    onValueChange={(value) =>
                                         updateTransactionForm(
                                             'transaction_type',
-                                            event.target.value,
+                                            String(value ?? 'expense'),
                                         )
                                     }
-                                />
+                                >
+                                    <SelectTrigger id="transaction-type">
+                                        <SelectValue placeholder="Choose transaction type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            {transactionTypeOptions.map((option) => (
+                                                <SelectItem
+                                                    key={option.value}
+                                                    value={option.value}
+                                                >
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
                             </Field>
                             <Field>
                                 <FieldLabel htmlFor="transaction-date">

@@ -191,7 +191,7 @@ class LedgerService
     /** @return array<string, mixed> */
     public function snapshotAt(CarbonInterface $asOf): array
     {
-        $assets = Asset::query()->with('valuations')->get();
+        $assets = Asset::query()->with(['valuations', 'assetType'])->get();
         $assetValue = 0.0;
         $valuationMovement = 0.0;
         $breakdown = [];
@@ -215,7 +215,15 @@ class LedgerService
             if ($previous) {
                 $valuationMovement += $value - (float) $previous->value_egp;
             }
-            $breakdown[] = ['assetId' => $asset->id, 'type' => $asset->type, 'value' => round($value, 2), 'valuedOn' => Carbon::parse($valuation->valued_on)->toDateString(), 'source' => $valuation->source];
+            $breakdown[] = [
+                'assetId' => $asset->id,
+                'type' => $asset->type,
+                'typeKey' => $asset->assetType?->key,
+                'class' => $asset->assetType?->class,
+                'value' => round($value, 2),
+                'valuedOn' => Carbon::parse($valuation->valued_on)->toDateString(),
+                'source' => $valuation->source,
+            ];
         }
         $liabilities = Liability::query()->where('is_active', true)->with('balanceHistories')->get();
         $liabilityValue = 0.0;

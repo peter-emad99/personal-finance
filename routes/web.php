@@ -3,6 +3,7 @@
 use App\Http\Controllers\AllocationController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AssetController;
+use App\Http\Controllers\AssetTypeController;
 use App\Http\Controllers\AssetValuationController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BucketController;
@@ -51,6 +52,14 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/demo/reset', [DemoWorkspaceController::class, 'reset'])->name('demo.reset');
     Route::get('/learn', fn () => Inertia\Inertia::render('learn'))->name('learn.index');
     Route::get('/assets', [AssetController::class, 'index'])->name('assets.index');
+    Route::get('/asset-types', [AssetTypeController::class, 'page'])->name('asset-types.index');
+    Route::post('/asset-types', [AssetTypeController::class, 'storePage'])->name('asset-types.store');
+    Route::put('/asset-types/{assetType}', [AssetTypeController::class, 'updatePage'])->name('asset-types.update');
+    Route::post('/asset-types/{assetType}/archive', [AssetTypeController::class, 'archive'])->name('asset-types.archive');
+    Route::post('/asset-types/{assetType}/restore', [AssetTypeController::class, 'restore'])->name('asset-types.restore');
+    Route::get('/api/asset-types', [AssetTypeController::class, 'index'])->name('api.asset-types');
+    Route::post('/api/asset-types', [AssetTypeController::class, 'store'])->name('api.asset-types.store');
+    Route::put('/api/asset-types/{assetType}', [AssetTypeController::class, 'update'])->name('api.asset-types.update');
     Route::post('/assets', [AssetController::class, 'store'])->name('assets.store');
     Route::put('/assets/{asset}', [AssetController::class, 'update'])->name('assets.update');
     Route::delete('/assets/{asset}', [AssetController::class, 'destroy'])->name('assets.destroy');

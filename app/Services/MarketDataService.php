@@ -237,8 +237,10 @@ final class MarketDataService
         $updated = 0;
 
         foreach (Asset::query()->get() as $asset) {
+            $asset->loadMissing('assetType');
             $type = strtolower(trim((string) $asset->type));
             $currency = strtoupper(trim((string) $asset->currency));
+            $pricingBehavior = $asset->assetType?->pricing_behavior;
             $quantity = $asset->quantity === null ? null : (float) $asset->quantity;
             if ($quantity === null || $quantity <= 0) {
                 continue;
@@ -246,10 +248,10 @@ final class MarketDataService
 
             $price = null;
             $valuationNotes = null;
-            if ($usdToEgp !== null && ($currency === 'USD' || $type === 'usd')) {
+            if ($usdToEgp !== null && ($pricingBehavior === 'fx' || ($pricingBehavior === null && ($currency === 'USD' || $type === 'usd')))) {
                 $price = $usdToEgp;
                 $valuationNotes = 'Automatic daily mark-to-market using the USD/EGP rate.';
-            } elseif ($gold24kPerGramEgp !== null && (str_contains($type, 'gold') || in_array($currency, ['GOLD', 'XAU'], true))) {
+            } elseif ($gold24kPerGramEgp !== null && ($pricingBehavior === 'gold' || ($pricingBehavior === null && (str_contains($type, 'gold') || in_array($currency, ['GOLD', 'XAU'], true))))) {
                 $price = $gold24kPerGramEgp;
                 $valuationNotes = 'Automatic daily mark-to-market using the 24K gold spot estimate per gram.';
             }

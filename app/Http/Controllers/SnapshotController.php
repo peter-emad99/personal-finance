@@ -34,7 +34,17 @@ class SnapshotController extends Controller
             'net_worth_egp' => $data['summary']['netWorth'], 'liquid_assets_egp' => $data['summary']['liquidAssets'],
             'investable_net_worth_egp' => $data['summary']['investableNetWorth'], 'income_egp' => $data['summary']['income'],
             'expenses_egp' => $data['summary']['expenses'], 'free_cash_flow_egp' => $data['summary']['freeCashFlow'],
-            'emergency_coverage_months' => $data['summary']['emergencyCoverageMonths'], 'asset_breakdown' => $data['assetAllocation'],
+            'emergency_coverage_months' => $data['summary']['emergencyCoverageMonths'], 'asset_breakdown' => [
+                'byClass' => $data['assetAllocation'],
+                'byType' => $data['assetTypeAllocation'],
+                'assets' => $data['assets']->map(fn (array $asset): array => [
+                    'assetId' => $asset['id'],
+                    'type' => $asset['type'],
+                    'typeKey' => $asset['assetTypeKey'] ?? null,
+                    'class' => $asset['assetClass'] ?? $asset['classification'] ?? 'other',
+                    'value' => $asset['currentValue'],
+                ])->values()->all(),
+            ],
             'notes' => $input['notes'] ?? null,
             'capture_basis' => 'manual_current_state',
             'captured_at' => now(),

@@ -26,6 +26,7 @@ class DemoWorkspaceSeederTest extends TestCase
 
         $demo = User::query()->where('email', config('finance.demo_email'))->firstOrFail();
         OwnerContext::set($demo);
+        $this->actingAs($demo);
         $salaryCategory = TransactionCategory::query()->where('name', 'salary')->firstOrFail();
         DB::table('transactions')->insert([
             'user_id' => $demo->id,
@@ -46,6 +47,7 @@ class DemoWorkspaceSeederTest extends TestCase
         $seeder->run();
 
         OwnerContext::set($demo->fresh());
+        $this->actingAs($demo->fresh());
         $dashboard = app(FinanceService::class)->dashboard();
         $monthlyPlan = $dashboard['monthlyPlan'];
 

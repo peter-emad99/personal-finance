@@ -31,6 +31,7 @@ import { ExportContextActions } from '@/components/export-context-actions';
 import { ThemeProvider, useTheme } from '@/components/theme-provider';
 import type { ThemeMode } from '@/components/theme-provider';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
     Breadcrumb,
     BreadcrumbItem,
@@ -327,7 +328,32 @@ function isNavigationItemActive(href: string, currentPath: string) {
     return href === '/' ? currentPath === '/' : currentPath.startsWith(href);
 }
 
-function AppSidebar({ currentPath }: { currentPath: string }) {
+type CurrentUser = {
+    name?: string | null;
+    email?: string | null;
+};
+
+function getUserDisplayName(user: CurrentUser) {
+    return user.name?.trim() || user.email?.trim() || 'Local owner';
+}
+
+function getUserInitial(user: CurrentUser) {
+    const emailName = user.email?.trim().split('@')[0];
+    const source = emailName || user.name?.trim() || 'Owner';
+
+    return source.charAt(0).toUpperCase();
+}
+
+function AppSidebar({
+    currentPath,
+    currentUser,
+}: {
+    currentPath: string;
+    currentUser: CurrentUser;
+}) {
+    const userName = getUserDisplayName(currentUser);
+    const userInitial = getUserInitial(currentUser);
+
     return (
         <Sidebar variant="inset">
             <SidebarHeader>
@@ -338,12 +364,14 @@ function AppSidebar({ currentPath }: { currentPath: string }) {
                             size="lg"
                             tooltip="Personal finance OS"
                         >
-                            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground">
-                                P
-                            </span>
-                            <span className="grid flex-1 text-left text-xs leading-4">
-                                <span className="font-semibold tracking-wide">
-                                    PERSONAL
+                            <Avatar className="size-8 shrink-0 rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                                <AvatarFallback className="rounded-lg bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground">
+                                    {userInitial}
+                                </AvatarFallback>
+                            </Avatar>
+                            <span className="grid min-w-0 flex-1 text-left text-xs leading-4">
+                                <span className="truncate font-semibold tracking-wide">
+                                    {userName}
                                 </span>
                                 <span className="text-sidebar-foreground/60">
                                     finance OS
@@ -451,11 +479,13 @@ export function AppShell({
 }: PropsWithChildren<{ title: string }>) {
     const page = usePage<{
         flash?: { success?: string | null; error?: string | null };
-        auth?: { user?: { name?: string | null } | null };
+        auth?: { user?: CurrentUser | null };
     }>();
     const currentPath = page.url.split('?')[0];
     const { flash } = page.props;
-    const userName = page.props.auth?.user?.name ?? 'Local owner';
+    const currentUser = page.props.auth?.user ?? {};
+    const userName = getUserDisplayName(currentUser);
+    const userInitial = getUserInitial(currentUser);
     const hint = pageHints[title];
 
     return (
@@ -463,7 +493,10 @@ export function AppShell({
             <TooltipProvider>
                 <Head title={title} />
                 <SidebarProvider>
-                    <AppSidebar currentPath={currentPath} />
+                    <AppSidebar
+                        currentPath={currentPath}
+                        currentUser={currentUser}
+                    />
                     <SidebarInset>
                         <header className="sticky top-0 flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4">
                             <SidebarTrigger className="-ml-1" />
@@ -489,9 +522,24 @@ export function AppShell({
                                 </BreadcrumbList>
                             </Breadcrumb>
                             <div className="ml-auto flex items-center gap-3">
-                                <span className="hidden max-w-48 truncate text-xs text-muted-foreground sm:inline">
-                                    {userName}
-                                </span>
+                                <div
+                                    className="hidden max-w-52 items-center gap-2 sm:flex"
+                                    title={currentUser.email ?? userName}
+                                >
+                                    <Avatar className="size-8">
+                                        <AvatarFallback className="text-xs font-semibold">
+                                            {userInitial}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <span className="grid min-w-0 text-left leading-4">
+                                        <span className="truncate text-xs font-semibold text-foreground">
+                                            {userName}
+                                        </span>
+                                        <span className="truncate text-[11px] text-muted-foreground">
+                                            Personal finance OS
+                                        </span>
+                                    </span>
+                                </div>
                                 <ThemeMenu />
                             </div>
                         </header>

@@ -309,6 +309,11 @@ const navigationGroups: NavigationGroup[] = [
                 icon: WalletCards,
             },
             {
+                href: '/asset-views',
+                label: 'Asset views',
+                icon: WalletCards,
+            },
+            {
                 href: '/valuations',
                 label: 'Valuation history',
                 icon: FileClock,

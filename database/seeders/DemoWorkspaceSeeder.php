@@ -6,6 +6,8 @@ use App\Models\Account;
 use App\Models\AllocationPlan;
 use App\Models\Asset;
 use App\Models\AssetType;
+use App\Models\AssetView;
+use App\Models\AssetViewLine;
 use App\Models\AssetValuation;
 use App\Models\Bucket;
 use App\Models\BudgetCategory;
@@ -167,48 +169,72 @@ class DemoWorkspaceSeeder extends Seeder
             ]),
         ];
 
-        $assetTypes = AssetType::query()->where('is_system', true)->get()->keyBy('key');
+        $assetTypes = AssetType::query()->where('is_system', true)->where('is_core', true)->where('is_active', true)->get()->keyBy('key');
+        foreach ([
+            'money_market_fund' => ['Money market fund', 'fixed_income', 'within_3_days'],
+            'mutual_fund' => ['Mutual fund', 'investment', 'longer_term'],
+            'etf' => ['ETF', 'investment', 'longer_term'],
+        ] as $key => [$label, $class, $liquidity]) {
+            $assetTypes[$key] = AssetType::updateOrCreate(['user_id' => $demo->id, 'key' => $key], [
+                'label' => $label, 'class' => $class, 'default_liquidity' => $liquidity,
+                'pricing_behavior' => $key === 'etf' ? 'fx' : 'manual', 'is_active' => true, 'is_system' => false, 'is_core' => false,
+            ]);
+        }
+        $realEstateType = AssetType::updateOrCreate(['user_id' => $demo->id, 'key' => 'real_estate_investment'], [
+            'label' => 'Real-estate investment',
+            'class' => 'investment',
+            'default_liquidity' => 'longer_term',
+            'pricing_behavior' => 'manual',
+            'is_active' => true,
+            'is_system' => false,
+            'is_core' => false,
+        ]);
         $assets = [
             'Current account reserve' => [
-                'type' => 'Cash', 'quantity' => 40000, 'currency' => 'EGP',
+                'quantity' => 40000, 'currency' => 'EGP',
                 'asset_type_id' => $assetTypes['bank_cash']->id,
                 'cost_basis_egp' => 40000, 'current_value_egp' => 40000,
                 'liquidity' => 'immediate', 'is_liquid' => true, 'account_name' => 'Demo current account',
             ],
             'Money market fund' => [
-                'type' => 'Fixed income', 'quantity' => 80000, 'currency' => 'EGP',
+                'quantity' => 80000, 'currency' => 'EGP',
                 'asset_type_id' => $assetTypes['money_market_fund']->id,
                 'cost_basis_egp' => 80000, 'current_value_egp' => 80000,
                 'liquidity' => 'within_3_days', 'is_liquid' => true, 'account_name' => 'Demo money market fund',
             ],
             'USD reserve' => [
-                'type' => 'USD', 'quantity' => 2000, 'currency' => 'USD',
+                'quantity' => 2000, 'currency' => 'USD',
                 'asset_type_id' => $assetTypes['foreign_currency']->id,
                 'cost_basis_egp' => 90000, 'current_value_egp' => 100000, 'unit_price_egp' => 50,
                 'liquidity' => 'immediate', 'is_liquid' => true, 'account_name' => 'Demo USD account',
             ],
             'Gold holdings' => [
-                'type' => 'Gold', 'quantity' => 24, 'currency' => 'Gold',
+                'quantity' => 24, 'currency' => 'Gold',
                 'asset_type_id' => $assetTypes['gold_24k']->id,
                 'cost_basis_egp' => 100000, 'current_value_egp' => 120000, 'unit_price_egp' => 5000,
                 'liquidity' => 'longer_term', 'is_liquid' => true, 'account_name' => 'Demo physical holdings',
             ],
             'Egyptian equity fund' => [
-                'type' => 'Egyptian equities', 'quantity' => null, 'currency' => 'EGP',
+                'quantity' => null, 'currency' => 'EGP',
                 'asset_type_id' => $assetTypes['mutual_fund']->id,
                 'cost_basis_egp' => 105000, 'current_value_egp' => 120000,
                 'liquidity' => 'longer_term', 'is_liquid' => true, 'account_name' => 'Demo brokerage',
             ],
             'Long-term fixed income' => [
-                'type' => 'Fixed income', 'quantity' => 180000, 'currency' => 'EGP',
+                'quantity' => 180000, 'currency' => 'EGP',
                 'asset_type_id' => $assetTypes['certificate']->id,
                 'cost_basis_egp' => 180000, 'current_value_egp' => 180000,
                 'liquidity' => 'longer_term', 'is_liquid' => true, 'account_name' => 'Demo investment account',
             ],
             'USD ETF example' => [
-                'type' => 'ETF', 'asset_type_id' => $assetTypes['etf']->id, 'quantity' => 10, 'currency' => 'USD',
+                'asset_type_id' => $assetTypes['etf']->id, 'quantity' => 10, 'currency' => 'USD',
                 'cost_basis_egp' => 24000, 'current_value_egp' => 25000, 'unit_price_egp' => 2500,
                 'liquidity' => 'longer_term', 'is_liquid' => true, 'account_name' => 'Demo brokerage',
+            ],
+            'Real-estate shares example' => [
+                'asset_type_id' => $realEstateType->id, 'quantity' => null, 'currency' => 'EGP',
+                'cost_basis_egp' => 35000, 'current_value_egp' => 35000,
+                'liquidity' => 'illiquid', 'is_liquid' => false, 'account_name' => 'Demo private holding',
             ],
         ];
 
@@ -248,6 +274,22 @@ class DemoWorkspaceSeeder extends Seeder
             }
         }
 
+        $demoView = AssetView::updateOrCreate(['user_id' => $demo->id, 'key' => 'alternative_holdings'], [
+            'label' => 'Alternative holdings',
+            'description' => 'Demo custom view showing a different presentation lens.',
+            'sort_order' => 50,
+            'is_active' => true,
+            'is_system' => false,
+            'is_core' => false,
+        ]);
+        $demoLine = AssetViewLine::updateOrCreate(['asset_view_id' => $demoView->id, 'key' => 'private_holdings'], [
+            'label' => 'Private holdings', 'description' => 'Owner-specific private investments.', 'sort_order' => 10, 'is_active' => true, 'is_fallback' => false,
+        ]);
+        AssetViewLine::updateOrCreate(['asset_view_id' => $demoView->id, 'key' => 'unassigned_other'], [
+            'label' => 'Unassigned / Other', 'sort_order' => 9999, 'is_active' => true, 'is_fallback' => true,
+        ]);
+        $demoLine->assetTypes()->syncWithoutDetaching([$realEstateType->id => ['asset_view_id' => $demoView->id, 'sort_order' => 10]]);
+
         $educationLoan = Liability::updateOrCreate(['name' => 'Education loan'], [
             'type' => 'loan',
             'original_balance_egp' => 100000,
@@ -286,7 +328,11 @@ class DemoWorkspaceSeeder extends Seeder
         ]);
 
         OwnerContext::clear();
-        Auth::setUser($authenticatedUser);
+        if ($authenticatedUser !== null) {
+            Auth::setUser($authenticatedUser);
+        } else {
+            Auth::forgetUser();
+        }
     }
 
     private function purgeDemoData(int $userId): void
@@ -342,6 +388,8 @@ class DemoWorkspaceSeeder extends Seeder
         DB::table('gold_prices')->where('user_id', $userId)->delete();
         DB::table('accounts')->where('user_id', $userId)->delete();
         DB::table('assets')->where('user_id', $userId)->delete();
+        DB::table('asset_views')->where('user_id', $userId)->delete();
+        DB::table('asset_types')->where('user_id', $userId)->delete();
         DB::table('integrity_checks')->where('user_id', $userId)->delete();
         DB::table('audit_logs')->where('user_id', $userId)->delete();
     }

@@ -62,14 +62,11 @@ class Phase0SafetyTest extends TestCase
         Asset::create(['name' => 'Brother reserve', 'type' => 'Cash reserve', 'currency' => 'USD', 'quantity' => 200, 'current_value_egp' => 10000, 'liquidity' => 'immediate']);
         Asset::create(['name' => 'Certificate', 'type' => 'Certificate', 'currency' => 'EGP', 'current_value_egp' => 10000, 'liquidity' => 'longer_term', 'notes' => 'Maturity date 2028-11-23.']);
 
-        $groups = collect(app(FinanceService::class)->dashboard()['wealthBreakdown']['groups'])->keyBy('key');
+        $groups = collect(app(FinanceService::class)->dashboard()['assetAllocation'])->keyBy('label');
 
-        $this->assertSame(50000.0, $groups['cash_usd']['valueEgp']);
-        $this->assertSame(1000.0, $groups['cash_usd']['nativeAmount']);
-        $this->assertSame(50000.0, $groups['investment_usd']['valueEgp']);
-        $this->assertSame(10000.0, $groups['reserved_cash']['valueEgp']);
-        $this->assertArrayNotHasKey('usd', $groups);
-        $this->assertStringContainsString('matures 2028-11-23', $groups['fixed_income']['detail']);
+        $this->assertSame(50000.0, $groups['Cash']['value']);
+        $this->assertSame(50000.0, $groups['Investment']['value']);
+        $this->assertSame(10000.0, $groups['Reserved Cash']['value']);
     }
 
     public function test_liquidity_summary_subtracts_reserved_cash_and_liabilities_once(): void

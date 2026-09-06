@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToUser;
+use App\Services\AssetTypeResolver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -14,6 +15,31 @@ class Asset extends Model
     use BelongsToUser, SoftDeletes;
 
     protected $guarded = [];
+
+    private ?string $legacyTypeInput = null;
+
+    public function setAttribute($key, $value)
+    {
+        if ($key === 'type') {
+            $this->legacyTypeInput = $value === null ? null : (string) $value;
+
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Asset $asset): void {
+            if ($asset->asset_type_id === null && $asset->legacyTypeInput !== null) {
+                $asset->asset_type_id = app(AssetTypeResolver::class)->resolve(null, $asset->legacyTypeInput, (string) $asset->currency, (string) $asset->liquidity)->id;
+            }
+            if ($asset->asset_type_id === null) {
+                $asset->asset_type_id = app(AssetTypeResolver::class)->resolve(null, 'Other asset', (string) $asset->currency, (string) $asset->liquidity)->id;
+            }
+        });
+    }
 
     protected function casts(): array
     {

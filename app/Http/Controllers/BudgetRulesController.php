@@ -76,7 +76,7 @@ class BudgetRulesController extends Controller
             'assets' => Asset::with(['buckets.goal', 'assetType'])->orderBy('name')->get()->map(fn (Asset $asset): array => [
                 'id' => $asset->id,
                 'name' => $asset->name,
-                'type' => $asset->type,
+                'type' => $asset->assetType?->label ?? 'Unclassified asset',
                 'assetTypeLabel' => $asset->assetType?->label,
                 'assetClass' => $asset->assetType?->class,
                 'buckets' => $asset->buckets->map(fn ($bucket): array => ['id' => $bucket->id, 'name' => $bucket->name, 'goalName' => $bucket->goal?->name])->values(),

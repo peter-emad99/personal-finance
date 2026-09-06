@@ -59,7 +59,7 @@ import { formatEGP } from '@/types/finance';
 type AssetAllocation = {
     assetId: number;
     assetName: string;
-    assetType: string;
+    assetTypeLabel: string;
     amount: number;
 };
 type Bucket = {
@@ -79,7 +79,7 @@ type Bucket = {
 type AssetOption = {
     id: number;
     name: string;
-    type: string;
+    assetTypeLabel?: string | null;
     currentValue: number;
     allocated: number;
     bucketAllocations: {
@@ -330,7 +330,7 @@ export default function Buckets({
                                                             {item.assetName}
                                                         </CardTitle>
                                                         <CardDescription>
-                                                            {item.assetType} ·
+                                                            {item.assetTypeLabel} ·
                                                             Real holding funding
                                                             this purpose
                                                         </CardDescription>
@@ -720,7 +720,7 @@ export default function Buckets({
                                                     {asset.name}
                                                 </CardTitle>
                                                 <CardDescription>
-                                                    {asset.type} ·{' '}
+                                                    {asset.assetTypeLabel ?? 'Unclassified asset'} ·{' '}
                                                     {formatEGP(
                                                         asset.currentValue,
                                                     )}{' '}

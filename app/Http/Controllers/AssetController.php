@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Asset;
 use App\Models\AssetType;
 use App\Models\Bucket;
+use App\Services\AssetViewService;
+use App\Services\AssetTypeResolver;
 use App\Services\AuditLogger;
 use App\Services\FinanceService;
 use Illuminate\Http\RedirectResponse;
@@ -15,7 +17,7 @@ use Inertia\Response;
 
 class AssetController extends Controller
 {
-    public function index(FinanceService $finance): Response
+    public function index(FinanceService $finance, AssetViewService $assetViews): Response
     {
         return Inertia::render('assets', [
             'assets' => Asset::withTrashed()->with(['buckets.goal', 'assetType'])->orderByDesc('current_value_egp')->get()->map(fn (Asset $asset) => $finance->assetPayload($asset))->values(),
@@ -27,8 +29,10 @@ class AssetController extends Controller
                 'classLabel' => str($type->class)->replace('_', ' ')->title()->toString(),
                 'defaultLiquidity' => $type->default_liquidity,
                 'pricingBehavior' => $type->pricing_behavior,
+                'isCore' => (bool) $type->is_core,
                 'isSystem' => (bool) $type->is_system,
             ])->values(),
+            'assetViews' => $assetViews->availableViews()->map(fn ($view): array => $assetViews->payload($view))->values(),
             'buckets' => Bucket::with('goal:id,name')
                 ->orderBy('name')
                 ->get(['id', 'name', 'purpose', 'goal_id'])
@@ -44,17 +48,17 @@ class AssetController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, AssetTypeResolver $resolver): RedirectResponse
     {
-        $data = $this->validated($request);
+        $data = $this->validated($request, $resolver);
         Asset::create($data);
 
         return back()->with('success', 'Asset added.');
     }
 
-    public function update(Request $request, Asset $asset): RedirectResponse
+    public function update(Request $request, Asset $asset, AssetTypeResolver $resolver): RedirectResponse
     {
-        $asset->update($this->validated($request));
+        $asset->update($this->validated($request, $resolver));
 
         return back()->with('success', 'Asset updated.');
     }
@@ -106,10 +110,10 @@ class AssetController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function validated(Request $request): array
+    private function validated(Request $request, AssetTypeResolver $resolver): array
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'], 'type' => ['required', 'string', 'max:60'], 'asset_type_id' => ['nullable', 'integer'],
+            'name' => ['required', 'string', 'max:120'], 'type' => ['nullable', 'string', 'max:120'], 'asset_type_id' => ['nullable', 'integer'],
             'quantity' => ['nullable', 'numeric', 'min:0'], 'currency' => ['required', 'string', 'max:8'],
             'cost_basis_egp' => ['nullable', 'numeric', 'min:0'], 'current_value_egp' => ['required', 'numeric', 'min:0'],
             'unit_price_egp' => ['nullable', 'numeric', 'min:0'], 'acquired_on' => ['nullable', 'date'],
@@ -118,10 +122,8 @@ class AssetController extends Controller
         ]);
         $data['is_liquid'] = in_array($data['liquidity'], ['immediate', 'within_3_days'], true);
 
-        if (! empty($data['asset_type_id'])) {
-            $assetType = AssetType::query()->availableToOwner()->whereKey($data['asset_type_id'])->where('is_active', true)->firstOrFail();
-            $data['type'] = $assetType->label;
-        }
+        $data['asset_type_id'] = $resolver->resolve(! empty($data['asset_type_id']) ? (int) $data['asset_type_id'] : null, $data['type'] ?? null, (string) $data['currency'], (string) $data['liquidity'])->id;
+        unset($data['type']);
 
         return $data;
     }

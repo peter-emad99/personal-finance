@@ -24,7 +24,6 @@ export type Summary = {
 export type Asset = {
     id: number;
     name: string;
-    type: string;
     assetTypeId?: number | null;
     assetTypeKey?: string | null;
     assetTypeLabel?: string | null;
@@ -78,7 +77,33 @@ export type AssetType = {
     classLabel: string;
     defaultLiquidity: string;
     pricingBehavior: string;
+    isCore?: boolean;
     isSystem?: boolean;
+};
+
+export type AssetViewLine = {
+    id: number;
+    key: string;
+    label: string;
+    description?: string | null;
+    color?: string | null;
+    sortOrder: number;
+    isActive: boolean;
+    isFallback: boolean;
+    assetTypes: { id: number; key: string; label: string; class: string }[];
+};
+
+export type AssetView = {
+    id: number;
+    key: string;
+    label: string;
+    description?: string | null;
+    sortOrder: number;
+    isSystem: boolean;
+    isCore: boolean;
+    isActive: boolean;
+    editable: boolean;
+    lines: AssetViewLine[];
 };
 
 export type Goal = {

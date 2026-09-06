@@ -40,6 +40,7 @@ type AssetType = {
     isSystem?: boolean;
     isActive: boolean;
     assetCount: number;
+    isCore?: boolean;
 };
 
 const classes = [
@@ -276,6 +277,7 @@ function TypeSection({
                                 <div className="flex flex-wrap items-center gap-2">
                                     <p className="font-medium">{assetType.label}</p>
                                     {assetType.isSystem && <Badge variant="outline"><LockKeyhole data-icon="inline-start" />System</Badge>}
+                                    {assetType.isCore && <Badge variant="secondary">Core</Badge>}
                                     {!assetType.isActive && <Badge variant="secondary">Archived</Badge>}
                                 </div>
                                 <p className="mt-1 text-xs text-muted-foreground">

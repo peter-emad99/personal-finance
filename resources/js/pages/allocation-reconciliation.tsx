@@ -146,7 +146,7 @@ export default function AllocationReconciliation({
                                         {asset.name}
                                     </span>
                                     <span className="text-xs text-muted-foreground">
-                                        {asset.type} ·{' '}
+                                        {asset.assetTypeLabel ?? 'Unclassified asset'} ·{' '}
                                         {assigned >= asset.currentValue - 0.005
                                             ? 'fully assigned'
                                             : `${formatEGP(Math.max(0, asset.currentValue - assigned))} unallocated`}

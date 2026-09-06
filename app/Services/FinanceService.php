@@ -54,7 +54,9 @@ class FinanceService
 
     private readonly BudgetRuleService $budgetRules;
 
-    public function __construct(?LiquidityPolicy $liquidityPolicy = null, ?LedgerService $ledgerService = null, ?AllocationActualService $allocationActuals = null, ?ObligationChangeService $obligationChanges = null, ?MarketDataService $marketData = null, ?BudgetRuleService $budgetRules = null)
+    private readonly AssetViewService $assetViews;
+
+    public function __construct(?LiquidityPolicy $liquidityPolicy = null, ?LedgerService $ledgerService = null, ?AllocationActualService $allocationActuals = null, ?ObligationChangeService $obligationChanges = null, ?MarketDataService $marketData = null, ?BudgetRuleService $budgetRules = null, ?AssetViewService $assetViews = null)
     {
         $this->liquidityPolicy = $liquidityPolicy ?? new LiquidityPolicy;
         $this->ledgerService = $ledgerService ?? new LedgerService;
@@ -62,6 +64,7 @@ class FinanceService
         $this->obligationChanges = $obligationChanges ?? new ObligationChangeService;
         $this->marketData = $marketData ?? new MarketDataService;
         $this->budgetRules = $budgetRules ?? new BudgetRuleService;
+        $this->assetViews = $assetViews ?? new AssetViewService;
     }
 
     /** @return array<string, mixed> */
@@ -85,6 +88,7 @@ class FinanceService
         $latestBackup = Backup::query()->latest()->first();
         $latestIntegrityCheck = IntegrityCheck::query()->latest()->first();
         $marketRates = $this->marketData->dashboardPayload();
+        $assetViewPayload = $this->assetViews->dashboardPayload($assets);
 
         $totalLiabilities = $this->sumMoney($liabilities, fn (Liability $liability): string => (string) $liability->balance_egp);
         $totalAssetValue = $this->sumMoney($assets, fn (Asset $asset): string => (string) $asset->current_value_egp);
@@ -278,7 +282,9 @@ class FinanceService
             'assetTypeAllocation' => $this->allocation($assets, 'type'),
             'currencyExposure' => $this->currencyExposure($assets),
             'liquidity' => $this->liquidity($assets),
-            'wealthBreakdown' => $this->wealthBreakdown($assets, $marketRates),
+            'assetViews' => $assetViewPayload['views'],
+            'assetViewAllocations' => $assetViewPayload['allocations'],
+            'defaultAssetViewId' => $assetViewPayload['defaultViewId'],
             'liquiditySummary' => $this->liquiditySummary($assets, $totalLiabilities),
             'buckets' => $buckets->map(fn (Bucket $bucket) => [
                 'id' => $bucket->id,
@@ -420,6 +426,8 @@ class FinanceService
             'wealth_stage' => $data['wealthStage'],
             'asset_allocation' => $data['assetAllocation'],
             'asset_type_allocation' => $data['assetTypeAllocation'],
+            'asset_views' => $data['assetViews'],
+            'asset_view_allocations' => $data['assetViewAllocations'],
             'currency_exposure' => $data['currencyExposure'],
             'liquidity' => $data['liquidity'],
             'insights' => $data['insights'],
@@ -894,7 +902,7 @@ class FinanceService
             ->flatMap(fn (Bucket $bucket) => $bucket->assets->map(fn (Asset $asset): array => [
                 'assetId' => $asset->id,
                 'assetName' => $asset->name,
-                'assetType' => $asset->type,
+                'assetType' => $asset->assetType?->label ?? 'Unclassified asset',
                 'currency' => $asset->currency,
                 'bucketName' => $bucket->name,
                 'amount' => (float) data_get($asset, 'pivot.amount_egp', 0),
@@ -1275,11 +1283,9 @@ class FinanceService
         $latestValuation = $asset->relationLoaded('valuations')
             ? $asset->valuations->sortByDesc('valued_on')->first()
             : $asset->valuations()->latest('valued_on')->first();
-
         return [
             'id' => $asset->id,
             'name' => $asset->name,
-            'type' => $asset->type,
             'assetTypeId' => $asset->asset_type_id,
             'assetType' => $asset->assetType ? [
                 'id' => $asset->assetType->id,
@@ -1331,93 +1337,7 @@ class FinanceService
             return (string) $catalogType->class;
         }
 
-        $type = strtolower(trim((string) $asset->type));
-        $currency = strtoupper(trim((string) $asset->currency));
-
-        return match (true) {
-            str_contains($type, 'receivable') => 'receivable',
-            $type === 'cash reserve' || (str_contains($type, 'reserve') && str_contains($type, 'cash')) => 'reserved_cash',
-            str_contains($type, 'gold') || $currency === 'GOLD' => 'gold',
-            $type === 'certificate' || str_contains($type, 'certificate') => 'fixed_income',
-            $type === 'cash' || $type === 'usd' => 'cash',
-            $type === 'etf'
-                || str_contains($type, 'fund')
-                || str_contains($type, 'equity')
-                || str_contains($type, 'equities')
-                || str_contains($type, 'stock') => 'investment',
-            default => 'other',
-        };
-    }
-
-    /**
-     * Explicit wealth groups for the dashboard. This intentionally does not
-     * infer investments from whatever remains after subtracting other groups.
-     *
-     * @param  Collection<int, Asset>  $assets
-     * @param  array<string, mixed>  $marketRates
-     * @return array<string, mixed>
-     */
-    private function wealthBreakdown(Collection $assets, array $marketRates): array
-    {
-        $total = max(1, $this->sumMoney($assets, fn (Asset $asset): string => (string) $asset->current_value_egp));
-        $usdRate = (float) data_get($marketRates, 'usdToEgp.rate', 0);
-        $groups = [
-            ['key' => 'cash_egp', 'label' => 'EGP cash', 'detail' => 'Bank accounts and wallet money available now', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'cash' && strtoupper((string) $asset->currency) === 'EGP'],
-            ['key' => 'cash_usd', 'label' => 'USD cash', 'detail' => 'USD cash balance, shown in USD and EGP', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'cash' && strtoupper((string) $asset->currency) === 'USD'],
-            ['key' => 'reserved_cash', 'label' => 'Reserved cash', 'detail' => 'Held for your brother; not available for normal spending', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'reserved_cash'],
-            ['key' => 'gold', 'label' => 'Gold', 'detail' => '24K physical gold', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'gold'],
-            ['key' => 'investment_egp', 'label' => 'EGP investments', 'detail' => 'Direct stocks, funds, and real-estate investments held in EGP', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'investment' && strtoupper((string) $asset->currency) !== 'USD'],
-            ['key' => 'investment_usd', 'label' => 'USD investments', 'detail' => 'USD-denominated investments such as VOO', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'investment' && strtoupper((string) $asset->currency) === 'USD'],
-            ['key' => 'fixed_income', 'label' => 'Fixed income', 'detail' => 'Certificates, money-market funds, and other fixed-income holdings', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'fixed_income'],
-            ['key' => 'receivables', 'label' => 'Loans receivable', 'detail' => 'Money owed to you; not cash now', 'filter' => fn (Asset $asset): bool => $this->assetClassification($asset) === 'receivable'],
-        ];
-
-        $payload = collect($groups)->map(function (array $group) use ($assets, $total, $usdRate): array {
-            /** @var Collection<int, Asset> $items */
-            $items = $assets->filter($group['filter']);
-            $value = round((float) $items->sum('current_value_egp'), 2);
-            $nativeCurrency = null;
-            $nativeAmount = null;
-
-            if (in_array($group['key'], ['cash_usd', 'reserved_cash', 'investment_usd'], true)) {
-                $nativeCurrency = 'USD';
-                $nativeAmount = $usdRate > 0
-                    ? round((float) $items->sum(function (Asset $asset) use ($usdRate): float {
-                        if ($asset->quantity !== null && strtoupper((string) $asset->currency) === 'USD') {
-                            return (float) $asset->quantity;
-                        }
-
-                        return (float) $asset->current_value_egp / $usdRate;
-                    }), 2)
-                    : null;
-            } elseif ($group['key'] === 'gold') {
-                $nativeCurrency = 'g';
-                $nativeAmount = round((float) $items->sum('quantity'), 2);
-            }
-
-            $detail = $group['detail'];
-            if ($group['key'] === 'fixed_income') {
-                $maturityDate = $items->map(fn (Asset $asset): ?string => $this->maturityDateFromNotes($asset))->filter()->first();
-                if ($maturityDate !== null) {
-                    $detail .= ' · matures '.$maturityDate;
-                }
-            }
-
-            return [
-                'key' => $group['key'],
-                'label' => $group['label'],
-                'detail' => $detail,
-                'valueEgp' => $value,
-                'percent' => round($value / $total * 100, 1),
-                'nativeAmount' => $nativeAmount,
-                'nativeCurrency' => $nativeCurrency,
-            ];
-        })->filter(fn (array $group): bool => $group['valueEgp'] > 0)->values()->all();
-
-        return [
-            'groups' => $payload,
-            'usdToEgp' => $usdRate > 0 ? $usdRate : null,
-        ];
+        return 'other';
     }
 
     /**
@@ -1468,7 +1388,7 @@ class FinanceService
 
         return $assets->groupBy(function (Asset $asset) use ($dimension): string {
             if ($dimension === 'type') {
-                return $asset->assetType?->label ?? (string) $asset->type;
+                return $asset->assetType?->label ?? 'Unclassified asset';
             }
 
             return $this->classLabel($this->assetClassification($asset));

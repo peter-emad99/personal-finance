@@ -57,7 +57,7 @@ import {
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { formatCompactEGP, formatEGP, labelize } from '@/types/finance';
-import type { Goal, Summary } from '@/types/finance';
+import type { AssetView, Goal, Summary } from '@/types/finance';
 
 type Allocation = { label: string; value: number; percent: number };
 type WealthGroup = {
@@ -69,11 +69,7 @@ type WealthGroup = {
     nativeAmount: number | null;
     nativeCurrency: string | null;
 };
-type WealthBreakdown = {
-    groups: WealthGroup[];
-    usdToEgp: number | null;
-};
-type NetWorthView = 'detail' | 'class' | 'type' | 'currency';
+type NetWorthView = 'view' | 'class' | 'type' | 'currency';
 type LiquiditySummary = {
     grossImmediateLiquidAssets: number;
     reservedCash: number;
@@ -301,6 +297,9 @@ export default function Dashboard({
     summary,
     assetAllocation,
     assetTypeAllocation = [],
+    assetViews = [],
+    assetViewAllocations = {},
+    defaultAssetViewId,
     currencyExposure,
     goals,
     asOf,
@@ -315,12 +314,14 @@ export default function Dashboard({
     obligationChanges,
     debtSummary,
     monthlyHistory,
-    wealthBreakdown,
     liquiditySummary,
 }: {
     summary: Summary;
     assetAllocation: Allocation[];
     assetTypeAllocation?: Allocation[];
+    assetViews?: AssetView[];
+    assetViewAllocations?: Record<string, Allocation[]>;
+    defaultAssetViewId?: number | null;
     currencyExposure: Allocation[];
     goals: Goal[];
     asOf: string;
@@ -339,18 +340,19 @@ export default function Dashboard({
     obligationChanges?: ObligationChanges;
     debtSummary?: DebtSummary;
     monthlyHistory?: MonthlyHistoryItem[];
-    wealthBreakdown?: WealthBreakdown;
     liquiditySummary?: LiquiditySummary;
 }) {
     const [showNetWorthDetail, setShowNetWorthDetail] = useState(false);
-    const [netWorthView, setNetWorthView] = useState<NetWorthView>('detail');
-    const wealthGroups = wealthBreakdown?.groups ?? [];
+    const [netWorthView, setNetWorthView] = useState<NetWorthView>('view');
+    const [selectedAssetViewId, setSelectedAssetViewId] = useState<number | null>(defaultAssetViewId ?? assetViews[0]?.id ?? null);
+    const selectedAssetView = assetViews.find((view) => view.id === selectedAssetViewId);
+    const dynamicViewAllocation = selectedAssetViewId === null ? [] : assetViewAllocations[String(selectedAssetViewId)] ?? [];
     const breakdownGroups =
-        netWorthView === 'detail'
-            ? wealthGroups
+        netWorthView === 'view'
+            ? allocationToWealthGroups(dynamicViewAllocation, selectedAssetView?.label ?? 'asset view')
             : netWorthView === 'class'
-              ? allocationToWealthGroups(assetAllocation, 'asset class')
-              : netWorthView === 'type'
+                ? allocationToWealthGroups(assetAllocation, 'asset class')
+                : netWorthView === 'type'
                 ? allocationToWealthGroups(assetTypeAllocation, 'asset type')
                 : allocationToWealthGroups(currencyExposure, 'currency');
     const emergencyTarget =
@@ -449,13 +451,14 @@ export default function Dashboard({
                                     <SelectContent>
                                         <SelectGroup>
                                             <SelectLabel>Breakdown</SelectLabel>
-                                            <SelectItem value="detail">Detailed</SelectItem>
+                                            <SelectItem value="view">By asset view</SelectItem>
                                             <SelectItem value="class">By class</SelectItem>
                                             <SelectItem value="type">By type</SelectItem>
                                             <SelectItem value="currency">By currency</SelectItem>
                                         </SelectGroup>
                                     </SelectContent>
                                 </Select>
+                                {netWorthView === 'view' && <Select value={selectedAssetViewId ? String(selectedAssetViewId) : undefined} onValueChange={(value) => setSelectedAssetViewId(Number(value))}><SelectTrigger className="w-[180px] border-hero-foreground/20 bg-hero-foreground/10 text-hero-foreground"><SelectValue placeholder="Asset view" /></SelectTrigger><SelectContent>{assetViews.map((view) => <SelectItem key={view.id} value={String(view.id)}>{view.label}</SelectItem>)}</SelectContent></Select>}
                                 <Badge variant="secondary">As of {asOf}</Badge>
                             </div>
                         </CardAction>
@@ -943,6 +946,10 @@ export default function Dashboard({
                             items={assetTypeAllocation}
                         />
                         <AllocationList
+                            items={dynamicViewAllocation}
+                            title={selectedAssetView?.label ?? 'By asset view'}
+                        />
+                        <AllocationList
                             title="By currency"
                             items={currencyExposure}
                         />
@@ -1357,7 +1364,7 @@ function allocationToWealthGroups(
 
 function breakdownLabel(view: NetWorthView) {
     return {
-        detail: 'detail',
+        view: 'asset view',
         class: 'asset class',
         type: 'asset type',
         currency: 'currency',

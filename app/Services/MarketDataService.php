@@ -238,7 +238,7 @@ final class MarketDataService
 
         foreach (Asset::query()->get() as $asset) {
             $asset->loadMissing('assetType');
-            $type = strtolower(trim((string) $asset->type));
+            $type = strtolower(trim((string) ($asset->assetType?->label ?? $asset->name)));
             $currency = strtoupper(trim((string) $asset->currency));
             $pricingBehavior = $asset->assetType?->pricing_behavior;
             $quantity = $asset->quantity === null ? null : (float) $asset->quantity;

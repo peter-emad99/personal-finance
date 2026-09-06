@@ -22,11 +22,11 @@ class BucketController extends Controller
             'goalName' => $bucket->goal?->name, 'targetAmount' => (float) $bucket->target_amount_egp, 'currentAmount' => $finance->bucketValue($bucket),
             'assetCount' => $bucket->assets->count(), 'archived' => $bucket->trashed(), 'goalId' => $bucket->goal_id,
             'assetAllocations' => $bucket->assets->map(fn (Asset $asset): array => [
-                'assetId' => $asset->id, 'assetName' => $asset->name, 'assetType' => $asset->type,
+                'assetId' => $asset->id, 'assetName' => $asset->name, 'assetTypeLabel' => $asset->assetType?->label ?? 'Unclassified asset',
                 'amount' => (float) data_get($asset, 'pivot.amount_egp', 0),
             ])->values(),
         ]), 'assets' => Asset::with(['buckets.goal'])->orderByDesc('current_value_egp')->get()->map(fn (Asset $asset): array => [
-            'id' => $asset->id, 'name' => $asset->name, 'type' => $asset->type, 'currentValue' => (float) $asset->current_value_egp,
+            'id' => $asset->id, 'name' => $asset->name, 'assetTypeLabel' => $asset->assetType?->label ?? 'Unclassified asset', 'currentValue' => (float) $asset->current_value_egp,
             'allocated' => (float) $asset->buckets->sum(fn (Bucket $bucket): float => (float) data_get($bucket, 'pivot.amount_egp', 0)),
             'bucketAllocations' => $asset->buckets->map(fn (Bucket $bucket): array => [
                 'bucketId' => $bucket->id, 'bucketName' => $bucket->name, 'purpose' => $bucket->purpose,

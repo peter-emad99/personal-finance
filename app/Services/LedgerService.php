@@ -217,7 +217,7 @@ class LedgerService
             }
             $breakdown[] = [
                 'assetId' => $asset->id,
-                'type' => $asset->type,
+                'type' => $asset->assetType?->label ?? 'Unclassified asset',
                 'typeKey' => $asset->assetType?->key,
                 'class' => $asset->assetType?->class,
                 'value' => round($value, 2),

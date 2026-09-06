@@ -37,9 +37,10 @@ class SnapshotController extends Controller
             'emergency_coverage_months' => $data['summary']['emergencyCoverageMonths'], 'asset_breakdown' => [
                 'byClass' => $data['assetAllocation'],
                 'byType' => $data['assetTypeAllocation'],
+                'byViews' => ['views' => $data['assetViews'], 'allocations' => $data['assetViewAllocations']],
                 'assets' => $data['assets']->map(fn (array $asset): array => [
                     'assetId' => $asset['id'],
-                    'type' => $asset['type'],
+                    'type' => $asset['assetTypeLabel'] ?? 'Unclassified asset',
                     'typeKey' => $asset['assetTypeKey'] ?? null,
                     'class' => $asset['assetClass'] ?? $asset['classification'] ?? 'other',
                     'value' => $asset['currentValue'],

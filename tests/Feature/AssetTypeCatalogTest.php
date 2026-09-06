@@ -17,7 +17,8 @@ class AssetTypeCatalogTest extends TestCase
 
     public function test_system_types_are_visible_but_custom_types_are_owner_scoped(): void
     {
-        $system = AssetType::query()->where('is_system', true)->where('key', 'etf')->firstOrFail();
+        $system = AssetType::query()->where('is_system', true)->where('key', 'bank_cash')->firstOrFail();
+        $legacySystem = AssetType::query()->where('is_system', true)->where('key', 'etf')->firstOrFail();
         $other = User::factory()->create();
         $custom = AssetType::create([
             'user_id' => $other->id,
@@ -33,6 +34,17 @@ class AssetTypeCatalogTest extends TestCase
         $available = AssetType::query()->availableToOwner()->pluck('key')->all();
 
         $this->assertContains($system->key, $available);
+        $this->assertNotContains($legacySystem->key, $available);
+
+        Asset::create([
+            'name' => 'Referenced ETF',
+            'type' => 'ETF',
+            'asset_type_id' => $legacySystem->id,
+            'currency' => 'USD',
+            'current_value_egp' => 1000,
+            'liquidity' => 'longer_term',
+        ]);
+        $this->assertContains($legacySystem->key, AssetType::query()->availableToOwner()->pluck('key')->all());
         $this->assertNotContains($custom->key, $available);
     }
 

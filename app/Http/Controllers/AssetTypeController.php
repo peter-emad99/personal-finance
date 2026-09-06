@@ -18,6 +18,11 @@ class AssetTypeController extends Controller
         return Inertia::render('asset-types', [
             'assetTypes' => AssetType::query()
                 ->availableToOwner()
+                ->where(function ($query): void {
+                    $query->where(function ($system): void {
+                        $system->where('is_system', true)->where('is_core', true);
+                    })->orWhere('is_system', false);
+                })
                 ->withCount('assets')
                 ->orderByDesc('is_system')
                 ->orderBy('class')
@@ -102,6 +107,7 @@ class AssetTypeController extends Controller
             'classLabel' => Str::of($type->class)->replace('_', ' ')->title()->toString(),
             'defaultLiquidity' => $type->default_liquidity,
             'pricingBehavior' => $type->pricing_behavior,
+            'isCore' => (bool) $type->is_core,
             'isSystem' => (bool) $type->is_system,
         ];
     }

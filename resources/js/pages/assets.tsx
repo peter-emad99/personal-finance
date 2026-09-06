@@ -65,7 +65,7 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { formatEGP, labelize } from '@/types/finance';
-import type { Asset, AssetType } from '@/types/finance';
+import type { Asset, AssetType, AssetView } from '@/types/finance';
 
 type BucketOption = {
     id: number;
@@ -76,7 +76,6 @@ type BucketOption = {
 
 const blank = {
     name: '',
-    type: 'Cash',
     asset_type_id: '',
     quantity: '',
     currency: 'EGP',
@@ -93,10 +92,12 @@ export default function Assets({
     assets,
     buckets,
     assetTypes,
+    assetViews,
 }: {
     assets: Asset[];
     buckets: BucketOption[];
     assetTypes: AssetType[];
+    assetViews: AssetView[];
 }) {
     const [editing, setEditing] = useState<Asset | null>(null);
     const [open, setOpen] = useState(false);
@@ -104,9 +105,17 @@ export default function Assets({
     const [detailAsset, setDetailAsset] = useState<Asset | null>(null);
     const [allocations, setAllocations] = useState<Record<number, string>>({});
     const [form, setForm] = useState(blank);
-    const [view, setView] = useState<'all' | 'class' | 'type'>('all');
+    const [view, setView] = useState<'all' | 'class' | 'type' | 'view'>('all');
+    const [selectedViewId, setSelectedViewId] = useState(String(assetViews[0]?.id ?? ''));
     const [filter, setFilter] = useState('all');
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+    const selectedAssetView = assetViews.find((item) => String(item.id) === selectedViewId);
+    const viewLineByType = useMemo(() => {
+        const map = new Map<number, { key: string; label: string }>();
+        selectedAssetView?.lines.forEach((line) => line.assetTypes.forEach((type) => map.set(type.id, { key: line.key, label: line.label })));
+
+        return map;
+    }, [selectedAssetView]);
     const selectedType = assetTypes.find((type) => String(type.id) === form.asset_type_id);
     const activeAssets = useMemo(() => assets.filter((asset) => !asset.archived), [assets]);
     const classSummaries = useMemo(() => {
@@ -130,8 +139,8 @@ export default function Assets({
             return true;
         }
 
-        return view === 'class' ? asset.assetClass === filter : asset.assetTypeKey === filter;
-    }), [assets, filter, view]);
+        return view === 'class' ? asset.assetClass === filter : view === 'type' ? asset.assetTypeKey === filter : viewLineByType.get(asset.assetTypeId ?? 0)?.key === filter;
+    }), [assets, filter, view, viewLineByType]);
     const groupedAssets = useMemo(() => {
         if (view === 'all') {
             return [];
@@ -139,8 +148,9 @@ export default function Assets({
 
         const groups = new Map<string, { label: string; assets: Asset[] }>();
         visibleAssets.forEach((asset) => {
-            const key = view === 'class' ? (asset.assetClass ?? 'other') : (asset.assetTypeKey ?? asset.type);
-            const label = view === 'class' ? (asset.assetClassLabel ?? labelize(key)) : (asset.assetTypeLabel ?? asset.type);
+            const line = viewLineByType.get(asset.assetTypeId ?? 0);
+            const key = view === 'class' ? (asset.assetClass ?? 'other') : view === 'type' ? (asset.assetTypeKey ?? 'unclassified') : (line?.key ?? 'unassigned_other');
+            const label = view === 'class' ? (asset.assetClassLabel ?? labelize(key)) : view === 'type' ? (asset.assetTypeLabel ?? 'Unclassified asset') : (line?.label ?? 'Unassigned / Other');
             const current = groups.get(key) ?? { label, assets: [] };
             current.assets.push(asset);
             groups.set(key, current);
@@ -149,8 +159,9 @@ export default function Assets({
         return [...groups.entries()]
             .map(([key, group]) => ({ key, ...group, value: group.assets.reduce((sum, asset) => sum + asset.currentValue, 0) }))
             .sort((a, b) => b.value - a.value);
-    }, [view, visibleAssets]);
-    const typeOptions = useMemo(() => Array.from(new Map(assets.map((asset) => [asset.assetTypeKey ?? asset.type, asset.assetTypeLabel ?? asset.type])).entries()), [assets]);
+    }, [view, visibleAssets, viewLineByType]);
+    const typeOptions = useMemo(() => Array.from(new Map(assets.map((asset) => [asset.assetTypeKey ?? 'unclassified', asset.assetTypeLabel ?? 'Unclassified asset'])).entries()), [assets]);
+    const viewOptions = selectedAssetView?.lines.map((line) => [line.key, line.label] as const) ?? [];
     const totals = useMemo(
         () => allocationSummary(allocationAsset, allocations),
         [allocationAsset, allocations],
@@ -164,7 +175,6 @@ export default function Assets({
             asset
                 ? {
                       name: asset.name,
-                      type: asset.type,
                       asset_type_id: asset.assetTypeId ? String(asset.assetTypeId) : '',
                       quantity:
                           asset.quantity === null ? '' : String(asset.quantity),
@@ -291,16 +301,27 @@ export default function Assets({
                         <Select
                             value={view}
                             onValueChange={(value) => {
-                                setView(value as 'all' | 'class' | 'type');
+                                const next = String(value ?? 'all');
+
+                                if (next.startsWith('view:')) {
+                                    setSelectedViewId(next.slice(5));
+                                    setView('view');
+                                } else {
+                                    setView(next as 'all' | 'class' | 'type');
+                                }
+
                                 setFilter('all');
                             }}
                         >
                             <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-                            <SelectContent><SelectGroup><SelectItem value="all">Flat list</SelectItem><SelectItem value="class">Group by class</SelectItem><SelectItem value="type">Group by type</SelectItem></SelectGroup></SelectContent>
+                            <SelectContent><SelectGroup><SelectItem value="all">Flat list</SelectItem><SelectItem value="class">Group by class</SelectItem><SelectItem value="type">Group by type</SelectItem>{assetViews.map((item) => <SelectItem key={item.id} value={`view:${item.id}`}>View: {item.label}</SelectItem>)}</SelectGroup></SelectContent>
                         </Select>
+                        {view.startsWith('view') && <Select value={selectedViewId} onValueChange={(value) => {
+ setSelectedViewId(String(value ?? '')); setFilter('all');
+}}><SelectTrigger className="w-[220px]"><SelectValue placeholder="Select asset view" /></SelectTrigger><SelectContent>{assetViews.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.label}</SelectItem>)}</SelectContent></Select>}
                         {view !== 'all' && <Select value={filter} onValueChange={(value) => setFilter(value ?? 'all')}>
                             <SelectTrigger className="w-[220px]"><SelectValue placeholder="Filter" /></SelectTrigger>
-                            <SelectContent><SelectGroup><SelectItem value="all">All {view === 'class' ? 'classes' : 'types'}</SelectItem>{(view === 'class' ? classSummaries.map((summary) => [summary.key, summary.label] as const) : typeOptions).map(([value, label]) => value ? <SelectItem key={value} value={value}>{label}</SelectItem> : null)}</SelectGroup></SelectContent>
+                            <SelectContent><SelectGroup><SelectItem value="all">All {view === 'class' ? 'classes' : view === 'type' ? 'types' : 'lines'}</SelectItem>{(view === 'class' ? classSummaries.map((summary) => [summary.key, summary.label] as const) : view === 'type' ? typeOptions : viewOptions).map(([value, label]) => value ? <SelectItem key={value} value={value}>{label}</SelectItem> : null)}</SelectGroup></SelectContent>
                         </Select>}
                     </div>
                 </CardContent>
@@ -421,7 +442,7 @@ export default function Assets({
                                     value={form.asset_type_id}
                                     onValueChange={(value) => {
                                         const selected = assetTypes.find((type) => String(type.id) === value);
-                                        setForm((current) => ({ ...current, asset_type_id: value ?? '', type: selected?.label ?? current.type, liquidity: selected?.defaultLiquidity ?? current.liquidity }));
+                                        setForm((current) => ({ ...current, asset_type_id: value ?? '', liquidity: selected?.defaultLiquidity ?? current.liquidity }));
                                     }}
                                 >
                                     <SelectTrigger id="asset-type">
@@ -900,7 +921,7 @@ export default function Assets({
                         <AssetDetailSection title="Identity & classification">
                             <AssetDetailGrid>
                                 <AssetDetailField label="Asset name" value={detailAsset.name} />
-                                <AssetDetailField label="Asset type" value={detailAsset.assetTypeLabel ?? detailAsset.type} />
+                                <AssetDetailField label="Asset type" value={detailAsset.assetTypeLabel ?? 'Unclassified asset'} />
                                 <AssetDetailField label="Asset class" value={detailAsset.assetClassLabel ?? 'Other'} />
                                 <AssetDetailField label="Catalog key" value={detailAsset.assetTypeKey ?? 'Legacy / not assigned'} />
                                 <AssetDetailField label="Pricing behavior" value={detailAsset.assetType?.pricingBehavior ? labelize(detailAsset.assetType.pricingBehavior) : 'Manual / legacy'} />
@@ -1026,7 +1047,7 @@ function AssetTableRow({
                         {asset.name}
                     </Button>
                     <p className="text-xs text-muted-foreground">
-                        {asset.assetTypeLabel ?? asset.type} ·{' '}
+                        {asset.assetTypeLabel ?? 'Unclassified asset'} ·{' '}
                         {asset.assetClassLabel ?? 'Other'} ·{' '}
                         {asset.accountName ?? asset.currency}
                     </p>

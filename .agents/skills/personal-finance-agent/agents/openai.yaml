@@ -1,0 +1,4 @@
+interface:
+  display_name: "Personal Finance Agent"
+  short_description: "Route safe, data-backed money decisions"
+  default_prompt: "Use $personal-finance-agent to analyze my financial situation and recommend the next action using the local MCP."

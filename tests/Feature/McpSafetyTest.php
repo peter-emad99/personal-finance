@@ -8,8 +8,12 @@ use App\Models\AllocationPlan;
 use App\Models\Asset;
 use App\Models\AuditLog;
 use App\Models\Bucket;
+use App\Models\BudgetCategory;
+use App\Models\BudgetRule;
+use App\Models\Goal;
 use App\Models\LedgerTransaction;
 use App\Models\MonthlyFinancialReview;
+use App\Models\PlanTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -36,6 +40,7 @@ class McpSafetyTest extends TestCase
         $this->assertTrue($tools->contains('name', 'reallocate_asset_balance'));
         $this->assertTrue($tools->contains('name', 'get_bucket_allocations'));
         $this->assertTrue($tools->contains('name', 'set_bucket_allocations'));
+        $this->assertTrue($tools->contains('name', 'propose_cash_allocation'));
         $this->assertTrue($tools->contains('name', 'import_csv'));
         $this->assertTrue($tools->contains('name', 'prepare_next_month'));
         $this->assertTrue($tools->contains('name', 'sync_allocation_plan_actuals'));
@@ -51,6 +56,9 @@ class McpSafetyTest extends TestCase
         $this->assertArrayHasKey('purpose_bucket_id', $transaction['inputSchema']['properties']);
         $allocationPlan = $tools->firstWhere('name', 'create_allocation_plan');
         $this->assertArrayHasKey('source_review_id', $allocationPlan['inputSchema']['properties']);
+        $allocationProposal = $tools->firstWhere('name', 'propose_cash_allocation');
+        $this->assertTrue($allocationProposal['annotations']['readOnlyHint']);
+        $this->assertContains('amount_egp', $allocationProposal['inputSchema']['required']);
     }
 
     public function test_mcp_create_returns_audit_and_reflected_dashboard_delta(): void
@@ -288,6 +296,125 @@ class McpSafetyTest extends TestCase
         $this->assertSame(5600.0, (float) $plan->items()->sum('planned_amount_egp'));
         $this->assertStringContainsString('Keep investing consistent.', (string) $plan->notes);
         $this->assertSame($bucket->id, $plan->items()->first()?->bucket_id);
+    }
+
+    public function test_mcp_proposes_cash_allocation_options_without_mutating_financial_records(): void
+    {
+        $emergencyAsset = Asset::create([
+            'name' => 'Emergency cash',
+            'type' => 'Cash',
+            'currency' => 'EGP',
+            'current_value_egp' => 6000,
+            'liquidity' => 'immediate',
+        ]);
+        $emergencyBucket = Bucket::create([
+            'name' => 'Emergency reserve',
+            'purpose_type' => 'emergency',
+            'color' => '#123456',
+        ]);
+        $emergencyAsset->buckets()->attach($emergencyBucket, ['amount_egp' => 6000]);
+        $goal = Goal::create([
+            'name' => 'Family goal',
+            'target_amount_egp' => 10000,
+            'deadline' => now()->addMonths(12),
+            'priority' => 1,
+            'status' => 'active',
+        ]);
+        Bucket::create([
+            'goal_id' => $goal->id,
+            'purpose_type' => 'goal',
+            'name' => 'Family goal Fund',
+            'target_amount_egp' => 10000,
+            'color' => '#654321',
+        ]);
+        MonthlyFinancialReview::create([
+            'month' => now()->startOfMonth(),
+            'income_egp' => 10000,
+            'essential_expenses_egp' => 4000,
+            'lifestyle_expenses_egp' => 0,
+            'recurring_commitments_egp' => 0,
+            'one_time_expenses_egp' => 0,
+            'debt_payments_egp' => 0,
+            'invested_egp' => 0,
+            'status' => 'open',
+        ]);
+        $before = [
+            'assets' => Asset::count(),
+            'buckets' => Bucket::count(),
+            'goals' => Goal::count(),
+            'reviews' => MonthlyFinancialReview::count(),
+            'transactions' => LedgerTransaction::count(),
+            'plans' => AllocationPlan::count(),
+            'plan_templates' => PlanTemplate::count(),
+            'budget_categories' => BudgetCategory::count(),
+            'budget_rules' => BudgetRule::count(),
+        ];
+
+        $response = $this->callTool(app(FinancialMcpServer::class), 'propose_cash_allocation', [
+            'amount_egp' => 30000,
+            'source' => 'custom',
+            'horizon_months' => 12,
+        ]);
+
+        $this->assertFalse($response['result']['isError'] ?? false);
+        $data = $response['result']['structuredContent']['data'];
+        $this->assertSame(30000.0, $data['feasibleAmountEgp']);
+        $this->assertCount(3, $data['options']);
+        $protection = collect($data['options'])->firstWhere('key', 'protection_first');
+        $balanced = collect($data['options'])->firstWhere('key', 'balanced');
+        $growth = collect($data['options'])->firstWhere('key', 'growth_after_protection');
+        $this->assertSame(18000.0, $protection['emergencyEgp']);
+        $this->assertSame(10000.0, $protection['goalsEgp']);
+        $this->assertSame(2000.0, $protection['unallocatedEgp']);
+        $this->assertSame(5583.34, $balanced['investmentsEgp']);
+        $this->assertSame(11166.67, $growth['investmentsEgp']);
+        $this->assertSame($before, [
+            'assets' => Asset::count(),
+            'buckets' => Bucket::count(),
+            'goals' => Goal::count(),
+            'reviews' => MonthlyFinancialReview::count(),
+            'transactions' => LedgerTransaction::count(),
+            'plans' => AllocationPlan::count(),
+            'plan_templates' => PlanTemplate::count(),
+            'budget_categories' => BudgetCategory::count(),
+            'budget_rules' => BudgetRule::count(),
+        ]);
+    }
+
+    public function test_mcp_caps_a_negative_monthly_surplus_without_creating_plan_defaults(): void
+    {
+        MonthlyFinancialReview::create([
+            'month' => now()->startOfMonth(),
+            'income_egp' => 10000,
+            'essential_expenses_egp' => 12000,
+            'lifestyle_expenses_egp' => 0,
+            'recurring_commitments_egp' => 0,
+            'one_time_expenses_egp' => 0,
+            'debt_payments_egp' => 0,
+            'invested_egp' => 0,
+            'status' => 'open',
+        ]);
+        $before = [
+            'plan_templates' => PlanTemplate::count(),
+            'budget_categories' => BudgetCategory::count(),
+            'budget_rules' => BudgetRule::count(),
+        ];
+
+        $response = $this->callTool(app(FinancialMcpServer::class), 'propose_cash_allocation', [
+            'amount_egp' => 1000,
+            'source' => 'monthly_surplus',
+        ]);
+
+        $this->assertFalse($response['result']['isError'] ?? false);
+        $data = $response['result']['structuredContent']['data'];
+        $this->assertSame(0.0, $data['feasibleAmountEgp']);
+        $this->assertTrue($data['capacity']['exceeded']);
+        $this->assertContains('The current plan has negative free cash flow; do not allocate new monthly money until the plan is repaired.', $data['warnings']);
+        $this->assertSame($before, [
+            'plan_templates' => PlanTemplate::count(),
+            'budget_categories' => BudgetCategory::count(),
+            'budget_rules' => BudgetRule::count(),
+        ]);
     }
 
     /** @return array<string, mixed> */

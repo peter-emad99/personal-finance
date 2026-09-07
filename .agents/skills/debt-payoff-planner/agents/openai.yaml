@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debt Payoff Planner"
+  short_description: "Compare safe debt payoff options"
+  default_prompt: "Use $debt-payoff-planner to compare minimum payments, extra payoff, and debt-versus-investing using confirmed liabilities and current liquidity."

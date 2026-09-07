@@ -7,9 +7,9 @@ use App\Models\AllocationPlan;
 use App\Models\AllocationRule;
 use App\Models\Asset;
 use App\Models\AssetType;
+use App\Models\AssetValuation;
 use App\Models\AssetView;
 use App\Models\AssetViewLine;
-use App\Models\AssetValuation;
 use App\Models\AuditLog;
 use App\Models\Backup;
 use App\Models\Bucket;
@@ -33,12 +33,12 @@ use App\Models\Snapshot;
 use App\Models\TransactionCategory;
 use App\Models\User;
 use App\Services\AllocationActualService;
+use App\Services\AssetTypeResolver;
+use App\Services\AssetViewService;
 use App\Services\AuditLogger;
 use App\Services\BackupService;
 use App\Services\BudgetRuleService;
 use App\Services\FinanceService;
-use App\Services\AssetViewService;
-use App\Services\AssetTypeResolver;
 use App\Services\IntegrityService;
 use App\Services\LedgerService;
 use App\Services\MonthlyReviewActualService;
@@ -151,6 +151,7 @@ class FinancialMcpServer
             $this->tool('purge_expired_backups', 'Permanently purge backups past their retention date after explicit confirmation.', ['confirm' => ['type' => 'boolean']], ['confirm'], false),
             $this->tool('validate_data_integrity', 'Run owner-scoped data-integrity checks.', [], [], false),
             $this->tool('get_allocation_reconciliation', 'Show goal, non-goal, and genuinely unallocated asset balances.', []),
+            $this->tool('propose_cash_allocation', 'Build read-only protection, goal, and investment allocation options for a proposed EGP amount.', ['amount_egp' => ['type' => 'number', 'minimum' => 0], 'source' => ['type' => 'string', 'enum' => ['monthly_surplus', 'unallocated_asset', 'released_reserve', 'custom']], 'horizon_months' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 600]], ['amount_egp', 'source']),
             $this->tool('get_reconciliation', 'Compare account balances, expected/received income, due/paid commitments, and review completeness.', ['month' => ['type' => 'string', 'pattern' => '^\\d{4}-\\d{2}$']]),
             $this->tool('derive_monthly_review', 'Prepare open monthly actuals from confirmed ledger transactions. Review and close the month separately.', ['month' => ['type' => 'string', 'pattern' => '^\\d{4}-\\d{2}$']], ['month'], false),
             $this->tool('close_month', 'Close a derived or reviewed month and preserve its source provenance.', ['id' => ['type' => 'integer', 'minimum' => 1]], ['id'], false),
@@ -298,6 +299,7 @@ class FinancialMcpServer
             'purge_expired_backups' => $this->purgeBackupsTool($arguments),
             'validate_data_integrity' => $this->integrityTool($arguments),
             'get_allocation_reconciliation' => $this->allocationReconciliation($arguments),
+            'propose_cash_allocation' => $this->cashAllocationPayload($arguments),
             'get_reconciliation' => $this->reconciliationTool($arguments),
             'derive_monthly_review' => $this->deriveReviewTool($arguments),
             'close_month' => $this->closeMonthTool($arguments),
@@ -399,7 +401,11 @@ class FinancialMcpServer
                 throw new \InvalidArgumentException("Missing required argument '{$field}'.");
             }
         }
-        $rules = $operation === 'evaluate_purchase' ? ['price' => 'required|numeric|min:0', 'mode' => 'required|in:cash,finance', 'down_payment' => 'nullable|numeric|min:0', 'interest_rate' => 'nullable|numeric|min:0', 'tenure' => 'nullable|integer|min:1', 'monthly_savings_after_purchase' => 'nullable|numeric', 'monthly_savings' => 'nullable|numeric'] : $this->rules($operation);
+        $rules = match ($operation) {
+            'evaluate_purchase' => ['price' => 'required|numeric|min:0', 'mode' => 'required|in:cash,finance', 'down_payment' => 'nullable|numeric|min:0', 'interest_rate' => 'nullable|numeric|min:0', 'tenure' => 'nullable|integer|min:1', 'monthly_savings_after_purchase' => 'nullable|numeric', 'monthly_savings' => 'nullable|numeric'],
+            'propose_cash_allocation' => ['amount_egp' => 'required|numeric|min:0', 'source' => 'required|in:monthly_surplus,unallocated_asset,released_reserve,custom', 'horizon_months' => 'nullable|integer|min:1|max:600'],
+            default => $this->rules($operation),
+        };
         // Resource create/update tools expose only their declared fields. The
         // list and allocation tools validate their own dedicated arguments;
         // accepting those fields here would silently ignore typos or misplaced
@@ -969,6 +975,21 @@ class FinancialMcpServer
      * @param  array<string, mixed>  $arguments
      * @return array<string, mixed>
      */
+    private function cashAllocationPayload(array $arguments): array
+    {
+        $inputs = $this->validated('propose_cash_allocation', $arguments, ['amount_egp', 'source']);
+        $proposal = $this->finance->cashAllocationProposal($inputs);
+
+        return $proposal + [
+            'data_freshness' => $proposal['dataFreshness'] ?? [],
+            'limitations' => ['Planning math is not regulated financial advice.', ...($proposal['limitations'] ?? [])],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     * @return array<string, mixed>
+     */
     private function monthlyReviewPayload(array $arguments): array
     {
         $this->assertArguments($arguments, ['month']);
@@ -996,7 +1017,7 @@ class FinancialMcpServer
     }
 
     /**
-     * @param array<string, mixed> $arguments
+     * @param  array<string, mixed>  $arguments
      * @return array<string, mixed>
      */
     private function createAssetType(array $arguments): array
@@ -1016,7 +1037,7 @@ class FinancialMcpServer
     }
 
     /**
-     * @param array<string, mixed> $arguments
+     * @param  array<string, mixed>  $arguments
      * @return array<string, mixed>
      */
     private function updateAssetType(array $arguments): array
@@ -1031,6 +1052,7 @@ class FinancialMcpServer
         ])->validate();
         $type = AssetType::query()->where('is_system', false)->where('user_id', OwnerContext::id())->findOrFail($data['id']);
         unset($data['id']);
+
         return $this->mutate('update_asset_type', 'update', $type, function () use ($type, $data): Model {
             $type->update($data);
 
@@ -1069,8 +1091,10 @@ class FinancialMcpServer
         $view = DB::transaction(function () use ($data): AssetView {
             $view = AssetView::create($data + ['user_id' => OwnerContext::id(), 'is_system' => false, 'is_core' => false, 'is_active' => true]);
             AssetViewLine::create(['asset_view_id' => $view->id, 'key' => 'unassigned_other', 'label' => 'Unassigned / Other', 'sort_order' => 9999, 'is_active' => true, 'is_fallback' => true]);
+
             return $view;
         });
+
         return app(AssetViewService::class)->payload($view->fresh('lines.assetTypes'));
     }
 
@@ -1080,8 +1104,10 @@ class FinancialMcpServer
         $data = Validator::make($arguments, ['id' => 'required|integer|min:1', 'label' => 'required|string|max:120', 'description' => 'nullable|string|max:1000', 'sort_order' => 'sometimes|integer|min:0|max:10000', 'is_active' => 'sometimes|boolean'])->validate();
         $view = AssetView::query()->where('is_system', false)->where('user_id', OwnerContext::id())->findOrFail($data['id']);
         unset($data['id']);
+
         return $this->mutate('update_asset_view', 'update', $view, function () use ($view, $data): Model {
             $view->update($data);
+
             return $view->fresh('lines.assetTypes');
         });
     }
@@ -1091,8 +1117,10 @@ class FinancialMcpServer
     {
         $data = Validator::make($arguments, ['id' => 'required|integer|min:1'])->validate();
         $view = AssetView::query()->where('is_system', false)->where('user_id', OwnerContext::id())->findOrFail($data['id']);
+
         return $this->mutate($active ? 'restore_asset_view' : 'archive_asset_view', $active ? 'restore' : 'archive', $view, function () use ($view, $active): Model {
             $view->update(['is_active' => $active]);
+
             return $view->fresh('lines.assetTypes');
         });
     }

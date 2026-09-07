@@ -68,7 +68,7 @@ class FinanceService
     }
 
     /** @return array<string, mixed> */
-    public function dashboard(?CarbonInterface $asOf = null): array
+    public function dashboard(?CarbonInterface $asOf = null, bool $hydratePlanDefaults = true): array
     {
         $asOf ??= now();
         if (! $asOf->isToday()) {
@@ -172,6 +172,7 @@ class FinanceService
             $emergency,
             $monthlyBase,
             (int) $policy['emergencyReserveMonths'],
+            $hydratePlanDefaults,
         );
         $actualTracking = $this->allocationActuals->previewForMonth($monthStart);
         $obligationChanges = $this->obligationChanges->compare($this->reviewSnapshot($review), $commitments, $liabilities);
@@ -542,6 +543,164 @@ class FinanceService
                 ! $debtBurdenPasses ? "The resulting debt burden is {$debtBurden}%, above your configured maximum of {$maximumDebtBurden}%." : null,
                 $mode === 'finance' && $annualInterest > 0 ? 'Add insurance, maintenance, fees, and depreciation before deciding.' : null,
             ])),
+        ];
+    }
+
+    /**
+     * Build read-only allocation options for a proposed cash amount.
+     *
+     * This intentionally returns options instead of mutating assets, buckets,
+     * goals, or monthly plans. The agent can explain the trade-offs and ask
+     * for confirmation before using an existing write tool.
+     *
+     * @param  array<string, mixed>  $inputs
+     * @return array<string, mixed>
+     */
+    public function cashAllocationProposal(array $inputs, ?CarbonInterface $asOf = null): array
+    {
+        $dashboard = $this->dashboard($asOf, false);
+        $summary = $dashboard['summary'];
+        $monthlyPlan = is_array($dashboard['monthlyPlan'] ?? null) ? $dashboard['monthlyPlan'] : [];
+        $policy = is_array($dashboard['policy'] ?? null) ? $dashboard['policy'] : [];
+        $debtSummary = is_array($dashboard['debtSummary'] ?? null) ? $dashboard['debtSummary'] : [];
+        $source = (string) ($inputs['source'] ?? 'custom');
+        $requested = round(max(0, (float) ($inputs['amount_egp'] ?? 0)), 2);
+        $plannedFreeCashFlow = round((float) ($monthlyPlan['plannedFreeCashFlow'] ?? $summary['freeCashFlow'] ?? 0), 2);
+        $unallocatedAssets = round((float) ($summary['unallocated'] ?? 0), 2);
+        $capacity = match ($source) {
+            'monthly_surplus' => max(0, $plannedFreeCashFlow),
+            'unallocated_asset' => max(0, $unallocatedAssets),
+            default => $requested,
+        };
+        $feasibleAmount = round(min($requested, $capacity), 2);
+        $capacityWarning = $requested > $capacity + 0.01
+            ? match ($source) {
+                'monthly_surplus' => 'The requested amount is higher than the current planned free cash flow.',
+                'unallocated_asset' => 'The requested amount is higher than the genuinely unallocated asset value.',
+                default => 'The requested amount could not be confirmed against a bounded source capacity.',
+            }
+        : null;
+        $emergencyGap = round(max(0, (float) ($monthlyPlan['emergencyGap'] ?? 0)), 2);
+        $goals = collect($dashboard['goals'] ?? [])
+            ->filter(fn (mixed $goal): bool => is_array($goal) && ($goal['status'] ?? 'active') === 'active')
+            ->sortBy(fn (array $goal): int => (int) ($goal['priority'] ?? 99))
+            ->values();
+        $goalNeeds = $goals->map(function (array $goal) use ($policy, $source): array {
+            $required = max(0, (float) ($goal['requiredMonthlyContribution'] ?? 0));
+            $planned = ($policy['goalFundingPolicy'] ?? 'priority_order') === 'manual_contributions' && $goal['plannedMonthlyContribution'] !== null
+                ? max(0, (float) $goal['plannedMonthlyContribution'])
+                : $required;
+            $remaining = max(0, (float) ($goal['remainingAmount'] ?? 0));
+
+            return [
+                'goalId' => $goal['id'] ?? null,
+                'goalName' => $goal['name'] ?? 'Unnamed goal',
+                'priority' => (int) ($goal['priority'] ?? 99),
+                'remainingAmount' => round($remaining, 2),
+                'monthlyNeed' => round(min($remaining, $source === 'monthly_surplus' ? $planned : $required), 2),
+                'deadline' => $goal['deadline'] ?? null,
+            ];
+        })->values();
+        $goalNeedsForOneMonth = $goalNeeds->sum('monthlyNeed');
+        $horizonMonths = array_key_exists('horizon_months', $inputs) ? max(1, (int) $inputs['horizon_months']) : null;
+        $sourceWarnings = array_values(array_filter([
+            $requested <= 0 ? 'The requested amount is zero; no allocation can be proposed.' : null,
+            $source === 'unallocated_asset' ? 'Asset-specific liquidity was not supplied; confirm the source asset before moving money.' : null,
+            $source === 'monthly_surplus' && $plannedFreeCashFlow < 0 ? 'The current plan has negative free cash flow; do not allocate new monthly money until the plan is repaired.' : null,
+            (float) ($debtSummary['liabilityBalance'] ?? 0) > 0 && (float) ($debtSummary['estimatedMonthlyInterest'] ?? 0) > 0 ? 'Interest-bearing liabilities exist; compare their payoff impact before directing protected surplus to investments.' : null,
+        ]));
+
+        $buildOption = function (string $key, string $label, float $investmentShare, string $goalBasis) use ($feasibleAmount, $emergencyGap, $goalNeeds, $goalNeedsForOneMonth, $source, $horizonMonths): array {
+            $emergency = round(min($feasibleAmount, $emergencyGap), 2);
+            $afterEmergency = round(max(0, $feasibleAmount - $emergency), 2);
+            $goalBudget = $goalBasis === 'full_gap' ? $goalNeeds->sum('remainingAmount') : $goalNeedsForOneMonth;
+            $goalBudget = min($afterEmergency, $goalBudget);
+            $goalAllocations = [];
+            $remainingGoalBudget = $goalBudget;
+            foreach ($goalNeeds as $goal) {
+                $amount = round(min($remainingGoalBudget, $goalBasis === 'full_gap' ? (float) $goal['remainingAmount'] : (float) $goal['monthlyNeed']), 2);
+                if ($amount > 0.01) {
+                    $goalAllocations[] = [
+                        'goalId' => $goal['goalId'],
+                        'goalName' => $goal['goalName'],
+                        'priority' => $goal['priority'],
+                        'amountEgp' => $amount,
+                        'basis' => $goalBasis,
+                    ];
+                }
+                $remainingGoalBudget = round(max(0, $remainingGoalBudget - $amount), 2);
+            }
+            $allocatedToGoals = round((float) collect($goalAllocations)->sum('amountEgp'), 2);
+            $afterGoals = round(max(0, $afterEmergency - $allocatedToGoals), 2);
+            $investment = round($afterGoals * $investmentShare, 2);
+            $unallocated = round(max(0, $afterGoals - $investment), 2);
+
+            return [
+                'key' => $key,
+                'label' => $label,
+                'emergencyEgp' => $emergency,
+                'goalsEgp' => $allocatedToGoals,
+                'goalAllocations' => $goalAllocations,
+                'investmentsEgp' => $investment,
+                'unallocatedEgp' => $unallocated,
+                'totalProposedEgp' => round($emergency + $allocatedToGoals + $investment + $unallocated, 2),
+                'investmentShareAfterProtection' => $investmentShare * 100,
+                'goalBasis' => $goalBasis,
+                'warnings' => array_values(array_filter([
+                    $source === 'monthly_surplus' && $goalBasis === 'full_gap' ? 'This option can consume more than one month of goal pace when a lump-sum source is supplied.' : null,
+                    $horizonMonths !== null && $horizonMonths < 24 && $investment > 0 ? 'The stated horizon is under 24 months; validate liquidity before using the investment portion.' : null,
+                ])),
+            ];
+        };
+
+        $options = [
+            $buildOption('protection_first', 'Protection first', 0, $source === 'monthly_surplus' ? 'one_month' : 'full_gap'),
+            $buildOption('balanced', 'Balanced', 0.5, 'one_month'),
+            $buildOption('growth_after_protection', 'Growth after protection', 1, 'one_month'),
+        ];
+
+        return [
+            'asOf' => $dashboard['asOf'] ?? now()->toDateString(),
+            'baseCurrency' => $policy['baseCurrency'] ?? 'EGP',
+            'source' => $source,
+            'requestedAmountEgp' => $requested,
+            'feasibleAmountEgp' => $feasibleAmount,
+            'capacity' => [
+                'amountEgp' => round($capacity, 2),
+                'basis' => match ($source) {
+                    'monthly_surplus' => 'planned_free_cash_flow',
+                    'unallocated_asset' => 'genuinely_unallocated_assets',
+                    default => 'user_supplied_amount',
+                },
+                'exceeded' => $capacityWarning !== null,
+            ],
+            'currentState' => [
+                'freeCashFlowEgp' => round((float) ($summary['freeCashFlow'] ?? 0), 2),
+                'plannedFreeCashFlowEgp' => $plannedFreeCashFlow,
+                'emergencyFundEgp' => round((float) ($summary['emergencyFund'] ?? 0), 2),
+                'emergencyTargetEgp' => round((float) ($monthlyPlan['emergencyTarget'] ?? 0), 2),
+                'emergencyGapEgp' => $emergencyGap,
+                'emergencyCoverageMonths' => (float) ($summary['emergencyCoverageMonths'] ?? 0),
+                'emergencyReserveMonths' => (int) ($summary['emergencyReserveMonths'] ?? 0),
+                'unallocatedAssetsEgp' => $unallocatedAssets,
+                'obligations' => [
+                    'monthlyRequiredPaymentsEgp' => round((float) ($debtSummary['monthlyRequiredPayments'] ?? 0), 2),
+                    'liabilityBalanceEgp' => round((float) ($debtSummary['liabilityBalance'] ?? 0), 2),
+                    'estimatedMonthlyInterestEgp' => round((float) ($debtSummary['estimatedMonthlyInterest'] ?? 0), 2),
+                    'nextDueOn' => $debtSummary['nextDueOn'] ?? null,
+                    'source' => $debtSummary['source'] ?? 'liabilities_and_commitments',
+                ],
+                'goalFundingPolicy' => $policy['goalFundingPolicy'] ?? 'priority_order',
+                'goalMonthlyNeedEgp' => round((float) $goalNeedsForOneMonth, 2),
+            ],
+            'options' => $options,
+            'warnings' => array_values(array_filter([$capacityWarning, ...$sourceWarnings])),
+            'dataFreshness' => $dashboard['dataFreshness'] ?? [],
+            'limitations' => [
+                'Proposal only; it does not move money or change a monthly plan.',
+                'Investment returns, taxes, fees, inflation, and product-specific risks are not forecast by this allocation proposal.',
+                ...($dashboard['dataFreshness']['limitations'] ?? []),
+            ],
         ];
     }
 
@@ -959,6 +1118,7 @@ class FinanceService
         float $emergencyFund,
         float $monthlyBase,
         int $reserveMonths,
+        bool $hydratePlanDefaults = true,
     ): array {
         $incomeSources = collect();
         $expenseCategories = collect();
@@ -1022,6 +1182,42 @@ class FinanceService
             'items.bucket.goal',
             'expenseItems.category',
         ])->whereDate('month', $month->toDateString())->first();
+        if (! $hydratePlanDefaults && $savedPlan === null) {
+            $plannedIncome = $income;
+            $plannedExpenses = $expenses;
+
+            return [
+                'incomeSources' => $incomeSources,
+                'expenseCategories' => $expenseCategories,
+                'incomeRules' => collect(),
+                'plannedIncomeSources' => collect([[
+                    'label' => 'Current month income',
+                    'amount' => $income,
+                ]]),
+                'plannedExpenseCategories' => $expenseCategories->map(fn (array $item): array => [
+                    'categoryId' => null,
+                    'label' => $item['label'],
+                    'planned' => (float) $item['amount'],
+                    'actual' => (float) $item['amount'],
+                ])->values(),
+                'income' => round($income, 2),
+                'expenses' => round($expenses, 2),
+                'plannedIncome' => round($plannedIncome, 2),
+                'plannedExpenses' => round($plannedExpenses, 2),
+                'plannedFreeCashFlow' => round($plannedIncome - $plannedExpenses, 2),
+                'freeCashFlow' => $freeCashFlow,
+                'emergencyTarget' => $emergencyTarget,
+                'emergencyGap' => $emergencyGap,
+                'allocationItems' => collect(),
+                'plannedTotal' => 0.0,
+                'unallocated' => round(max(0, $plannedIncome - $plannedExpenses), 2),
+                'templateId' => null,
+                'templateName' => null,
+                'planStatus' => null,
+                'source' => 'current_month_actuals',
+            ];
+        }
+
         $template = $savedPlan?->template ?? $this->budgetRules->ensureDefaultTemplate($income);
         $plannedIncome = $savedPlan ? (float) $savedPlan->planned_income_egp : $this->budgetRules->templateIncome($template, $income);
         if ($savedPlan !== null) {
@@ -1283,6 +1479,7 @@ class FinanceService
         $latestValuation = $asset->relationLoaded('valuations')
             ? $asset->valuations->sortByDesc('valued_on')->first()
             : $asset->valuations()->latest('valued_on')->first();
+
         return [
             'id' => $asset->id,
             'name' => $asset->name,

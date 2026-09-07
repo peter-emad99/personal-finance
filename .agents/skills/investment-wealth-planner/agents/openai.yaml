@@ -1,0 +1,4 @@
+interface:
+  display_name: "Investment & Wealth Planner"
+  short_description: "Plan investing and long-term wealth safely"
+  default_prompt: "Use $investment-wealth-planner to evaluate my investment capacity and long-term wealth path."

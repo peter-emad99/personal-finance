@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cash Allocation Planner"
+  short_description: "Allocate cash across needs, goals, and investing"
+  default_prompt: "Use $cash-allocation-planner to propose a safe allocation for my idle cash or monthly surplus."

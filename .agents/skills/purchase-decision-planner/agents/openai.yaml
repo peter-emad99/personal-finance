@@ -1,0 +1,4 @@
+interface:
+  display_name: "Purchase Decision Planner"
+  short_description: "Evaluate major purchase trade-offs"
+  default_prompt: "Use $purchase-decision-planner and the app's evaluate_purchase tool to compare cash, finance, and wait options without mutating records."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Goal Funding Planner"
+  short_description: "Plan and prioritize goal funding"
+  default_prompt: "Use $goal-funding-planner to check whether my goals are affordable and set the right monthly pace."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monthly Finance Reviewer"
+  short_description: "Turn monthly actuals into the next plan"
+  default_prompt: "Use $monthly-finance-reviewer to review this month and prepare the next allocation plan."

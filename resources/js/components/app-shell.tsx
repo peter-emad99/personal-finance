@@ -29,6 +29,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { ComponentProps, PropsWithChildren, ReactNode } from 'react';
 
 import { ExportContextActions } from '@/components/export-context-actions';
+import { FinancialVisibilityProvider } from '@/components/financial-visibility';
 import { ThemeProvider, useTheme } from '@/components/theme-provider';
 import type { ThemeMode } from '@/components/theme-provider';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -506,89 +507,96 @@ export function AppShell({
 
     return (
         <ThemeProvider>
-            <TooltipProvider>
-                <Head title={title} />
-                <SidebarProvider>
-                    <AppSidebar
-                        currentPath={currentPath}
-                        currentUser={currentUser}
-                    />
-                    <SidebarInset>
-                        <header className="sticky top-0 flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4">
-                            <SidebarTrigger className="-ml-1" />
-                            <Separator
-                                orientation="vertical"
-                                className="mr-2 data-vertical:h-4 data-vertical:self-auto"
-                            />
-                            <Breadcrumb className="min-w-0">
-                                <BreadcrumbList className="flex-nowrap">
-                                    <BreadcrumbItem className="hidden sm:inline-flex">
-                                        <BreadcrumbLink
-                                            render={<Link href="/" />}
-                                        >
-                                            Personal finance OS
-                                        </BreadcrumbLink>
-                                    </BreadcrumbItem>
-                                    <BreadcrumbSeparator className="hidden sm:block" />
-                                    <BreadcrumbItem className="min-w-0">
-                                        <BreadcrumbPage className="truncate">
-                                            {title}
-                                        </BreadcrumbPage>
-                                    </BreadcrumbItem>
-                                </BreadcrumbList>
-                            </Breadcrumb>
-                            <div className="ml-auto flex items-center gap-3">
-                                <div
-                                    className="hidden max-w-52 items-center gap-2 sm:flex"
-                                    title={currentUser.email ?? userName}
-                                >
-                                    <Avatar className="size-8">
-                                        <AvatarFallback className="text-xs font-semibold">
-                                            {userInitial}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <span className="grid min-w-0 text-left leading-4">
-                                        <span className="truncate text-xs font-semibold text-foreground">
-                                            {userName}
+            <FinancialVisibilityProvider
+                key={title}
+                enableShortcut={title === 'Dashboard'}
+            >
+                <TooltipProvider>
+                    <Head title={title} />
+                    <SidebarProvider>
+                        <AppSidebar
+                            currentPath={currentPath}
+                            currentUser={currentUser}
+                        />
+                        <SidebarInset>
+                            <header className="sticky top-0 flex h-16 shrink-0 items-center gap-2 border-b bg-background px-4">
+                                <SidebarTrigger className="-ml-1" />
+                                <Separator
+                                    orientation="vertical"
+                                    className="mr-2 data-vertical:h-4 data-vertical:self-auto"
+                                />
+                                <Breadcrumb className="min-w-0">
+                                    <BreadcrumbList className="flex-nowrap">
+                                        <BreadcrumbItem className="hidden sm:inline-flex">
+                                            <BreadcrumbLink
+                                                render={<Link href="/" />}
+                                            >
+                                                Personal finance OS
+                                            </BreadcrumbLink>
+                                        </BreadcrumbItem>
+                                        <BreadcrumbSeparator className="hidden sm:block" />
+                                        <BreadcrumbItem className="min-w-0">
+                                            <BreadcrumbPage className="truncate">
+                                                {title}
+                                            </BreadcrumbPage>
+                                        </BreadcrumbItem>
+                                    </BreadcrumbList>
+                                </Breadcrumb>
+                                <div className="ml-auto flex items-center gap-3">
+                                    <div
+                                        className="hidden max-w-52 items-center gap-2 sm:flex"
+                                        title={currentUser.email ?? userName}
+                                    >
+                                        <Avatar className="size-8">
+                                            <AvatarFallback className="text-xs font-semibold">
+                                                {userInitial}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        <span className="grid min-w-0 text-left leading-4">
+                                            <span className="truncate text-xs font-semibold text-foreground">
+                                                {userName}
+                                            </span>
+                                            <span className="truncate text-[11px] text-muted-foreground">
+                                                Personal finance OS
+                                            </span>
                                         </span>
-                                        <span className="truncate text-[11px] text-muted-foreground">
-                                            Personal finance OS
-                                        </span>
-                                    </span>
+                                    </div>
+                                    <ThemeMenu />
                                 </div>
-                                <ThemeMenu />
-                            </div>
-                        </header>
-                        <div className="flex flex-1 flex-col gap-4 p-4">
-                            {(flash?.success || flash?.error) && (
-                                <div
-                                    role={flash.error ? 'alert' : 'status'}
-                                    className={cn(
-                                        'mx-auto w-full max-w-[1500px] pt-4 text-sm',
-                                        flash.error
-                                            ? 'text-destructive'
-                                            : 'text-muted-foreground',
-                                    )}
-                                >
-                                    {flash.error ?? flash.success}
-                                </div>
-                            )}
-                            <div className="mx-auto w-full max-w-[1500px]">
-                                {hint && (
-                                    <Alert className="mb-5">
-                                        <CircleHelp />
-                                        <AlertTitle>{hint.title}</AlertTitle>
-                                        <AlertDescription>
-                                            {hint.description}
-                                        </AlertDescription>
-                                    </Alert>
+                            </header>
+                            <div className="flex flex-1 flex-col gap-4 p-4">
+                                {(flash?.success || flash?.error) && (
+                                    <div
+                                        role={flash.error ? 'alert' : 'status'}
+                                        className={cn(
+                                            'mx-auto w-full max-w-[1500px] pt-4 text-sm',
+                                            flash.error
+                                                ? 'text-destructive'
+                                                : 'text-muted-foreground',
+                                        )}
+                                    >
+                                        {flash.error ?? flash.success}
+                                    </div>
                                 )}
-                                {children}
+                                <div className="mx-auto w-full max-w-[1500px]">
+                                    {hint && (
+                                        <Alert className="mb-5">
+                                            <CircleHelp />
+                                            <AlertTitle>
+                                                {hint.title}
+                                            </AlertTitle>
+                                            <AlertDescription>
+                                                {hint.description}
+                                            </AlertDescription>
+                                        </Alert>
+                                    )}
+                                    {children}
+                                </div>
                             </div>
-                        </div>
-                    </SidebarInset>
-                </SidebarProvider>
-            </TooltipProvider>
+                        </SidebarInset>
+                    </SidebarProvider>
+                </TooltipProvider>
+            </FinancialVisibilityProvider>
         </ThemeProvider>
     );
 }

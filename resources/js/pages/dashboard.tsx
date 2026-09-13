@@ -7,6 +7,8 @@ import {
     CircleDollarSign,
     Coins,
     Compass,
+    Eye,
+    EyeOff,
     Flag,
     GraduationCap,
     Landmark,
@@ -28,6 +30,10 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { AppShell, Button, PageHeader, Progress } from '@/components/app-shell';
+import {
+    FinancialValue,
+    useFinancialVisibility,
+} from '@/components/financial-visibility';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -63,7 +69,7 @@ type Allocation = { label: string; value: number; percent: number };
 type WealthGroup = {
     key: string;
     label: string;
-    detail: string;
+    dimension: string;
     valueEgp: number;
     percent: number;
     nativeAmount: number | null;
@@ -344,15 +350,25 @@ export default function Dashboard({
 }) {
     const [showNetWorthDetail, setShowNetWorthDetail] = useState(false);
     const [netWorthView, setNetWorthView] = useState<NetWorthView>('view');
-    const [selectedAssetViewId, setSelectedAssetViewId] = useState<number | null>(defaultAssetViewId ?? assetViews[0]?.id ?? null);
-    const selectedAssetView = assetViews.find((view) => view.id === selectedAssetViewId);
-    const dynamicViewAllocation = selectedAssetViewId === null ? [] : assetViewAllocations[String(selectedAssetViewId)] ?? [];
+    const [selectedAssetViewId, setSelectedAssetViewId] = useState<
+        number | null
+    >(defaultAssetViewId ?? assetViews[0]?.id ?? null);
+    const selectedAssetView = assetViews.find(
+        (view) => view.id === selectedAssetViewId,
+    );
+    const dynamicViewAllocation =
+        selectedAssetViewId === null
+            ? []
+            : (assetViewAllocations[String(selectedAssetViewId)] ?? []);
     const breakdownGroups =
         netWorthView === 'view'
-            ? allocationToWealthGroups(dynamicViewAllocation, selectedAssetView?.label ?? 'asset view')
+            ? allocationToWealthGroups(
+                  dynamicViewAllocation,
+                  selectedAssetView?.label ?? 'asset view',
+              )
             : netWorthView === 'class'
-                ? allocationToWealthGroups(assetAllocation, 'asset class')
-                : netWorthView === 'type'
+              ? allocationToWealthGroups(assetAllocation, 'asset class')
+              : netWorthView === 'type'
                 ? allocationToWealthGroups(assetTypeAllocation, 'asset type')
                 : allocationToWealthGroups(currencyExposure, 'currency');
     const emergencyTarget =
@@ -375,6 +391,7 @@ export default function Dashboard({
                 description="See what you own, how this month flows, and where every remaining pound is meant to go."
                 action={
                     <div className="flex flex-wrap gap-2">
+                        <FinancialVisibilityToggle />
                         <Button href="/learn" variant="ghost">
                             <GraduationCap data-icon="inline-start" />
                             Learn the system
@@ -451,14 +468,49 @@ export default function Dashboard({
                                     <SelectContent>
                                         <SelectGroup>
                                             <SelectLabel>Breakdown</SelectLabel>
-                                            <SelectItem value="view">By asset view</SelectItem>
-                                            <SelectItem value="class">By class</SelectItem>
-                                            <SelectItem value="type">By type</SelectItem>
-                                            <SelectItem value="currency">By currency</SelectItem>
+                                            <SelectItem value="view">
+                                                By asset view
+                                            </SelectItem>
+                                            <SelectItem value="class">
+                                                By class
+                                            </SelectItem>
+                                            <SelectItem value="type">
+                                                By type
+                                            </SelectItem>
+                                            <SelectItem value="currency">
+                                                By currency
+                                            </SelectItem>
                                         </SelectGroup>
                                     </SelectContent>
                                 </Select>
-                                {netWorthView === 'view' && <Select value={selectedAssetViewId ? String(selectedAssetViewId) : undefined} onValueChange={(value) => setSelectedAssetViewId(Number(value))}><SelectTrigger className="w-[180px] border-hero-foreground/20 bg-hero-foreground/10 text-hero-foreground"><SelectValue placeholder="Asset view" /></SelectTrigger><SelectContent>{assetViews.map((view) => <SelectItem key={view.id} value={String(view.id)}>{view.label}</SelectItem>)}</SelectContent></Select>}
+                                {netWorthView === 'view' && (
+                                    <Select
+                                        value={
+                                            selectedAssetViewId
+                                                ? String(selectedAssetViewId)
+                                                : undefined
+                                        }
+                                        onValueChange={(value) =>
+                                            setSelectedAssetViewId(
+                                                Number(value),
+                                            )
+                                        }
+                                    >
+                                        <SelectTrigger className="w-[180px] border-hero-foreground/20 bg-hero-foreground/10 text-hero-foreground">
+                                            <SelectValue placeholder="Asset view" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {assetViews.map((view) => (
+                                                <SelectItem
+                                                    key={view.id}
+                                                    value={String(view.id)}
+                                                >
+                                                    {view.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
                                 <Badge variant="secondary">As of {asOf}</Badge>
                             </div>
                         </CardAction>
@@ -469,19 +521,16 @@ export default function Dashboard({
                             className="text-left text-4xl font-semibold tracking-tight sm:text-5xl"
                             onClick={() => setShowNetWorthDetail(true)}
                         >
-                            {formatEGP(summary.netWorth)}
+                            <EGPValue amount={summary.netWorth} />
                         </button>
                         <div className="mt-8 flex h-3 overflow-hidden rounded-full bg-hero-track">
                             {breakdownGroups.map((group, index) => (
-                                <span
+                                <FinancialSegment
                                     key={group.label}
-                                    style={{
-                                        width: `${group.percent}%`,
-                                        backgroundColor:
-                                            chartColors[
-                                                index % chartColors.length
-                                            ],
-                                    }}
+                                    percent={group.percent}
+                                    color={
+                                        chartColors[index % chartColors.length]
+                                    }
                                 />
                             ))}
                         </div>
@@ -502,7 +551,10 @@ export default function Dashboard({
                                         {group.label}
                                     </div>
                                     <p className="mt-1 text-sm font-semibold tabular-nums">
-                                        {formatCompactEGP(group.valueEgp)}
+                                        <EGPValue
+                                            amount={group.valueEgp}
+                                            compact
+                                        />
                                     </p>
                                     <p className="mt-1 text-[11px] leading-4 text-hero-foreground/60">
                                         {wealthGroupNativeLabel(group)}
@@ -514,25 +566,48 @@ export default function Dashboard({
                     <CardFooter className="grid gap-4 border-hero-foreground/10 bg-hero-foreground/5 sm:grid-cols-2 lg:grid-cols-5">
                         <HeroMetric
                             label="Total assets"
-                            value={formatCompactEGP(summary.totalAssets ?? 0)}
+                            value={
+                                <EGPValue
+                                    amount={summary.totalAssets ?? 0}
+                                    compact
+                                />
+                            }
                         />
                         <HeroMetric
                             label="Directly controlled"
-                            value={formatCompactEGP(
-                                summary.directlyControlledAssets,
-                            )}
+                            value={
+                                <EGPValue
+                                    amount={summary.directlyControlledAssets}
+                                    compact
+                                />
+                            }
                         />
                         <HeroMetric
                             label="Held elsewhere"
-                            value={formatCompactEGP(summary.heldElsewhere)}
+                            value={
+                                <EGPValue
+                                    amount={summary.heldElsewhere}
+                                    compact
+                                />
+                            }
                         />
                         <HeroMetric
                             label="Reserved for goals"
-                            value={formatCompactEGP(summary.reservedForGoals)}
+                            value={
+                                <EGPValue
+                                    amount={summary.reservedForGoals}
+                                    compact
+                                />
+                            }
                         />
                         <HeroMetric
                             label="Liabilities"
-                            value={formatCompactEGP(summary.liabilities ?? 0)}
+                            value={
+                                <EGPValue
+                                    amount={summary.liabilities ?? 0}
+                                    compact
+                                />
+                            }
                         />
                     </CardFooter>
                 </Card>
@@ -565,23 +640,31 @@ export default function Dashboard({
                                 !hasPositiveSurplus && 'text-destructive',
                             )}
                         >
-                            {formatEGP(summary.freeCashFlow)}
+                            <EGPValue amount={summary.freeCashFlow} />
                         </p>
                         <p className="mt-2 text-sm text-muted-foreground">
                             Actual free cash flow · confirmed income{' '}
-                            {formatCompactEGP(summary.income)} · recorded
-                            expenses {formatCompactEGP(summary.expenses)}
+                            <EGPValue amount={summary.income} compact /> ·
+                            recorded expenses{' '}
+                            <EGPValue amount={summary.expenses} compact />
                         </p>
                         <div className="mt-7 grid grid-cols-2 gap-3">
                             <SmallMetric
                                 icon={CircleDollarSign}
                                 label="Actual income"
-                                value={formatCompactEGP(summary.income)}
+                                value={
+                                    <EGPValue amount={summary.income} compact />
+                                }
                             />
                             <SmallMetric
                                 icon={ReceiptText}
                                 label="Actual expenses"
-                                value={formatCompactEGP(summary.expenses)}
+                                value={
+                                    <EGPValue
+                                        amount={summary.expenses}
+                                        compact
+                                    />
+                                }
                             />
                         </div>
                         <div className="mt-3 rounded-lg border p-3">
@@ -590,20 +673,26 @@ export default function Dashboard({
                                     Planned free cash flow
                                 </span>
                                 <span className="font-semibold tabular-nums">
-                                    {formatCompactEGP(
-                                        monthlyPlan?.plannedFreeCashFlow ?? 0,
-                                    )}
+                                    <EGPValue
+                                        amount={
+                                            monthlyPlan?.plannedFreeCashFlow ??
+                                            0
+                                        }
+                                        compact
+                                    />
                                 </span>
                             </div>
                             <p className="mt-1 text-xs text-muted-foreground">
                                 Planned income{' '}
-                                {formatCompactEGP(
-                                    monthlyPlan?.plannedIncome ?? 0,
-                                )}{' '}
+                                <EGPValue
+                                    amount={monthlyPlan?.plannedIncome ?? 0}
+                                    compact
+                                />{' '}
                                 minus planned expenses{' '}
-                                {formatCompactEGP(
-                                    monthlyPlan?.plannedExpenses ?? 0,
-                                )}
+                                <EGPValue
+                                    amount={monthlyPlan?.plannedExpenses ?? 0}
+                                    compact
+                                />
                             </p>
                         </div>
                     </CardContent>
@@ -642,9 +731,21 @@ export default function Dashboard({
                                 value:
                                     'percent' in source &&
                                     source.percent !== null &&
-                                    source.percent !== undefined
-                                        ? `${source.percent}% · ${formatCompactEGP(source.amount)}`
-                                        : formatCompactEGP(source.amount),
+                                    source.percent !== undefined ? (
+                                        <>
+                                            <FinancialValue>{`${source.percent}%`}</FinancialValue>{' '}
+                                            ·{' '}
+                                            <EGPValue
+                                                amount={source.amount}
+                                                compact
+                                            />
+                                        </>
+                                    ) : (
+                                        <EGPValue
+                                            amount={source.amount}
+                                            compact
+                                        />
+                                    ),
                             }))}
                             empty="Create the monthly plan and add income sources"
                         />
@@ -663,10 +764,15 @@ export default function Dashboard({
                                 : (monthlyPlan?.expenseCategories ?? [])
                             ).map((expense) => ({
                                 label: expense.label,
-                                value: formatCompactEGP(
-                                    'planned' in expense
-                                        ? expense.planned
-                                        : expense.amount,
+                                value: (
+                                    <EGPValue
+                                        amount={
+                                            'planned' in expense
+                                                ? expense.planned
+                                                : expense.amount
+                                        }
+                                        compact
+                                    />
                                 ),
                             }))}
                             empty="Add your recurring and flexible expenses"
@@ -679,7 +785,12 @@ export default function Dashboard({
                             items={(monthlyPlan?.allocationItems ?? []).map(
                                 (item) => ({
                                     label: item.label,
-                                    value: formatCompactEGP(item.amount),
+                                    value: (
+                                        <EGPValue
+                                            amount={item.amount}
+                                            compact
+                                        />
+                                    ),
                                 }),
                             )}
                             empty="Add allocation rules to give the surplus a job"
@@ -741,8 +852,14 @@ export default function Dashboard({
                                         : 'outline'
                                 }
                             >
-                                {summary.emergencyCoverageMonths} of{' '}
-                                {summary.emergencyReserveMonths ?? 6} months
+                                <FinancialValue>
+                                    {summary.emergencyCoverageMonths}
+                                </FinancialValue>{' '}
+                                of{' '}
+                                <FinancialValue>
+                                    {summary.emergencyReserveMonths ?? 6}
+                                </FinancialValue>{' '}
+                                months
                             </Badge>
                         </CardAction>
                     </CardHeader>
@@ -750,27 +867,35 @@ export default function Dashboard({
                         <div className="flex items-end justify-between gap-4">
                             <div>
                                 <p className="text-3xl font-semibold">
-                                    {formatEGP(summary.emergencyFund)}
+                                    <EGPValue amount={summary.emergencyFund} />
                                 </p>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                    of {formatCompactEGP(emergencyTarget)}{' '}
+                                    of{' '}
+                                    <EGPValue
+                                        amount={emergencyTarget}
+                                        compact
+                                    />{' '}
                                     target
                                 </p>
                             </div>
                             <ShieldCheck className="size-9 text-muted-foreground" />
                         </div>
                         <div className="mt-5">
-                            <Progress value={emergencyPercent} />
+                            <FinancialProgress value={emergencyPercent} />
                         </div>
                         <div className="mt-3 flex justify-between gap-3 text-xs text-muted-foreground">
                             <span>
-                                {Math.min(100, emergencyPercent).toFixed(0)}%
+                                <FinancialValue>
+                                    {Math.min(100, emergencyPercent).toFixed(0)}
+                                    %
+                                </FinancialValue>
                                 covered
                             </span>
                             <span>
-                                {formatCompactEGP(
-                                    monthlyPlan?.emergencyGap ?? 0,
-                                )}{' '}
+                                <EGPValue
+                                    amount={monthlyPlan?.emergencyGap ?? 0}
+                                    compact
+                                />{' '}
                                 gap
                             </span>
                         </div>
@@ -833,24 +958,38 @@ export default function Dashboard({
                                                         {item.allocationPercent !==
                                                             null &&
                                                         item.allocationPercent !==
-                                                            undefined
-                                                            ? `${item.allocationPercent}% of post-expense cash`
-                                                            : 'Fixed plan amount'}
+                                                            undefined ? (
+                                                            <>
+                                                                <FinancialValue>
+                                                                    {
+                                                                        item.allocationPercent
+                                                                    }
+                                                                    %
+                                                                </FinancialValue>{' '}
+                                                                of post-expense
+                                                                cash
+                                                            </>
+                                                        ) : (
+                                                            'Fixed plan amount'
+                                                        )}
                                                     </p>
                                                 </div>
                                             </div>
                                             <div className="text-right">
                                                 <p className="text-sm font-semibold">
-                                                    {formatCompactEGP(
-                                                        item.amount,
-                                                    )}
+                                                    <EGPValue
+                                                        amount={item.amount}
+                                                        compact
+                                                    />
                                                 </p>
                                                 <p className="text-xs text-muted-foreground">
-                                                    {percent.toFixed(0)}%
+                                                    <FinancialValue>
+                                                        {percent.toFixed(0)}%
+                                                    </FinancialValue>
                                                 </p>
                                             </div>
                                         </div>
-                                        <Progress
+                                        <FinancialProgress
                                             value={percent}
                                             color={
                                                 chartColors[
@@ -873,7 +1012,10 @@ export default function Dashboard({
                                     Still unassigned
                                 </span>
                                 <span className="font-semibold">
-                                    {formatCompactEGP(monthlyPlan.unallocated)}
+                                    <EGPValue
+                                        amount={monthlyPlan.unallocated}
+                                        compact
+                                    />
                                 </span>
                             </div>
                         )}
@@ -1054,23 +1196,40 @@ export default function Dashboard({
                         <div className="flex flex-col gap-3 border-t pt-4">
                             <div>
                                 <p className="text-sm font-medium">
-                                    Asset breakdown · {breakdownLabel(netWorthView)}
+                                    Asset breakdown ·{' '}
+                                    {breakdownLabel(netWorthView)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                    This is a view of total assets. Liabilities are shown separately above and are not mixed into the composition bars.
+                                    This is a view of total assets. Liabilities
+                                    are shown separately above and are not mixed
+                                    into the composition bars.
                                 </p>
                             </div>
                             {breakdownGroups.map((group, index) => (
-                                <div key={group.key} className="flex items-center justify-between gap-3 text-sm">
+                                <div
+                                    key={group.key}
+                                    className="flex items-center justify-between gap-3 text-sm"
+                                >
                                     <div className="flex min-w-0 items-center gap-2">
                                         <span
                                             className="size-2 shrink-0 rounded-full"
-                                            style={{ backgroundColor: chartColors[index % chartColors.length] }}
+                                            style={{
+                                                backgroundColor:
+                                                    chartColors[
+                                                        index %
+                                                            chartColors.length
+                                                    ],
+                                            }}
                                         />
-                                        <span className="truncate">{group.label}</span>
+                                        <span className="truncate">
+                                            {group.label}
+                                        </span>
                                     </div>
                                     <span className="shrink-0 font-medium tabular-nums">
-                                        {formatEGP(group.valueEgp)} · {group.percent}%
+                                        <EGPValue amount={group.valueEgp} /> ·{' '}
+                                        <FinancialValue>
+                                            {group.percent}%
+                                        </FinancialValue>
                                     </span>
                                 </div>
                             ))}
@@ -1084,6 +1243,79 @@ export default function Dashboard({
                 </SheetContent>
             </Sheet>
         </AppShell>
+    );
+}
+
+function EGPValue({
+    amount,
+    compact = false,
+}: {
+    amount: number;
+    compact?: boolean;
+}) {
+    return (
+        <FinancialValue>
+            {compact ? formatCompactEGP(amount) : formatEGP(amount)}
+        </FinancialValue>
+    );
+}
+
+function FinancialVisibilityToggle() {
+    const { isMasked, toggleMasked } = useFinancialVisibility();
+
+    return (
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-pressed={!isMasked}
+            aria-label={
+                isMasked ? 'Show financial amounts' : 'Hide financial amounts'
+            }
+            onClick={toggleMasked}
+            title="Press M to mask financial values immediately"
+        >
+            {isMasked ? (
+                <EyeOff data-icon="inline-start" />
+            ) : (
+                <Eye data-icon="inline-start" />
+            )}
+            {isMasked ? 'Show amounts' : 'Hide amounts'}
+            <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                M
+            </kbd>
+        </Button>
+    );
+}
+
+function FinancialProgress({
+    value,
+    color,
+}: {
+    value: number;
+    color?: string;
+}) {
+    const { isMasked } = useFinancialVisibility();
+
+    return <Progress value={isMasked ? 0 : value} color={color} />;
+}
+
+function FinancialSegment({
+    percent,
+    color,
+}: {
+    percent: number;
+    color: string;
+}) {
+    const { isMasked } = useFinancialVisibility();
+
+    return (
+        <span
+            style={{
+                width: isMasked ? '0%' : `${percent}%`,
+                backgroundColor: color,
+            }}
+        />
     );
 }
 
@@ -1142,9 +1374,19 @@ function DemoWorkspaceCard({
                     <Sparkles data-icon="inline-start" />
                     <AlertTitle>Current demo lesson</AlertTitle>
                     <AlertDescription>
-                        {hasObligationChange
-                            ? `A commitment changed after the last close. ${formatCompactEGP(emergencyContribution)} is still unassigned in the current plan and needs a deliberate decision.`
-                            : 'Close the current review after making a change to see the system explain its impact.'}
+                        {hasObligationChange ? (
+                            <>
+                                A commitment changed after the last close.{' '}
+                                <EGPValue
+                                    amount={emergencyContribution}
+                                    compact
+                                />{' '}
+                                is still unassigned in the current plan and
+                                needs a deliberate decision.
+                            </>
+                        ) : (
+                            'Close the current review after making a change to see the system explain its impact.'
+                        )}
                     </AlertDescription>
                 </Alert>
                 <Button
@@ -1218,11 +1460,16 @@ function MarketRatesCard({ marketRates }: { marketRates?: MarketRates }) {
                     icon={CircleDollarSign}
                     label="USD to EGP"
                     value={
-                        marketRates?.usdToEgp
-                            ? formatMarketNumber(
-                                  marketRates.usdToEgp.rate ?? 0,
-                              ) + ' EGP'
-                            : 'No rate yet'
+                        marketRates?.usdToEgp ? (
+                            <FinancialValue>
+                                {formatMarketNumber(
+                                    marketRates.usdToEgp.rate ?? 0,
+                                )}{' '}
+                                EGP
+                            </FinancialValue>
+                        ) : (
+                            'No rate yet'
+                        )
                     }
                     meta={
                         marketRates?.usdToEgp
@@ -1237,9 +1484,13 @@ function MarketRatesCard({ marketRates }: { marketRates?: MarketRates }) {
                     icon={Coins}
                     label="24K gold / gram"
                     value={
-                        marketRates?.gold24kPerGram
-                            ? formatEGP(marketRates.gold24kPerGram.price ?? 0)
-                            : 'No price yet'
+                        marketRates?.gold24kPerGram ? (
+                            <EGPValue
+                                amount={marketRates.gold24kPerGram.price ?? 0}
+                            />
+                        ) : (
+                            'No price yet'
+                        )
                     }
                     meta={
                         marketRates?.gold24kPerGram
@@ -1283,7 +1534,7 @@ function MarketRateMetric({
 }: {
     icon: LucideIcon;
     label: string;
-    value: string;
+    value: ReactNode;
     meta: string;
     stale: boolean;
 }) {
@@ -1335,16 +1586,30 @@ function DemoAction({
     );
 }
 
-function wealthGroupNativeLabel(group: WealthGroup) {
+function wealthGroupNativeLabel(group: WealthGroup): ReactNode {
+    const detail = (
+        <>
+            <FinancialValue>{group.percent}%</FinancialValue> of total assets ·
+            grouped by {group.dimension}
+        </>
+    );
+
     if (group.nativeAmount === null || group.nativeCurrency === null) {
-        return group.detail;
+        return detail;
     }
 
     const amount = group.nativeAmount.toLocaleString('en-EG', {
         maximumFractionDigits: 2,
     });
 
-    return `${amount} ${group.nativeCurrency} · ${group.detail}`;
+    return (
+        <>
+            <FinancialValue>
+                {amount} {group.nativeCurrency}
+            </FinancialValue>{' '}
+            · {detail}
+        </>
+    );
 }
 
 function allocationToWealthGroups(
@@ -1354,7 +1619,7 @@ function allocationToWealthGroups(
     return allocations.map((allocation) => ({
         key: `${dimension}-${allocation.label}`,
         label: allocation.label,
-        detail: `${allocation.percent}% of total assets · grouped by ${dimension}`,
+        dimension,
         valueEgp: allocation.value,
         percent: allocation.percent,
         nativeAmount: null,
@@ -1404,7 +1669,16 @@ function LiquidityOverviewCard({ summary }: { summary?: LiquiditySummary }) {
                 <LiquidityMetric
                     label="Controllable after liabilities"
                     value={summary.controllableCashAfterLiabilities}
-                    detail={`Less ${formatCompactEGP(summary.activeLiabilities)} active liabilities`}
+                    detail={
+                        <>
+                            Less{' '}
+                            <EGPValue
+                                amount={summary.activeLiabilities}
+                                compact
+                            />{' '}
+                            active liabilities
+                        </>
+                    }
                 />
             </CardContent>
             <CardFooter className="border-t bg-muted/20">
@@ -1425,13 +1699,13 @@ function LiquidityMetric({
 }: {
     label: string;
     value: number;
-    detail: string;
+    detail: ReactNode;
 }) {
     return (
         <div className="rounded-lg bg-muted p-4">
             <p className="text-xs text-muted-foreground">{label}</p>
             <p className="mt-2 text-xl font-semibold tabular-nums">
-                {formatEGP(value)}
+                <EGPValue amount={value} />
             </p>
             <p className="mt-1 text-xs leading-4 text-muted-foreground">
                 {detail}
@@ -1450,7 +1724,7 @@ function sourceLabel(source?: string) {
         : `Using ${source.replaceAll('_', ' ')}`;
 }
 
-function HeroMetric({ label, value }: { label: string; value: string }) {
+function HeroMetric({ label, value }: { label: string; value: ReactNode }) {
     return (
         <div>
             <p className="text-xs text-hero-foreground/60">{label}</p>
@@ -1468,7 +1742,7 @@ function SmallMetric({
 }: {
     icon: LucideIcon;
     label: string;
-    value: string;
+    value: ReactNode;
 }) {
     return (
         <div className="rounded-lg bg-muted p-3">
@@ -1518,7 +1792,7 @@ function FlowStep({
     icon: LucideIcon;
     label: string;
     value: number;
-    items: { label: string; value: string }[];
+    items: { label: string; value: ReactNode }[];
     empty: string;
 }) {
     return (
@@ -1530,12 +1804,12 @@ function FlowStep({
                 <p className="text-xs font-medium">{label}</p>
             </div>
             <p className="mt-4 text-xl font-semibold">
-                {formatCompactEGP(value)}
+                <EGPValue amount={value} compact />
             </p>
             <div className="mt-4 flex flex-col gap-2">
                 {items.slice(0, 3).map((item) => (
                     <div
-                        key={`${item.label}-${item.value}`}
+                        key={item.label}
                         className="flex items-start justify-between gap-2 text-[11px]"
                     >
                         <span className="truncate text-muted-foreground">
@@ -1611,9 +1885,14 @@ function ObligationChangesCard({ changes }: { changes?: ObligationChanges }) {
                             changes.hasChanges ? 'destructive' : 'secondary'
                         }
                     >
-                        {changes.hasChanges
-                            ? `${changeCount} change${changeCount === 1 ? '' : 's'}`
-                            : 'No changes'}
+                        {changes.hasChanges ? (
+                            <>
+                                <FinancialValue>{changeCount}</FinancialValue>{' '}
+                                change{changeCount === 1 ? '' : 's'}
+                            </>
+                        ) : (
+                            'No changes'
+                        )}
                     </Badge>
                 </CardAction>
             </CardHeader>
@@ -1622,10 +1901,11 @@ function ObligationChangesCard({ changes }: { changes?: ObligationChanges }) {
                     <>
                         <div className="rounded-lg bg-muted p-3 text-sm">
                             <span className="font-semibold">
-                                {formatCompactEGP(
-                                    changes.summary.monthlyDelta ?? 0,
-                                )}
-                            </span>{' '}
+                                <EGPValue
+                                    amount={changes.summary.monthlyDelta ?? 0}
+                                    compact
+                                />{' '}
+                            </span>
                             monthly capacity change · positive means less free
                             cash flow
                         </div>
@@ -1666,12 +1946,24 @@ function ObligationChangeLines({
     };
 }) {
     const lines = [
-        ...group.added.map((item) => `Added: ${item.name}`),
-        ...group.removed.map((item) => `Removed: ${item.name}`),
-        ...group.changed.map(
-            (item) =>
-                `Changed: ${item.after?.name ?? item.before?.name} (${formatCompactEGP(item.monthlyDelta ?? 0)} / month)`,
-        ),
+        ...group.added.map((item) => ({
+            key: `added-${item.name}`,
+            content: `Added: ${item.name}`,
+        })),
+        ...group.removed.map((item) => ({
+            key: `removed-${item.name}`,
+            content: `Removed: ${item.name}`,
+        })),
+        ...group.changed.map((item) => ({
+            key: `changed-${item.after?.name ?? item.before?.name}`,
+            content: (
+                <>
+                    Changed: {item.after?.name ?? item.before?.name} (
+                    <EGPValue amount={item.monthlyDelta ?? 0} compact /> /
+                    month)
+                </>
+            ),
+        })),
     ];
 
     if (!lines.length) {
@@ -1685,7 +1977,7 @@ function ObligationChangeLines({
             </p>
             <div className="mt-1 flex flex-col gap-1 text-sm">
                 {lines.map((line) => (
-                    <span key={line}>{line}</span>
+                    <span key={line.key}>{line.content}</span>
                 ))}
             </div>
         </div>
@@ -1715,23 +2007,44 @@ function DebtProgressCard({ summary }: { summary?: DebtSummary }) {
                 <SmallMetric
                     icon={CircleDollarSign}
                     label="Balance"
-                    value={formatCompactEGP(summary.liabilityBalance)}
+                    value={
+                        <EGPValue amount={summary.liabilityBalance} compact />
+                    }
                 />
                 <SmallMetric
                     icon={ArrowDownRight}
                     label="Principal / month"
-                    value={formatCompactEGP(summary.estimatedMonthlyPrincipal)}
+                    value={
+                        <EGPValue
+                            amount={summary.estimatedMonthlyPrincipal}
+                            compact
+                        />
+                    }
                 />
                 <SmallMetric
                     icon={ReceiptText}
                     label="Interest / month"
-                    value={formatCompactEGP(summary.estimatedMonthlyInterest)}
+                    value={
+                        <EGPValue
+                            amount={summary.estimatedMonthlyInterest}
+                            compact
+                        />
+                    }
                 />
             </CardContent>
             <CardFooter className="text-xs text-muted-foreground">
-                {summary.projectedPayoffMonths !== null
-                    ? `At the current payment, the estimate is ${summary.projectedPayoffMonths} months remaining. Verify it against the lender statement.`
-                    : 'The current payment is not enough to create a payoff projection.'}
+                {summary.projectedPayoffMonths !== null ? (
+                    <>
+                        At the current payment, the estimate is{' '}
+                        <FinancialValue>
+                            {summary.projectedPayoffMonths}
+                        </FinancialValue>{' '}
+                        months remaining. Verify it against the lender
+                        statement.
+                    </>
+                ) : (
+                    'The current payment is not enough to create a payoff projection.'
+                )}
             </CardFooter>
         </Card>
     );
@@ -1771,7 +2084,10 @@ function MonthlyHistoryCard({ history }: { history?: MonthlyHistoryItem[] }) {
                         <div className="flex items-center justify-between gap-2 text-xs">
                             <span className="font-medium">{item.label}</span>
                             <span className="text-muted-foreground">
-                                {item.savingsRate.toFixed(0)}% saved
+                                <FinancialValue>
+                                    {item.savingsRate.toFixed(0)}%
+                                </FinancialValue>{' '}
+                                saved
                             </span>
                         </div>
                         <div className="mt-2 flex h-28 items-end gap-1 rounded-lg bg-muted/50 p-2">
@@ -1797,8 +2113,9 @@ function MonthlyHistoryCard({ history }: { history?: MonthlyHistoryItem[] }) {
                             />
                         </div>
                         <p className="mt-2 truncate text-xs text-muted-foreground">
-                            Free {formatCompactEGP(item.freeCashFlow)} ·
-                            Invested {formatCompactEGP(item.invested)}
+                            Free <EGPValue amount={item.freeCashFlow} compact />{' '}
+                            · Invested{' '}
+                            <EGPValue amount={item.invested} compact />
                         </p>
                     </div>
                 ))}
@@ -1820,11 +2137,21 @@ function HistoryBar({
     max: number;
     label: string;
 }) {
+    const { isMasked } = useFinancialVisibility();
+
     return (
         <span
-            title={`${label}: ${formatCompactEGP(value)}`}
+            title={
+                isMasked
+                    ? 'Financial value hidden'
+                    : `${label}: ${formatCompactEGP(value)}`
+            }
             className="min-h-1 flex-1 rounded-t-sm bg-primary"
-            style={{ height: `${Math.max(4, (value / max) * 100)}%` }}
+            style={{
+                height: isMasked
+                    ? '4%'
+                    : `${Math.max(4, (value / max) * 100)}%`,
+            }}
         />
     );
 }
@@ -1866,12 +2193,20 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                             {flow.varianceAlerts.length > 0 && (
                                 <p className="text-xs text-muted-foreground">
                                     Threshold details:{' '}
-                                    {flow.varianceAlerts
-                                        .map(
-                                            (alert) =>
-                                                `${alert.label}: ${alert.variancePercent}% (threshold ${alert.thresholdPercent}%)`,
-                                        )
-                                        .join(' · ')}
+                                    {flow.varianceAlerts.map((alert, index) => (
+                                        <span key={alert.code}>
+                                            {index > 0 && ' · '}
+                                            {alert.label}:{' '}
+                                            <FinancialValue>
+                                                {alert.variancePercent}%
+                                            </FinancialValue>{' '}
+                                            (threshold{' '}
+                                            <FinancialValue>
+                                                {alert.thresholdPercent}%
+                                            </FinancialValue>
+                                            )
+                                        </span>
+                                    ))}
                                 </p>
                             )}
                         </div>
@@ -1913,9 +2248,15 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                                         outflow.expected !== undefined &&
                                         Math.abs(
                                             outflow.expected - outflow.amount,
-                                        ) > 0.01
-                                            ? `planned ${formatCompactEGP(outflow.expected)}`
-                                            : undefined
+                                        ) > 0.01 ? (
+                                            <>
+                                                planned{' '}
+                                                <EGPValue
+                                                    amount={outflow.expected}
+                                                    compact
+                                                />
+                                            </>
+                                        ) : undefined
                                     }
                                 />
                             ))}
@@ -1925,17 +2266,26 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                                     Free cash flow
                                 </span>
                                 <span className="text-lg font-semibold">
-                                    {formatCompactEGP(flow.freeCashFlow)}
+                                    <EGPValue
+                                        amount={flow.freeCashFlow}
+                                        compact
+                                    />
                                 </span>
                             </div>
                             <p className="mt-1 text-xs text-muted-foreground">
                                 Planned:{' '}
-                                {formatCompactEGP(flow.planned.freeCashFlow)} ·
-                                Difference:{' '}
-                                {formatCompactEGP(
-                                    flow.freeCashFlow -
-                                        flow.planned.freeCashFlow,
-                                )}
+                                <EGPValue
+                                    amount={flow.planned.freeCashFlow}
+                                    compact
+                                />{' '}
+                                · Difference:{' '}
+                                <EGPValue
+                                    amount={
+                                        flow.freeCashFlow -
+                                        flow.planned.freeCashFlow
+                                    }
+                                    compact
+                                />
                             </p>
                         </div>
                     </div>
@@ -1946,27 +2296,61 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                                     Planned surplus assigned
                                 </span>
                                 <span className="text-muted-foreground">
-                                    {formatCompactEGP(flow.allocationTotal)} /{' '}
-                                    {formatCompactEGP(allocationCapacity)}
+                                    <EGPValue
+                                        amount={flow.allocationTotal}
+                                        compact
+                                    />{' '}
+                                    /{' '}
+                                    <EGPValue
+                                        amount={allocationCapacity}
+                                        compact
+                                    />
                                 </span>
                             </div>
                             <div className="mt-3">
-                                <Progress value={allocationPercent} />
+                                <FinancialProgress value={allocationPercent} />
                             </div>
                             <p className="mt-2 text-xs text-muted-foreground">
                                 Actual linked:{' '}
-                                {formatCompactEGP(flow.actualAllocationTotal)} ·
-                                actual free cash without a linked allocation:{' '}
-                                {formatCompactEGP(flow.actualUnassigned)}
+                                <EGPValue
+                                    amount={flow.actualAllocationTotal}
+                                    compact
+                                />{' '}
+                                · actual free cash without a linked allocation:{' '}
+                                <EGPValue
+                                    amount={flow.actualUnassigned}
+                                    compact
+                                />
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                                {flow.overAllocated > 0
-                                    ? `${formatCompactEGP(flow.plannedOverAllocated)} over planned cash flow`
-                                    : flow.plannedUnassigned > 0
-                                      ? `${formatCompactEGP(flow.plannedUnassigned)} still unassigned in the plan`
-                                      : flow.actualUnassigned > 0
-                                        ? `${formatCompactEGP(flow.actualUnassigned)} actual cash remains without a linked allocation`
-                                        : 'Every planned pound has an allocation rule'}
+                                {flow.overAllocated > 0 ? (
+                                    <>
+                                        <EGPValue
+                                            amount={flow.plannedOverAllocated}
+                                            compact
+                                        />{' '}
+                                        over planned cash flow
+                                    </>
+                                ) : flow.plannedUnassigned > 0 ? (
+                                    <>
+                                        <EGPValue
+                                            amount={flow.plannedUnassigned}
+                                            compact
+                                        />{' '}
+                                        still unassigned in the plan
+                                    </>
+                                ) : flow.actualUnassigned > 0 ? (
+                                    <>
+                                        <EGPValue
+                                            amount={flow.actualUnassigned}
+                                            compact
+                                        />{' '}
+                                        actual cash remains without a linked
+                                        allocation
+                                    </>
+                                ) : (
+                                    'Every planned pound has an allocation rule'
+                                )}
                             </p>
                         </div>
                         <div className="rounded-lg border p-4">
@@ -1980,7 +2364,18 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                                         flow.obligations.commitments
                                             .configuredMonthly
                                     }
-                                    detail={`reviewed ${formatCompactEGP(flow.obligations.commitments.recorded)}`}
+                                    detail={
+                                        <>
+                                            reviewed{' '}
+                                            <EGPValue
+                                                amount={
+                                                    flow.obligations.commitments
+                                                        .recorded
+                                                }
+                                                compact
+                                            />
+                                        </>
+                                    }
                                 />
                                 <FlowHealthRow
                                     label="Liability payments"
@@ -1988,13 +2383,27 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                                         flow.obligations.liabilities
                                             .configuredMonthlyPayments
                                     }
-                                    detail={`reviewed ${formatCompactEGP(flow.obligations.liabilities.recorded)}`}
+                                    detail={
+                                        <>
+                                            reviewed{' '}
+                                            <EGPValue
+                                                amount={
+                                                    flow.obligations.liabilities
+                                                        .recorded
+                                                }
+                                                compact
+                                            />
+                                        </>
+                                    }
                                 />
                             </div>
                             <p className="mt-3 text-xs text-muted-foreground">
-                                {formatCompactEGP(
-                                    flow.obligations.totalConfiguredMonthly,
-                                )}{' '}
+                                <EGPValue
+                                    amount={
+                                        flow.obligations.totalConfiguredMonthly
+                                    }
+                                    compact
+                                />{' '}
                                 must be protected before flexible spending or
                                 investing.
                             </p>
@@ -2012,12 +2421,16 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                                         {allocation.label}
                                     </span>
                                     <span className="shrink-0 font-medium">
-                                        {formatCompactEGP(allocation.planned)}
+                                        <EGPValue
+                                            amount={allocation.planned}
+                                            compact
+                                        />
                                         <span className="ml-1 text-xs text-muted-foreground">
                                             · actual{' '}
-                                            {formatCompactEGP(
-                                                allocation.actual,
-                                            )}
+                                            <EGPValue
+                                                amount={allocation.actual}
+                                                compact
+                                            />
                                         </span>
                                     </span>
                                 </div>
@@ -2027,9 +2440,10 @@ function MonthlyFlowDetails({ flow }: { flow?: MonthlyFlow }) {
                 </CardContent>
                 <CardFooter className="justify-between gap-3">
                     <span className="text-xs text-muted-foreground">
-                        Planned income {formatCompactEGP(flow.planned.income)} ·
+                        Planned income{' '}
+                        <EGPValue amount={flow.planned.income} compact /> ·
                         planned outflow{' '}
-                        {formatCompactEGP(flow.planned.expenses)}
+                        <EGPValue amount={flow.planned.expenses} compact />
                     </span>
                     <Button href="/monthly-review" variant="ghost" size="sm">
                         Open review
@@ -2048,7 +2462,7 @@ function FlowHealthRow({
 }: {
     label: string;
     value: number;
-    detail?: string;
+    detail?: ReactNode;
 }) {
     return (
         <div className="flex items-center justify-between gap-3 text-sm">
@@ -2061,7 +2475,7 @@ function FlowHealthRow({
                     value < 0 && 'text-muted-foreground',
                 )}
             >
-                {formatCompactEGP(value)}
+                <EGPValue amount={value} compact />
                 {detail && (
                     <span className="ml-1 text-xs font-normal text-muted-foreground">
                         · {detail}
@@ -2120,9 +2534,17 @@ function MonthlyPlanComparisonCard({
                             {planIsSaved ? 'Saved plan' : 'Template preview'}
                         </Badge>
                         <Badge variant="outline">
-                            {monthlyPlan
-                                ? `${monthlyPlan.plannedFreeCashFlow.toLocaleString('en-EG')} EGP planned free`
-                                : 'Set up'}
+                            {monthlyPlan ? (
+                                <>
+                                    <EGPValue
+                                        amount={monthlyPlan.plannedFreeCashFlow}
+                                        compact
+                                    />{' '}
+                                    planned free
+                                </>
+                            ) : (
+                                'Set up'
+                            )}
                         </Badge>
                     </div>
                 </CardAction>
@@ -2215,9 +2637,16 @@ function MonthlyPlanComparisonCard({
                                         actual={item.actual}
                                         detail={
                                             item.allocationPercent !== null &&
-                                            item.allocationPercent !== undefined
-                                                ? `${item.allocationPercent}% rule`
-                                                : undefined
+                                            item.allocationPercent !==
+                                                undefined ? (
+                                                <>
+                                                    <FinancialValue>
+                                                        {item.allocationPercent}
+                                                        %
+                                                    </FinancialValue>{' '}
+                                                    rule
+                                                </>
+                                            ) : undefined
                                         }
                                     />
                                 ))}
@@ -2243,22 +2672,31 @@ function MonthlyPlanComparisonCard({
                             <SmallMetric
                                 icon={CircleDollarSign}
                                 label="Planned unassigned remainder"
-                                value={formatCompactEGP(
-                                    monthlyPlan.unallocated,
-                                )}
+                                value={
+                                    <EGPValue
+                                        amount={monthlyPlan.unallocated}
+                                        compact
+                                    />
+                                }
                             />
                             <SmallMetric
                                 icon={TrendingUp}
                                 label="Actual linked allocations"
-                                value={formatCompactEGP(actualAllocationTotal)}
+                                value={
+                                    <EGPValue
+                                        amount={actualAllocationTotal}
+                                        compact
+                                    />
+                                }
                             />
                         </div>
 
                         <p className="text-xs text-muted-foreground">
                             Actual source: {actualSourceLabel}. Linked expense
-                            actuals total {formatCompactEGP(actualExpenseTotal)}
-                            ; unlinked transactions stay separate instead of
-                            being classified by name.
+                            actuals total{' '}
+                            <EGPValue amount={actualExpenseTotal} compact />;
+                            unlinked transactions stay separate instead of being
+                            classified by name.
                         </p>
                     </div>
                 )}
@@ -2297,7 +2735,7 @@ function PlanActualRow({
     label: string;
     planned: number;
     actual: number;
-    detail?: string;
+    detail?: ReactNode;
 }) {
     const progress =
         planned > 0 ? (actual / planned) * 100 : actual > 0 ? 100 : 0;
@@ -2308,18 +2746,25 @@ function PlanActualRow({
             <div className="flex items-start justify-between gap-3 text-sm">
                 <span className="min-w-0 truncate font-medium">{label}</span>
                 <span className="shrink-0 text-right text-xs text-muted-foreground">
-                    Planned {formatCompactEGP(planned)} · Actual{' '}
-                    {formatCompactEGP(actual)}
+                    Planned <EGPValue amount={planned} compact /> · Actual{' '}
+                    <EGPValue amount={actual} compact />
                 </span>
             </div>
             <div className="mt-1.5 flex items-center gap-3">
                 <div className="flex-1">
-                    <Progress value={Math.min(100, Math.max(0, progress))} />
+                    <FinancialProgress
+                        value={Math.min(100, Math.max(0, progress))}
+                    />
                 </div>
                 <span className="w-28 shrink-0 text-right text-[11px] text-muted-foreground">
-                    {variance === 0
-                        ? 'on plan'
-                        : `${variance > 0 ? '+' : ''}${formatCompactEGP(variance)} variance`}
+                    {variance === 0 ? (
+                        'on plan'
+                    ) : (
+                        <>
+                            {variance > 0 ? '+' : ''}
+                            <EGPValue amount={variance} compact /> variance
+                        </>
+                    )}
                 </span>
             </div>
             {detail && (
@@ -2345,7 +2790,7 @@ function UnmappedRow({
             <div className="flex items-center justify-between gap-3">
                 <span className="font-medium">{label}</span>
                 <span className="font-medium tabular-nums">
-                    {formatCompactEGP(amount)}
+                    <EGPValue amount={amount} compact />
                 </span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
@@ -2432,18 +2877,24 @@ function WealthJourneyCard({
                         </span>
                     </div>
                     <div className="mt-2">
-                        <Progress value={progress} />
+                        <FinancialProgress value={progress} />
                     </div>
                     <div className="mt-2 flex justify-between gap-3 text-xs text-muted-foreground">
                         <span>
-                            {formatCompactEGP(
-                                financialFreedom?.currentInvestable ?? 0,
-                            )}{' '}
+                            <EGPValue
+                                amount={
+                                    financialFreedom?.currentInvestable ?? 0
+                                }
+                                compact
+                            />{' '}
                             invested capital
                         </span>
                         <span>
                             target{' '}
-                            {formatCompactEGP(financialFreedom?.target ?? 0)}
+                            <EGPValue
+                                amount={financialFreedom?.target ?? 0}
+                                compact
+                            />
                         </span>
                     </div>
                 </div>
@@ -2451,15 +2902,27 @@ function WealthJourneyCard({
                     <SmallMetric
                         icon={Target}
                         label="Still needed"
-                        value={formatCompactEGP(financialFreedom?.gap ?? 0)}
+                        value={
+                            <EGPValue
+                                amount={financialFreedom?.gap ?? 0}
+                                compact
+                            />
+                        }
                     />
                     <SmallMetric
                         icon={CircleGauge}
                         label="At current pace"
                         value={
-                            financialFreedom?.yearsAtCurrentPace
-                                ? `${financialFreedom.yearsAtCurrentPace} years`
-                                : 'Add investments'
+                            financialFreedom?.yearsAtCurrentPace ? (
+                                <>
+                                    <FinancialValue>
+                                        {financialFreedom.yearsAtCurrentPace}
+                                    </FinancialValue>{' '}
+                                    years
+                                </>
+                            ) : (
+                                'Add investments'
+                            )
                         }
                     />
                 </div>
@@ -2511,18 +2974,18 @@ function GoalCard({ goal }: { goal: Goal }) {
                 <div className="flex items-end justify-between gap-4">
                     <div>
                         <p className="text-2xl font-semibold">
-                            {formatCompactEGP(goal.allocatedAmount)}
+                            <EGPValue amount={goal.allocatedAmount} compact />
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                            of {formatCompactEGP(goal.targetAmount)}
+                            of <EGPValue amount={goal.targetAmount} compact />
                         </p>
                     </div>
                     <p className="text-sm font-semibold">
-                        {goal.fundingPercent}%
+                        <FinancialValue>{goal.fundingPercent}%</FinancialValue>
                     </p>
                 </div>
                 <div className="mt-4">
-                    <Progress value={goal.fundingPercent} />
+                    <FinancialProgress value={goal.fundingPercent} />
                 </div>
                 <div className="mt-5 flex flex-col gap-2">
                     <p className="text-xs font-medium text-muted-foreground">
@@ -2545,7 +3008,7 @@ function GoalCard({ goal }: { goal: Goal }) {
                                 </div>
                             </div>
                             <span className="shrink-0 text-xs font-semibold">
-                                {formatCompactEGP(source.amount)}
+                                <EGPValue amount={source.amount} compact />
                             </span>
                         </div>
                     ))}
@@ -2558,8 +3021,11 @@ function GoalCard({ goal }: { goal: Goal }) {
             </CardContent>
             <CardFooter className="justify-between gap-3">
                 <span className="text-xs text-muted-foreground">
-                    {formatCompactEGP(goal.requiredMonthlyContribution)}/month
-                    needed
+                    <EGPValue
+                        amount={goal.requiredMonthlyContribution}
+                        compact
+                    />
+                    /month needed
                 </span>
                 <Button href="/goals" variant="ghost" size="sm">
                     Adjust goal
@@ -2602,10 +3068,11 @@ function AllocationList({
                         <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
                             <span className="truncate">{item.label}</span>
                             <span className="shrink-0 text-muted-foreground">
-                                {item.percent}% · {formatCompactEGP(item.value)}
+                                <FinancialValue>{item.percent}%</FinancialValue>{' '}
+                                · <EGPValue amount={item.value} compact />
                             </span>
                         </div>
-                        <Progress
+                        <FinancialProgress
                             value={item.percent}
                             color={chartColors[index % chartColors.length]}
                         />
@@ -2626,6 +3093,7 @@ function TrendBars({
 }: {
     points: { asOf: string; netWorth: number }[];
 }) {
+    const { isMasked } = useFinancialVisibility();
     const visible = points.slice(-10);
     const max = Math.max(...visible.map((point) => point.netWorth), 1);
 
@@ -2636,9 +3104,15 @@ function TrendBars({
                     key={point.asOf}
                     className="min-h-1 flex-1 rounded-t-sm bg-primary"
                     style={{
-                        height: `${Math.max(6, (point.netWorth / max) * 64)}px`,
+                        height: isMasked
+                            ? '6px'
+                            : `${Math.max(6, (point.netWorth / max) * 64)}px`,
                     }}
-                    title={`${point.asOf}: ${formatEGP(point.netWorth)}`}
+                    title={
+                        isMasked
+                            ? 'Financial value hidden'
+                            : `${point.asOf}: ${formatEGP(point.netWorth)}`
+                    }
                 />
             ))}
         </div>
@@ -2662,7 +3136,9 @@ function CalculationRow({
             )}
         >
             <span className="text-sm">{label}</span>
-            <span className="text-sm font-semibold">{formatEGP(value)}</span>
+            <span className="text-sm font-semibold">
+                <EGPValue amount={value} />
+            </span>
         </div>
     );
 }
